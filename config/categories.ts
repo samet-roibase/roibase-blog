@@ -34,3 +34,15 @@ export const CATEGORY_TO_SERVICES: Record<Category, readonly string[]> = {
   travel: ['branding'],
   lifestyle: ['branding']
 }
+
+/** Kategori renk paleti — mobile menü asimetrik rail'leri ve diğer
+ *  kategori-bazlı görsel öğeler için tek source-of-truth. */
+export const CATEGORY_COLORS: Record<Category, string> = {
+  ai:        '#22d3ee',  // pCyan
+  marketing: '#fd9644',  // pOrange
+  tech:      '#a855f7',  // pPurple
+  data:      '#26de81',  // pGreen
+  gaming:    '#fc5c65',  // pRed
+  travel:    '#fbbf24',  // amber
+  lifestyle: '#ec4899'   // pink
+}

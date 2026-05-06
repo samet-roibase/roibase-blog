@@ -9,13 +9,34 @@
       "mainSite": "Ana Site"
     },
     "categories": {
-      "ai": { "name": "AI", "description": "Yapay zekâ modelleri, otomasyon ve gelecek trendleri." },
-      "marketing": { "name": "Pazarlama", "description": "Performans pazarlaması, strateji ve büyüme." },
-      "tech": { "name": "Teknoloji", "description": "Yazılım geliştirme, mimari ve modern frameworkler." },
-      "data": { "name": "Veri", "description": "Analitik, tracking, BigQuery ve veri mimarisi." },
-      "gaming": { "name": "Oyun", "description": "Dijital oyun kültürü, teknoloji ve e-spor." },
-      "travel": { "name": "Seyahat", "description": "Dijital göçebelik, teknoloji şehirleri ve gezi rehberleri." },
-      "lifestyle": { "name": "Yaşam", "description": "Verimlilik, çalışma kültürü ve modern yaşam." }
+      "ai": {
+        "name": "AI",
+        "description": "Yapay zekâ modelleri, otomasyon ve gelecek trendleri."
+      },
+      "marketing": {
+        "name": "Pazarlama",
+        "description": "Performans pazarlaması, strateji ve büyüme."
+      },
+      "tech": {
+        "name": "Teknoloji",
+        "description": "Yazılım geliştirme, mimari ve modern frameworkler."
+      },
+      "data": {
+        "name": "Veri",
+        "description": "Analitik, tracking, BigQuery ve veri mimarisi."
+      },
+      "gaming": {
+        "name": "Oyun",
+        "description": "Dijital oyun kültürü, teknoloji ve e-spor."
+      },
+      "travel": {
+        "name": "Seyahat",
+        "description": "Dijital göçebelik, teknoloji şehirleri ve gezi rehberleri."
+      },
+      "lifestyle": {
+        "name": "Yaşam",
+        "description": "Verimlilik, çalışma kültürü ve modern yaşam."
+      }
     },
     "blog": {
       "latestPosts": "Son Yazılar",
@@ -26,97 +47,313 @@
     },
     "footer": {
       "rights": "Tüm hakları saklıdır.",
-      "mainSite": "Roibase ana site"
+      "mainSite": "Roibase"
     }
   },
   "en": {
-    "site": { "tagline": "Roibase's autonomous tech hub" },
-    "nav": { "home": "Home", "categories": "Categories", "mainSite": "Main Site" },
-    "categories": {
-      "ai": { "name": "AI", "description": "AI models, automation and future trends." },
-      "marketing": { "name": "Marketing", "description": "Performance marketing, strategy and growth." },
-      "tech": { "name": "Tech", "description": "Software development, architecture and modern frameworks." },
-      "data": { "name": "Data", "description": "Analytics, tracking, BigQuery and data architecture." },
-      "gaming": { "name": "Gaming", "description": "Digital game culture, technology and esports." },
-      "travel": { "name": "Travel", "description": "Digital nomadism, tech cities and travel guides." },
-      "lifestyle": { "name": "Lifestyle", "description": "Productivity, work culture and modern living." }
+    "site": {
+      "tagline": "Roibase's autonomous tech hub"
     },
-    "blog": { "latestPosts": "Latest Posts", "readMore": "Read more", "publishedOn": "Published", "minRead": "min read", "noPosts": "No posts in this category yet." },
-    "footer": { "rights": "All rights reserved.", "mainSite": "Roibase main site" }
+    "nav": {
+      "home": "Home",
+      "categories": "Categories",
+      "mainSite": "Main Site"
+    },
+    "categories": {
+      "ai": {
+        "name": "AI",
+        "description": "AI models, automation and future trends."
+      },
+      "marketing": {
+        "name": "Marketing",
+        "description": "Performance marketing, strategy and growth."
+      },
+      "tech": {
+        "name": "Tech",
+        "description": "Software development, architecture and modern frameworks."
+      },
+      "data": {
+        "name": "Data",
+        "description": "Analytics, tracking, BigQuery and data architecture."
+      },
+      "gaming": {
+        "name": "Gaming",
+        "description": "Digital game culture, technology and esports."
+      },
+      "travel": {
+        "name": "Travel",
+        "description": "Digital nomadism, tech cities and travel guides."
+      },
+      "lifestyle": {
+        "name": "Lifestyle",
+        "description": "Productivity, work culture and modern living."
+      }
+    },
+    "blog": {
+      "latestPosts": "Latest Posts",
+      "readMore": "Read more",
+      "publishedOn": "Published",
+      "minRead": "min read",
+      "noPosts": "No posts in this category yet."
+    },
+    "footer": {
+      "rights": "All rights reserved.",
+      "mainSite": "Roibase"
+    }
   },
   "de": {
-    "site": { "tagline": "Roibases autonomes Tech-Hub" },
-    "nav": { "home": "Startseite", "categories": "Kategorien", "mainSite": "Hauptseite" },
-    "categories": {
-      "ai": { "name": "KI", "description": "KI-Modelle, Automatisierung und Zukunftstrends." },
-      "marketing": { "name": "Marketing", "description": "Performance-Marketing, Strategie und Wachstum." },
-      "tech": { "name": "Technologie", "description": "Softwareentwicklung, Architektur und moderne Frameworks." },
-      "data": { "name": "Daten", "description": "Analytics, Tracking, BigQuery und Datenarchitektur." },
-      "gaming": { "name": "Gaming", "description": "Digitale Spielkultur, Technologie und E-Sport." },
-      "travel": { "name": "Reisen", "description": "Digitales Nomadentum, Tech-Städte und Reiseführer." },
-      "lifestyle": { "name": "Lifestyle", "description": "Produktivität, Arbeitskultur und modernes Leben." }
+    "site": {
+      "tagline": "Roibases autonomes Tech-Hub"
     },
-    "blog": { "latestPosts": "Neueste Beiträge", "readMore": "Weiterlesen", "publishedOn": "Veröffentlicht", "minRead": "Min Lesezeit", "noPosts": "Noch keine Beiträge in dieser Kategorie." },
-    "footer": { "rights": "Alle Rechte vorbehalten.", "mainSite": "Roibase Hauptseite" }
+    "nav": {
+      "home": "Startseite",
+      "categories": "Kategorien",
+      "mainSite": "Hauptseite"
+    },
+    "categories": {
+      "ai": {
+        "name": "KI",
+        "description": "KI-Modelle, Automatisierung und Zukunftstrends."
+      },
+      "marketing": {
+        "name": "Marketing",
+        "description": "Performance-Marketing, Strategie und Wachstum."
+      },
+      "tech": {
+        "name": "Technologie",
+        "description": "Softwareentwicklung, Architektur und moderne Frameworks."
+      },
+      "data": {
+        "name": "Daten",
+        "description": "Analytics, Tracking, BigQuery und Datenarchitektur."
+      },
+      "gaming": {
+        "name": "Gaming",
+        "description": "Digitale Spielkultur, Technologie und E-Sport."
+      },
+      "travel": {
+        "name": "Reisen",
+        "description": "Digitales Nomadentum, Tech-Städte und Reiseführer."
+      },
+      "lifestyle": {
+        "name": "Lifestyle",
+        "description": "Produktivität, Arbeitskultur und modernes Leben."
+      }
+    },
+    "blog": {
+      "latestPosts": "Neueste Beiträge",
+      "readMore": "Weiterlesen",
+      "publishedOn": "Veröffentlicht",
+      "minRead": "Min Lesezeit",
+      "noPosts": "Noch keine Beiträge in dieser Kategorie."
+    },
+    "footer": {
+      "rights": "Alle Rechte vorbehalten.",
+      "mainSite": "Roibase"
+    }
   },
   "es": {
-    "site": { "tagline": "El centro tecnológico autónomo de Roibase" },
-    "nav": { "home": "Inicio", "categories": "Categorías", "mainSite": "Sitio Principal" },
-    "categories": {
-      "ai": { "name": "IA", "description": "Modelos de IA, automatización y tendencias futuras." },
-      "marketing": { "name": "Marketing", "description": "Marketing de rendimiento, estrategia y crecimiento." },
-      "tech": { "name": "Tecnología", "description": "Desarrollo de software, arquitectura y frameworks modernos." },
-      "data": { "name": "Datos", "description": "Analítica, tracking, BigQuery y arquitectura de datos." },
-      "gaming": { "name": "Gaming", "description": "Cultura del juego digital, tecnología y e-sports." },
-      "travel": { "name": "Viajes", "description": "Nomadismo digital, ciudades tech y guías de viaje." },
-      "lifestyle": { "name": "Estilo de Vida", "description": "Productividad, cultura laboral y vida moderna." }
+    "site": {
+      "tagline": "El centro tecnológico autónomo de Roibase"
     },
-    "blog": { "latestPosts": "Últimas Publicaciones", "readMore": "Leer más", "publishedOn": "Publicado", "minRead": "min de lectura", "noPosts": "Aún no hay publicaciones en esta categoría." },
-    "footer": { "rights": "Todos los derechos reservados.", "mainSite": "Sitio principal de Roibase" }
+    "nav": {
+      "home": "Inicio",
+      "categories": "Categorías",
+      "mainSite": "Sitio Principal"
+    },
+    "categories": {
+      "ai": {
+        "name": "IA",
+        "description": "Modelos de IA, automatización y tendencias futuras."
+      },
+      "marketing": {
+        "name": "Marketing",
+        "description": "Marketing de rendimiento, estrategia y crecimiento."
+      },
+      "tech": {
+        "name": "Tecnología",
+        "description": "Desarrollo de software, arquitectura y frameworks modernos."
+      },
+      "data": {
+        "name": "Datos",
+        "description": "Analítica, tracking, BigQuery y arquitectura de datos."
+      },
+      "gaming": {
+        "name": "Gaming",
+        "description": "Cultura del juego digital, tecnología y e-sports."
+      },
+      "travel": {
+        "name": "Viajes",
+        "description": "Nomadismo digital, ciudades tech y guías de viaje."
+      },
+      "lifestyle": {
+        "name": "Estilo de Vida",
+        "description": "Productividad, cultura laboral y vida moderna."
+      }
+    },
+    "blog": {
+      "latestPosts": "Últimas Publicaciones",
+      "readMore": "Leer más",
+      "publishedOn": "Publicado",
+      "minRead": "min de lectura",
+      "noPosts": "Aún no hay publicaciones en esta categoría."
+    },
+    "footer": {
+      "rights": "Todos los derechos reservados.",
+      "mainSite": "Roibase"
+    }
   },
   "fr": {
-    "site": { "tagline": "Le hub tech autonome de Roibase" },
-    "nav": { "home": "Accueil", "categories": "Catégories", "mainSite": "Site Principal" },
-    "categories": {
-      "ai": { "name": "IA", "description": "Modèles d'IA, automatisation et tendances futures." },
-      "marketing": { "name": "Marketing", "description": "Marketing à la performance, stratégie et croissance." },
-      "tech": { "name": "Tech", "description": "Développement logiciel, architecture et frameworks modernes." },
-      "data": { "name": "Données", "description": "Analytics, tracking, BigQuery et architecture de données." },
-      "gaming": { "name": "Gaming", "description": "Culture du jeu numérique, technologie et e-sport." },
-      "travel": { "name": "Voyage", "description": "Nomadisme numérique, villes tech et guides de voyage." },
-      "lifestyle": { "name": "Lifestyle", "description": "Productivité, culture du travail et vie moderne." }
+    "site": {
+      "tagline": "Le hub tech autonome de Roibase"
     },
-    "blog": { "latestPosts": "Derniers Articles", "readMore": "Lire la suite", "publishedOn": "Publié", "minRead": "min de lecture", "noPosts": "Aucun article dans cette catégorie pour le moment." },
-    "footer": { "rights": "Tous droits réservés.", "mainSite": "Site principal de Roibase" }
+    "nav": {
+      "home": "Accueil",
+      "categories": "Catégories",
+      "mainSite": "Site Principal"
+    },
+    "categories": {
+      "ai": {
+        "name": "IA",
+        "description": "Modèles d'IA, automatisation et tendances futures."
+      },
+      "marketing": {
+        "name": "Marketing",
+        "description": "Marketing à la performance, stratégie et croissance."
+      },
+      "tech": {
+        "name": "Tech",
+        "description": "Développement logiciel, architecture et frameworks modernes."
+      },
+      "data": {
+        "name": "Données",
+        "description": "Analytics, tracking, BigQuery et architecture de données."
+      },
+      "gaming": {
+        "name": "Gaming",
+        "description": "Culture du jeu numérique, technologie et e-sport."
+      },
+      "travel": {
+        "name": "Voyage",
+        "description": "Nomadisme numérique, villes tech et guides de voyage."
+      },
+      "lifestyle": {
+        "name": "Lifestyle",
+        "description": "Productivité, culture du travail et vie moderne."
+      }
+    },
+    "blog": {
+      "latestPosts": "Derniers Articles",
+      "readMore": "Lire la suite",
+      "publishedOn": "Publié",
+      "minRead": "min de lecture",
+      "noPosts": "Aucun article dans cette catégorie pour le moment."
+    },
+    "footer": {
+      "rights": "Tous droits réservés.",
+      "mainSite": "Roibase"
+    }
   },
   "it": {
-    "site": { "tagline": "L'hub tecnologico autonomo di Roibase" },
-    "nav": { "home": "Home", "categories": "Categorie", "mainSite": "Sito Principale" },
-    "categories": {
-      "ai": { "name": "IA", "description": "Modelli di IA, automazione e tendenze future." },
-      "marketing": { "name": "Marketing", "description": "Marketing performance, strategia e crescita." },
-      "tech": { "name": "Tecnologia", "description": "Sviluppo software, architettura e framework moderni." },
-      "data": { "name": "Dati", "description": "Analytics, tracking, BigQuery e architettura dei dati." },
-      "gaming": { "name": "Gaming", "description": "Cultura del gioco digitale, tecnologia ed e-sport." },
-      "travel": { "name": "Viaggi", "description": "Nomadismo digitale, città tech e guide di viaggio." },
-      "lifestyle": { "name": "Lifestyle", "description": "Produttività, cultura del lavoro e vita moderna." }
+    "site": {
+      "tagline": "L'hub tecnologico autonomo di Roibase"
     },
-    "blog": { "latestPosts": "Ultimi Articoli", "readMore": "Continua a leggere", "publishedOn": "Pubblicato", "minRead": "min di lettura", "noPosts": "Nessun articolo in questa categoria ancora." },
-    "footer": { "rights": "Tutti i diritti riservati.", "mainSite": "Sito principale Roibase" }
+    "nav": {
+      "home": "Home",
+      "categories": "Categorie",
+      "mainSite": "Sito Principale"
+    },
+    "categories": {
+      "ai": {
+        "name": "IA",
+        "description": "Modelli di IA, automazione e tendenze future."
+      },
+      "marketing": {
+        "name": "Marketing",
+        "description": "Marketing performance, strategia e crescita."
+      },
+      "tech": {
+        "name": "Tecnologia",
+        "description": "Sviluppo software, architettura e framework moderni."
+      },
+      "data": {
+        "name": "Dati",
+        "description": "Analytics, tracking, BigQuery e architettura dei dati."
+      },
+      "gaming": {
+        "name": "Gaming",
+        "description": "Cultura del gioco digitale, tecnologia ed e-sport."
+      },
+      "travel": {
+        "name": "Viaggi",
+        "description": "Nomadismo digitale, città tech e guide di viaggio."
+      },
+      "lifestyle": {
+        "name": "Lifestyle",
+        "description": "Produttività, cultura del lavoro e vita moderna."
+      }
+    },
+    "blog": {
+      "latestPosts": "Ultimi Articoli",
+      "readMore": "Continua a leggere",
+      "publishedOn": "Pubblicato",
+      "minRead": "min di lettura",
+      "noPosts": "Nessun articolo in questa categoria ancora."
+    },
+    "footer": {
+      "rights": "Tutti i diritti riservati.",
+      "mainSite": "Roibase"
+    }
   },
   "ru": {
-    "site": { "tagline": "Автономный технологический хаб Roibase" },
-    "nav": { "home": "Главная", "categories": "Категории", "mainSite": "Основной сайт" },
-    "categories": {
-      "ai": { "name": "ИИ", "description": "Модели ИИ, автоматизация и тенденции будущего." },
-      "marketing": { "name": "Маркетинг", "description": "Performance-маркетинг, стратегия и рост." },
-      "tech": { "name": "Технологии", "description": "Разработка ПО, архитектура и современные фреймворки." },
-      "data": { "name": "Данные", "description": "Аналитика, трекинг, BigQuery и архитектура данных." },
-      "gaming": { "name": "Гейминг", "description": "Культура цифровых игр, технологии и киберспорт." },
-      "travel": { "name": "Путешествия", "description": "Цифровое кочевничество, технологические города и путеводители." },
-      "lifestyle": { "name": "Образ жизни", "description": "Продуктивность, культура работы и современная жизнь." }
+    "site": {
+      "tagline": "Автономный технологический хаб Roibase"
     },
-    "blog": { "latestPosts": "Последние публикации", "readMore": "Читать далее", "publishedOn": "Опубликовано", "minRead": "мин чтения", "noPosts": "В этой категории пока нет публикаций." },
-    "footer": { "rights": "Все права защищены.", "mainSite": "Основной сайт Roibase" }
+    "nav": {
+      "home": "Главная",
+      "categories": "Категории",
+      "mainSite": "Основной сайт"
+    },
+    "categories": {
+      "ai": {
+        "name": "ИИ",
+        "description": "Модели ИИ, автоматизация и тенденции будущего."
+      },
+      "marketing": {
+        "name": "Маркетинг",
+        "description": "Performance-маркетинг, стратегия и рост."
+      },
+      "tech": {
+        "name": "Технологии",
+        "description": "Разработка ПО, архитектура и современные фреймворки."
+      },
+      "data": {
+        "name": "Данные",
+        "description": "Аналитика, трекинг, BigQuery и архитектура данных."
+      },
+      "gaming": {
+        "name": "Гейминг",
+        "description": "Культура цифровых игр, технологии и киберспорт."
+      },
+      "travel": {
+        "name": "Путешествия",
+        "description": "Цифровое кочевничество, технологические города и путеводители."
+      },
+      "lifestyle": {
+        "name": "Образ жизни",
+        "description": "Продуктивность, культура работы и современная жизнь."
+      }
+    },
+    "blog": {
+      "latestPosts": "Последние публикации",
+      "readMore": "Читать далее",
+      "publishedOn": "Опубликовано",
+      "minRead": "мин чтения",
+      "noPosts": "В этой категории пока нет публикаций."
+    },
+    "footer": {
+      "rights": "Все права защищены.",
+      "mainSite": "Roibase"
+    }
   }
 }
