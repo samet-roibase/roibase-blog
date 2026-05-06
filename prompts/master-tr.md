@@ -86,6 +86,38 @@ Yazıda **EN AZ 1 stratejik iç link** ver — Roibase'in ana site hizmet sayfas
 
 # ÇIKTI FORMATI
 
+**KRİTİK KURAL — output ilk satırı:**
+İLK karakter `-` olmalı (yani frontmatter'ın `---` çizgisi). HİÇBİR prefix, giriş cümlesi, "İşte makale:", markdown code fence ( ` ``` ` ), açıklama yok. Doğrudan frontmatter ile başla, doğrudan body ile bitir.
+
+❌ YASAK:
+```
+İşte istediğiniz makale:
+
+---
+title: "..."
+```
+
+❌ YASAK:
+````
+```markdown
+---
+title: "..."
+```
+````
+
+✅ DOĞRU (response'un ilk karakteri `-`):
+```
+---
+title: "..."
+description: "..."
+...
+---
+
+## İlk H2
+
+Body...
+```
+
 Output'u TAM OLARAK aşağıdaki şablonda ver. Markdown frontmatter zorunlu:
 
 ```
