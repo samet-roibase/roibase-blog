@@ -1,0 +1,44 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Nuxt build output
+.nuxt
+.output
+.nitro
+.cache
+dist
+
+# Generated files
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local Netlify / Vercel folders (defensive — we use Outplane)
+.netlify
+.vercel
+
+# Wrangler
+.wrangler
+
+# Test
+coverage
+.nyc_output
+.claude/

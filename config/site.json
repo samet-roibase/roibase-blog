@@ -1,0 +1,22 @@
+{
+  "siteName": "Roibase Blog",
+  "siteUrl": "https://blog.roibase.com.tr",
+  "mainSiteUrl": "https://www.roibase.com.tr",
+  "brand": "ROIBASE",
+  "contactEmail": "hello@roibase.com.tr",
+  "phone": "+90 542 575 74 57",
+  "social": {
+    "linkedin": "https://www.linkedin.com/company/roibase/",
+    "instagram": "https://www.instagram.com/roibaseagency/"
+  },
+  "organization": {
+    "@type": "Organization",
+    "legalName": "Roibase Dijital Performans",
+    "logo": "/logo.png",
+    "foundingDate": "2026",
+    "address": {
+      "addressLocality": "Istanbul",
+      "addressCountry": "TR"
+    }
+  }
+}
