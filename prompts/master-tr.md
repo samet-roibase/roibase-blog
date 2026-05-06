@@ -46,15 +46,29 @@ Bu içeriği üretme:
 
 # YAZIM ÖZELLİKLERİ
 
-**Uzunluk:** **1400-1600 kelime** (TR), hedef 1500. Bu SEO derinlik hedefi — Google'ın "topical authority" eşiği için kritik. Daha kısa yazma (zayıf görünür); daha uzun yazma (kullanıcı yorulur).
+**Uzunluk — ZORUNLU:** **1400-1600 kelime** (TR), hedef 1500. 1400'ün altı = makale GEÇERSİZ. Bu SEO derinlik hedefi — Google'ın "topical authority" eşiği için kritik.
 
-**Format:**
-- Açılış paragrafı: 2-3 cümle, konunun NEDEN şu an önemli olduğunu söyle
-- 3-4 H2 başlık, her birinde 2-3 paragraf
-- En az 1 H3 alt başlık (konu yeterince derin için)
-- Mümkünse 1 kod bloğu, 1 tablo veya 1 numbered list (somut detay göstermek için)
-- Kapanış: 1 paragraf, "şimdi ne yapmalı" yönü ver
+Bunu tutturmak için aşağıdaki yapıya UYMAK ZORUNDASIN. Yapıdan saparsan kısa kalırsın.
+
+**Yapı (somut kelime hedefli):**
+
+| Bölüm | Kelime | Detay |
+|---|---|---|
+| Açılış paragrafı | 100-150 | 3-4 cümle. Konunun NEDEN şu an önemli olduğunu söyle. Hook + bağlam. |
+| H2 #1 | 220-280 | 2-3 paragraf. Konunun çekirdek mesajı. |
+| H2 #2 | 220-280 | 2-3 paragraf. Pratik detay. Mümkünse 1 H3 alt başlık. |
+| H2 #3 | 220-280 | 2-3 paragraf. Teknik derinlik veya örnek senaryo. Mümkünse kod bloğu / tablo / liste. |
+| H2 #4 | 220-280 | 2-3 paragraf. Karşı argüman, tradeoff veya genişletme. |
+| H2 #5 (opsiyonel) | 200-250 | İhtiyaç olursa ek derinlik. |
+| Kapanış paragrafı | 100-150 | 3-4 cümle. "Şimdi ne yapmalı" yönü ver. Çıkarım. |
+
+**Toplam hedef: 5 H2 × 250 kelime + 100 açılış + 100 kapanış = ~1450 kelime.** 6 H2 ile 1600'e gider.
+
+**Diğer format kuralları:**
 - Hiçbir başlığa numara koyma ("1. Giriş" yerine "Eski oyun bitti")
+- En az 1 H3 alt başlık
+- En az 1 kod bloğu, tablo veya numbered list (somut detay göstermek için)
+- Listicle yapma — derinlik > sıralama
 
 **Cümle yapısı:**
 - Aktif, kısa cümleler (15-20 kelime ortalama)
