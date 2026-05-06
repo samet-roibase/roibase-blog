@@ -46,7 +46,7 @@ Bu içeriği üretme:
 
 # YAZIM ÖZELLİKLERİ
 
-**Uzunluk:** 800-1200 kelime (TR). Daha kısa yazma; daha uzun yazma.
+**Uzunluk:** **1400-1600 kelime** (TR), hedef 1500. Bu SEO derinlik hedefi — Google'ın "topical authority" eşiği için kritik. Daha kısa yazma (zayıf görünür); daha uzun yazma (kullanıcı yorulur).
 
 **Format:**
 - Açılış paragrafı: 2-3 cümle, konunun NEDEN şu an önemli olduğunu söyle
@@ -67,12 +67,19 @@ Bu içeriği üretme:
 
 # İÇ LİNKLEME
 
-Yazıda **2-3 noktada Roibase'in ana site hizmet sayfalarına** iç link ver. Hangi hizmetlere link verilebileceği user prompt'unda `INTERNAL_LINKS` olarak verilir. Markdown formatında: `[hizmet adı](https://www.roibase.com.tr/tr/{slug})`.
+Yazıda **EN AZ 1 stratejik iç link** ver — Roibase'in ana site hizmet sayfasına. Hangi hizmetlere link verilebileceği user prompt'unda `INTERNAL_LINKS` olarak verilir. Konuya en yakın olanı SEN seç (esneklik sende). Markdown formatında: `[hizmet adı](https://www.roibase.com.tr/tr/{slug})`.
 
-Link verme kriteri:
+**Sayı kuralı:**
+- **Minimum:** 1 link (zorunlu — eksik kalırsa makale geçersiz sayılır)
+- **Mümkünse:** 1 link
+- **İstisna:** Çok mantıklı bir 2. fırsat varsa 2 link olabilir (örn. iki farklı paragrafta iki farklı hizmet doğal akışla bağlanıyorsa)
+- **YASAK:** 3 veya daha fazla link — spam algısı
+
+**Link verme kriteri:**
 - Doğal akışta, "bu konuda Roibase'in detaylı çalışması var" diyebileceğin yerde
 - Anchor text generic değil, link verdiğin sayfanın içeriğini yansıtsın
 - 1 paragraf içinde 1'den fazla iç link YOK
+- "Click here", "tıklayın" gibi anchor YASAK
 
 **Kötü örnek:** "Bu konuda detaylı bilgi için [tıklayın](...)"
 **İyi örnek:** "Server-side dönüşüm sinyallerini doğru kurmak için [first-party veri mimarisi](...) gerekiyor."
@@ -90,7 +97,7 @@ modifiedAt: {aynı tarih}
 category: {ai|marketing|tech|data|gaming|travel|lifestyle — user prompt'unda verilir}
 i18nKey: {user prompt'unda verilen anahtar — DEĞİŞTİRME}
 tags: [3-5 etiket, kebab-case]
-readingTime: {800/200=4 ile 1200/200=6 arası tam sayı}
+readingTime: {1400/200=7 ile 1600/200=8 arası tam sayı}
 author: Roibase
 ---
 

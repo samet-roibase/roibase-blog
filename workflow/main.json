@@ -1,0 +1,253 @@
+{
+  "name": "Roibase Blog — Main Pipeline (TR + 6 lang, dry run)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://raw.githubusercontent.com/samet-roibase/roibase-blog/main/scripts/category-rotation.json",
+        "options": {
+          "response": { "response": { "responseFormat": "json" } },
+          "qs": { "_": "={{ Date.now() }}" }
+        }
+      },
+      "id": "fetch-rotation",
+      "name": "Fetch rotation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst data = (raw && raw.data && typeof raw.data === 'string')\n  ? JSON.parse(raw.data)\n  : (typeof raw === 'string' ? JSON.parse(raw) : raw);\nconst nextIndex = (data.lastIndex + 1) % data.order.length;\nconst category = data.order[nextIndex];\nreturn [{ json: { category, nextIndex, rotation: data } }];"
+      },
+      "id": "pick-category",
+      "name": "Pick Category",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://raw.githubusercontent.com/samet-roibase/roibase-blog/main/scripts/topic-pool/{{ $json.category }}.json",
+        "options": {
+          "response": { "response": { "responseFormat": "json" } },
+          "qs": { "_": "={{ Date.now() }}" }
+        }
+      },
+      "id": "fetch-topic-pool",
+      "name": "Fetch topic pool",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst pool = (raw && raw.data && typeof raw.data === 'string')\n  ? JSON.parse(raw.data)\n  : (typeof raw === 'string' ? JSON.parse(raw) : raw);\nconst cat = $('Pick Category').item.json.category;\n\nlet candidates = pool.topics.filter(t => !t.lastUsedAt);\nif (candidates.length === 0) {\n  candidates = [...pool.topics].sort((a, b) =>\n    new Date(a.lastUsedAt) - new Date(b.lastUsedAt)\n  );\n}\nconst topic = candidates[0];\n\nconst today = new Date().toISOString().slice(0, 10);\nconst ymonth = today.slice(0, 7);\nconst topicStub = topic.id;\nconst i18nKey = `${cat}-${topicStub.replace(/^[a-z]+-/, '')}-${ymonth}`;\n\nreturn [{ json: { topic, category: cat, today, i18nKey } }];"
+      },
+      "id": "pick-topic",
+      "name": "Pick Topic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://raw.githubusercontent.com/samet-roibase/roibase-blog/main/prompts/master-tr.md",
+        "options": { "response": { "response": { "responseFormat": "text" } } }
+      },
+      "id": "fetch-master-prompt",
+      "name": "Fetch master prompt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://raw.githubusercontent.com/samet-roibase/roibase-blog/main/prompts/categories/{{ $('Pick Topic').item.json.category }}.md",
+        "options": { "response": { "response": { "responseFormat": "text" } } }
+      },
+      "id": "fetch-category-prompt",
+      "name": "Fetch category prompt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://raw.githubusercontent.com/samet-roibase/roibase-blog/main/scripts/internal-links.json",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "fetch-internal-links",
+      "name": "Fetch internal links",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "function unwrap(raw) {\n  if (raw && raw.data !== undefined) return raw.data;\n  return raw;\n}\nfunction toText(v) { return typeof v === 'string' ? v : JSON.stringify(v); }\nfunction toObj(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } }\n  return v;\n}\n\nconst masterText = toText(unwrap($('Fetch master prompt').first().json));\nconst categoryText = toText(unwrap($('Fetch category prompt').first().json));\nconst links = toObj(unwrap($('Fetch internal links').first().json));\nconst topicData = $('Pick Topic').first().json;\n\nconst categorySlugs = (links.byCategory && links.byCategory[topicData.category]) || [];\nconst internalLinks = categorySlugs.map(slug => {\n  const svc = (links.services || []).find(s => s.slug === slug);\n  return { slug, label: svc?.label || slug, url: `https://www.roibase.com.tr/tr/${slug}` };\n});\n\nconst userPrompt = [\n  `TOPIC_TITLE: ${topicData.topic.title}`,\n  `TOPIC_ANGLE: ${topicData.topic.angle}`,\n  `CATEGORY: ${topicData.category}`,\n  `TODAY: ${topicData.today}`,\n  `I18N_KEY: ${topicData.i18nKey}`,\n  `INTERNAL_LINKS: ${JSON.stringify(internalLinks)}`,\n  '',\n  '--- KATEGORI YONERGESI ---',\n  categoryText\n].join('\\n');\n\nreturn [{ json: { system: masterText, user: userPrompt, topicData } }];"
+      },
+      "id": "build-prompt",
+      "name": "Build Claude prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1840, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5-20251001\",\n  \"max_tokens\": 4096,\n  \"system\": {{ JSON.stringify($json.system) }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.user) }}\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "claude-tr",
+      "name": "Claude — TR master",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2040, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst resp = (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw;\nconst text = resp.content?.[0]?.text || JSON.stringify(resp);\nconst topicData = $('Build Claude prompt').first().json.topicData;\n\nconst m = text.match(/^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/);\nconst frontmatter = m ? m[1] : '(parse failed)';\nconst body = m ? m[2] : text;\n\nconst titleMatch = frontmatter.match(/title:\\s*\"([^\"]+)\"/);\nconst title = titleMatch ? titleMatch[1] : '(unknown)';\n\nconst slug = title.toLowerCase()\n  .replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u')\n  .replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c')\n  .replace(/[^a-z0-9]+/g, '-')\n  .replace(/^-|-$/g, '')\n  .slice(0, 70);\n\nreturn [{\n  json: {\n    parsedTitle: title,\n    parsedSlug: slug,\n    parsedFrontmatter: frontmatter,\n    parsedBody: body,\n    bodyLength: body.length,\n    bodyWordCount: body.split(/\\s+/).filter(Boolean).length,\n    targetPath: `content/tr/${topicData.category}/${slug}.md`,\n    rawResponse: text,\n    topicData\n  }\n}];"
+      },
+      "id": "parse-tr",
+      "name": "Parse TR output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://raw.githubusercontent.com/samet-roibase/roibase-blog/main/prompts/translate.md",
+        "options": { "response": { "response": { "responseFormat": "text" } } }
+      },
+      "id": "fetch-translate-prompt",
+      "name": "Fetch translate prompt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "function unwrap(raw) { return (raw && raw.data !== undefined) ? raw.data : raw; }\nfunction toText(v) { return typeof v === 'string' ? v : JSON.stringify(v); }\n\nconst translatePromptText = toText(unwrap($('Fetch translate prompt').first().json));\nconst trData = $('Parse TR output').first().json;\nconst trRaw = trData.rawResponse;\n\nconst languages = [\n  { code: 'en', name: 'English' },\n  { code: 'de', name: 'Deutsch' },\n  { code: 'es', name: 'Español' },\n  { code: 'fr', name: 'Français' },\n  { code: 'it', name: 'Italiano' },\n  { code: 'ru', name: 'Русский' }\n];\n\nreturn languages.map(lang => {\n  const system = translatePromptText\n    .replace(/\\{\\{TARGET_LANG\\}\\}/g, lang.code)\n    .replace(/\\{\\{TARGET_LANG_NAME\\}\\}/g, lang.name);\n  return {\n    json: {\n      targetLang: lang.code,\n      targetLangName: lang.name,\n      system,\n      user: trRaw\n    }\n  };\n});"
+      },
+      "id": "build-translate-payloads",
+      "name": "Build translate payloads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5-20251001\",\n  \"max_tokens\": 4096,\n  \"system\": {{ JSON.stringify($json.system) }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.user) }}\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "claude-translate",
+      "name": "Claude — Translate (×6)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2840, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "function unwrapResp(raw) { return (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw; }\n\nconst items = $input.all();\nconst payloadItems = $('Build translate payloads').all();\n\nconst parsed = items.map((item, idx) => {\n  const resp = unwrapResp(item.json);\n  const text = resp.content?.[0]?.text || JSON.stringify(resp);\n  const targetLang = payloadItems[idx]?.json?.targetLang || 'unknown';\n\n  // Extract SLUG: line\n  const slugMatch = text.match(/^SLUG:\\s*([a-z0-9-]+)/m);\n  const slug = slugMatch ? slugMatch[1] : `unknown-${targetLang}`;\n\n  // Extract frontmatter + body — strip SLUG line first\n  const cleaned = text.replace(/^SLUG:\\s*[a-z0-9-]+\\s*\\n/m, '');\n  const m = cleaned.match(/^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/);\n  const frontmatter = m ? m[1] : '(parse failed)';\n  const body = m ? m[2] : cleaned;\n\n  const titleMatch = frontmatter.match(/title:\\s*\"([^\"]+)\"/);\n  const title = titleMatch ? titleMatch[1] : '(unknown)';\n\n  const fullContent = `---\\n${frontmatter}\\n---\\n${body}`;\n\n  return {\n    json: {\n      lang: targetLang,\n      slug,\n      title,\n      frontmatter,\n      body,\n      fullContent,\n      bodyLength: body.length,\n      bodyWordCount: body.split(/\\s+/).filter(Boolean).length,\n      rawResponse: text\n    }\n  };\n});\n\nreturn parsed;"
+      },
+      "id": "parse-translations",
+      "name": "Parse translations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3040, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trData = $('Parse TR output').first().json;\nconst translations = $input.all().map(i => i.json);\nconst topicData = trData.topicData;\nconst category = topicData.category;\nconst i18nKey = topicData.i18nKey;\n\nconst files = [\n  {\n    lang: 'tr',\n    slug: trData.parsedSlug,\n    path: `content/tr/${category}/${trData.parsedSlug}.md`,\n    content: trData.rawResponse,\n    wordCount: trData.bodyWordCount\n  },\n  ...translations.map(t => ({\n    lang: t.lang,\n    slug: t.slug,\n    path: `content/${t.lang}/${category}/${t.slug}.md`,\n    content: t.fullContent,\n    wordCount: t.bodyWordCount\n  }))\n];\n\nconst summary = {\n  i18nKey,\n  category,\n  topicTitle: topicData.topic.title,\n  fileCount: files.length,\n  totalWords: files.reduce((sum, f) => sum + f.wordCount, 0),\n  files: files.map(f => ({ lang: f.lang, slug: f.slug, path: f.path, wordCount: f.wordCount })),\n  dryRun: true,\n  notice: 'GitHub commit henüz aktif değil — Faz B2da eklenecek'\n};\n\nreturn [{ json: { summary, files } }];"
+      },
+      "id": "aggregate-files",
+      "name": "Aggregate all files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3240, 300]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Fetch rotation", "type": "main", "index": 0 }]]
+    },
+    "Fetch rotation": {
+      "main": [[{ "node": "Pick Category", "type": "main", "index": 0 }]]
+    },
+    "Pick Category": {
+      "main": [[{ "node": "Fetch topic pool", "type": "main", "index": 0 }]]
+    },
+    "Fetch topic pool": {
+      "main": [[{ "node": "Pick Topic", "type": "main", "index": 0 }]]
+    },
+    "Pick Topic": {
+      "main": [[{ "node": "Fetch master prompt", "type": "main", "index": 0 }]]
+    },
+    "Fetch master prompt": {
+      "main": [[{ "node": "Fetch category prompt", "type": "main", "index": 0 }]]
+    },
+    "Fetch category prompt": {
+      "main": [[{ "node": "Fetch internal links", "type": "main", "index": 0 }]]
+    },
+    "Fetch internal links": {
+      "main": [[{ "node": "Build Claude prompt", "type": "main", "index": 0 }]]
+    },
+    "Build Claude prompt": {
+      "main": [[{ "node": "Claude — TR master", "type": "main", "index": 0 }]]
+    },
+    "Claude — TR master": {
+      "main": [[{ "node": "Parse TR output", "type": "main", "index": 0 }]]
+    },
+    "Parse TR output": {
+      "main": [[{ "node": "Fetch translate prompt", "type": "main", "index": 0 }]]
+    },
+    "Fetch translate prompt": {
+      "main": [[{ "node": "Build translate payloads", "type": "main", "index": 0 }]]
+    },
+    "Build translate payloads": {
+      "main": [[{ "node": "Claude — Translate (×6)", "type": "main", "index": 0 }]]
+    },
+    "Claude — Translate (×6)": {
+      "main": [[{ "node": "Parse translations", "type": "main", "index": 0 }]]
+    },
+    "Parse translations": {
+      "main": [[{ "node": "Aggregate all files", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "pinData": {}
+}

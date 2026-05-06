@@ -12,7 +12,15 @@ n8n cron (8h) → GSC fetch → opportunity scoring → IF eşik geçti → Clau
               → wait deploy → OneSignal push × 7 → email rapor
 ```
 
-Workflow `https://n8n.roibase.com.tr/` içinde tutulur. JSON export `workflow/main.json` (henüz yok — ilk import sonrası buraya kaydedilecek).
+Workflow `https://n8n.roibase.com.tr/` içinde tutulur. JSON export'lar:
+
+- **`workflow/test-tr-only.json`** — Faz A1 testi: sadece TR makale üretimi, dry run. İlk doğrulama için.
+- **`workflow/main.json`** — Faz B1: TR + 6 dil çeviri, dry run (henüz GitHub commit yok). Tam yayın pipeline'ına yakın.
+- _İleride_ `workflow/main-with-commit.json` — Faz B2: GitHub commit + Outplane deploy bekleme + OneSignal.
+
+**Model seçimi (kalibre edildi):**
+- Master TR + çeviriler: `claude-haiku-4-5-20251001` — hız + maliyet odaklı
+- Kalite yetersizse master için Sonnet 4.6'ya yükseltilebilir (4-5x maliyet)
 
 ---
 
