@@ -1,5 +1,5 @@
 {
-  "name": "Roibase Blog — Main Pipeline (TR + 6 lang, dry run)",
+  "name": "Roibase Blog — Main Pipeline (TR + 6 lang + GitHub commit)",
   "nodes": [
     {
       "parameters": {},
@@ -198,6 +198,158 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [3240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 9-file commit manifest: 7 makale + rotation state + topic-pool state\nconst agg = $input.first().json;\nconst trData = $('Parse TR output').first().json;\nconst pickCategoryData = $('Pick Category').first().json;\nconst pickTopicData = $('Pick Topic').first().json;\n\nfunction unwrap(raw) { return (raw && raw.data !== undefined) ? raw.data : raw; }\nfunction toObj(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } }\n  return v;\n}\n\nconst poolRaw = $('Fetch topic pool').first().json;\nconst pool = toObj(unwrap(poolRaw));\n\n// Rotation güncelle\nconst rotation = pickCategoryData.rotation;\nconst nextIndex = pickCategoryData.nextIndex;\nconst nowIso = new Date().toISOString();\nconst usedTopic = pickTopicData.topic;\n\nconst newRotation = {\n  ...rotation,\n  lastIndex: nextIndex,\n  lastRunAt: nowIso,\n  history: [\n    ...(rotation.history || []),\n    { at: nowIso, category: pickCategoryData.category, topicId: usedTopic.id, i18nKey: pickTopicData.i18nKey }\n  ].slice(-50)  // son 50 run'ı tut, sınırsız büyümesin\n};\n\n// Topic-pool güncelle (kullanılan topic'in lastUsedAt'i)\nconst newPool = {\n  ...pool,\n  topics: (pool.topics || []).map(t =>\n    t.id === usedTopic.id ? { ...t, lastUsedAt: nowIso } : t\n  )\n};\n\nconst commitFiles = [\n  ...agg.files.map(f => ({ path: f.path, content: f.content })),\n  { path: 'scripts/category-rotation.json', content: JSON.stringify(newRotation, null, 2) + '\\n' },\n  { path: `scripts/topic-pool/${pickCategoryData.category}.json`, content: JSON.stringify(newPool, null, 2) + '\\n' }\n];\n\nconst commitMessage = `Auto: ${pickCategoryData.category} — ${trData.parsedTitle}\\n\\nTopic ID: ${usedTopic.id}\\ni18nKey: ${pickTopicData.i18nKey}\\nFiles: ${commitFiles.length} (${agg.files.length} articles + 2 metadata)`;\n\nreturn [{\n  json: {\n    files: commitFiles,\n    message: commitMessage,\n    fileCount: commitFiles.length,\n    summary: agg.summary\n  }\n}];"
+      },
+      "id": "build-commit-manifest",
+      "name": "Build commit manifest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3440, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/samet-roibase/roibase-blog/git/refs/heads/main",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "get-current-ref",
+      "name": "Get current ref",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3640, 300],
+      "credentials": {
+        "githubApi": { "id": "REPLACE-WITH-GITHUB-CRED-ID", "name": "GitHub Roibase Blog" }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/samet-roibase/roibase-blog/git/commits/{{ $json.object.sha }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "get-current-commit",
+      "name": "Get current commit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3840, 300],
+      "credentials": {
+        "githubApi": { "id": "REPLACE-WITH-GITHUB-CRED-ID", "name": "GitHub Roibase Blog" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Manifest'teki dosyaları blob create için ayrı item'lara böl\nconst manifest = $('Build commit manifest').first().json;\nreturn manifest.files.map(f => ({\n  json: {\n    path: f.path,\n    content: f.content,\n    contentBase64: Buffer.from(f.content, 'utf-8').toString('base64')\n  }\n}));"
+      },
+      "id": "split-files-for-blobs",
+      "name": "Split files for blobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4040, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/samet-roibase/roibase-blog/git/blobs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": {{ JSON.stringify($json.contentBase64) }},\n  \"encoding\": \"base64\"\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "create-blob",
+      "name": "Create blob (×N)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4240, 300],
+      "credentials": {
+        "githubApi": { "id": "REPLACE-WITH-GITHUB-CRED-ID", "name": "GitHub Roibase Blog" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Blob SHA'larını dosya path'leriyle eşleştir, tree array'i kur\nconst blobItems = $input.all();\nconst splitItems = $('Split files for blobs').all();\n\nconst tree = blobItems.map((item, idx) => {\n  const blobResp = (item.json && item.json.data && typeof item.json.data === 'object') ? item.json.data : item.json;\n  const path = splitItems[idx].json.path;\n  return {\n    path,\n    mode: '100644',\n    type: 'blob',\n    sha: blobResp.sha\n  };\n});\n\nconst baseTreeSha = $('Get current commit').first().json.tree.sha;\n\nreturn [{ json: { base_tree: baseTreeSha, tree } }];"
+      },
+      "id": "build-tree-payload",
+      "name": "Build tree payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/samet-roibase/roibase-blog/git/trees",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"base_tree\": {{ JSON.stringify($json.base_tree) }},\n  \"tree\": {{ JSON.stringify($json.tree) }}\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "create-tree",
+      "name": "Create tree",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4640, 300],
+      "credentials": {
+        "githubApi": { "id": "REPLACE-WITH-GITHUB-CRED-ID", "name": "GitHub Roibase Blog" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/samet-roibase/roibase-blog/git/commits",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": {{ JSON.stringify($('Build commit manifest').first().json.message) }},\n  \"tree\": {{ JSON.stringify($json.sha) }},\n  \"parents\": [{{ JSON.stringify($('Get current ref').first().json.object.sha) }}]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "create-commit",
+      "name": "Create commit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4840, 300],
+      "credentials": {
+        "githubApi": { "id": "REPLACE-WITH-GITHUB-CRED-ID", "name": "GitHub Roibase Blog" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://api.github.com/repos/samet-roibase/roibase-blog/git/refs/heads/main",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"sha\": {{ JSON.stringify($json.sha) }},\n  \"force\": false\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "update-ref",
+      "name": "Update main ref",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5040, 300],
+      "credentials": {
+        "githubApi": { "id": "REPLACE-WITH-GITHUB-CRED-ID", "name": "GitHub Roibase Blog" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final summary: commit hash + push tamamlandı\nconst refResp = $input.first().json;\nconst manifest = $('Build commit manifest').first().json;\nconst commitData = $('Create commit').first().json;\n\nreturn [{\n  json: {\n    success: true,\n    commitSha: commitData.sha,\n    commitUrl: commitData.html_url,\n    refUpdated: refResp.ref || refResp.object?.sha,\n    fileCount: manifest.fileCount,\n    message: manifest.message.split('\\n')[0],\n    summary: manifest.summary,\n    completedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "final-summary",
+      "name": "Final summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5240, 300]
     }
   ],
   "connections": {
@@ -245,6 +397,36 @@
     },
     "Parse translations": {
       "main": [[{ "node": "Aggregate all files", "type": "main", "index": 0 }]]
+    },
+    "Aggregate all files": {
+      "main": [[{ "node": "Build commit manifest", "type": "main", "index": 0 }]]
+    },
+    "Build commit manifest": {
+      "main": [[{ "node": "Get current ref", "type": "main", "index": 0 }]]
+    },
+    "Get current ref": {
+      "main": [[{ "node": "Get current commit", "type": "main", "index": 0 }]]
+    },
+    "Get current commit": {
+      "main": [[{ "node": "Split files for blobs", "type": "main", "index": 0 }]]
+    },
+    "Split files for blobs": {
+      "main": [[{ "node": "Create blob (×N)", "type": "main", "index": 0 }]]
+    },
+    "Create blob (×N)": {
+      "main": [[{ "node": "Build tree payload", "type": "main", "index": 0 }]]
+    },
+    "Build tree payload": {
+      "main": [[{ "node": "Create tree", "type": "main", "index": 0 }]]
+    },
+    "Create tree": {
+      "main": [[{ "node": "Create commit", "type": "main", "index": 0 }]]
+    },
+    "Create commit": {
+      "main": [[{ "node": "Update main ref", "type": "main", "index": 0 }]]
+    },
+    "Update main ref": {
+      "main": [[{ "node": "Final summary", "type": "main", "index": 0 }]]
     }
   },
   "settings": { "executionOrder": "v1" },

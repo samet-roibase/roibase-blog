@@ -15,8 +15,21 @@ n8n cron (8h) → GSC fetch → opportunity scoring → IF eşik geçti → Clau
 Workflow `https://n8n.roibase.com.tr/` içinde tutulur. JSON export'lar:
 
 - **`workflow/test-tr-only.json`** — Faz A1 testi: sadece TR makale üretimi, dry run. İlk doğrulama için.
-- **`workflow/main.json`** — Faz B1: TR + 6 dil çeviri, dry run (henüz GitHub commit yok). Tam yayın pipeline'ına yakın.
-- _İleride_ `workflow/main-with-commit.json` — Faz B2: GitHub commit + Outplane deploy bekleme + OneSignal.
+- **`workflow/main.json`** — Faz B2: TR + 6 dil çeviri + GitHub atomic commit (Git Data API ile 9 dosya tek commit). Production-ready yayın pipeline'ı.
+- _İleride_ Faz B3: Outplane deploy bekleme + OneSignal push + email rapor.
+
+**Faz B2 GitHub commit detayı (Git Data API):**
+1. `Build commit manifest` — 7 makale + güncellenmiş `category-rotation.json` + güncellenmiş `topic-pool/{cat}.json` (toplam 9 dosya)
+2. `Get current ref` (heads/main) → current commit SHA
+3. `Get current commit` → base tree SHA
+4. `Split files for blobs` → 9 item (her dosya base64 encoded)
+5. `Create blob` → 9 paralel blob oluştur, her birinin SHA'sını al
+6. `Build tree payload` → tree array (path + mode + type + sha)
+7. `Create tree` (base_tree + tree) → new tree SHA
+8. `Create commit` (parent + tree + message) → new commit SHA
+9. `Update main ref` (sha) → atomic ref güncelle
+
+Bir commit, bir Outplane build, bir deploy. Round-robin state ve topic-pool lastUsedAt aynı commit içinde güncellenir → race condition yok.
 
 **Model seçimi (kalibre edildi):**
 - Master TR + çeviriler: `claude-haiku-4-5-20251001` — hız + maliyet odaklı
