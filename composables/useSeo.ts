@@ -18,6 +18,17 @@ interface SeoOptions {
   }
   /** Fully constructed JSON-LD payloads — Article, BreadcrumbList, FAQ, vb. */
   jsonLd?: Array<Record<string, unknown>>
+  /**
+   * Locale → full path map (locale prefix dahil, örn "/en/ai/foo-launch").
+   * Sayfa için locale slug'ları diller arasında DEĞİŞİYORSA bu kullanılır
+   * (özellikle makale sayfaları). Verilmezse otomatik üretim kullanılır:
+   * "her dilde aynı path" varsayımıyla `/{lang}/{path}`.
+   *
+   * Alternate hreflang yalnızca bu map'te yer alan diller için emit edilir
+   * → çevirisi olmayan diller hreflang'tan ÇIKARILIR (Google "broken
+   * hreflang cluster" uyarısı vermez, 404 link basılmaz).
+   */
+  alternatesByLocale?: Partial<Record<Locale, string>>
 }
 
 export function useBlogSeo(opts: SeoOptions) {
@@ -27,18 +38,28 @@ export function useBlogSeo(opts: SeoOptions) {
   const canonicalPath = cleanPath ? `/${opts.locale}/${cleanPath}` : `/${opts.locale}`
   const canonical = `${siteUrl}${canonicalPath}`
 
-  const alternates = SUPPORTED_LOCALES.map((l) => ({
-    rel: 'alternate',
-    hreflang: l,
-    href: `${siteUrl}${cleanPath ? `/${l}/${cleanPath}` : `/${l}`}`
-  }))
+  // Alternate URL'leri: ya çağıran tarafından verilen mapping (makale)
+  // ya da otomatik (kategori, anasayfa).
+  const localePathMap: Partial<Record<Locale, string>> = opts.alternatesByLocale
+    ? opts.alternatesByLocale
+    : Object.fromEntries(
+        SUPPORTED_LOCALES.map((l) => [l, cleanPath ? `/${l}/${cleanPath}` : `/${l}`])
+      )
 
-  // x-default → siteyi ilk açan, dilini bilemediğimiz kullanıcıya gönderdiğimiz versiyon.
-  const xDefault = {
-    rel: 'alternate',
-    hreflang: 'x-default',
-    href: `${siteUrl}${cleanPath ? `/${pub.defaultLocale}/${cleanPath}` : `/${pub.defaultLocale}`}`
-  }
+  const alternates = (Object.entries(localePathMap) as Array<[Locale, string]>)
+    .map(([lang, path]) => ({
+      rel: 'alternate',
+      hreflang: lang,
+      href: `${siteUrl}${path}`
+    }))
+
+  // x-default: default locale çevirisi varsa onu kullan; yoksa ilk
+  // alternates entry'sini default göster.
+  const defaultLang = pub.defaultLocale as Locale
+  const xDefaultPath = localePathMap[defaultLang] ?? Object.values(localePathMap)[0]
+  const xDefault = xDefaultPath
+    ? { rel: 'alternate', hreflang: 'x-default', href: `${siteUrl}${xDefaultPath}` }
+    : null
 
   useSeoMeta({
     title: opts.title,
@@ -61,7 +82,7 @@ export function useBlogSeo(opts: SeoOptions) {
     link: [
       { rel: 'canonical', href: canonical },
       ...alternates,
-      xDefault
+      ...(xDefault ? [xDefault] : [])
     ],
     script: (opts.jsonLd ?? []).map((payload) => ({
       type: 'application/ld+json',

@@ -12,6 +12,9 @@ if (!isValidLocale(lang) || !isValidCategory(category)) {
   throw createError({ statusCode: 404, statusMessage: 'Not found' })
 }
 
+// Kategori sayfası makale değil — payload'daki article-alternates'i sıfırla.
+await loadArticleAlternates(null)
+
 const { data: posts } = await useAsyncData(`cat-${lang}-${category}`, () =>
   queryContent(`/${lang}/${category}`)
     .sort({ publishedAt: -1 })

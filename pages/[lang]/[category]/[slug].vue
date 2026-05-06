@@ -24,6 +24,13 @@ if (!article.value) {
   throw createError({ statusCode: 404, statusMessage: 'Article not found' })
 }
 
+// i18nKey üstünden bu makalenin tüm dil sürümlerinin path'lerini topla.
+// useAsyncData payload'a yazar (key: 'article-alternates'); switcher ve
+// useBlogSeo aynı key'den useNuxtData ile okur. Slug çevirileri farklı
+// olduğunda 404'ü ve broken hreflang'i önler.
+await loadArticleAlternates(article.value.i18nKey)
+const articleAlternates = useArticleAlternates()
+
 const categoryName = computed(() => t(`categories.${category}.name`))
 
 const articleJsonLd = computed(() => ({
@@ -65,8 +72,13 @@ useBlogSeo({
     publishedAt: article.value.publishedAt,
     modifiedAt: article.value.modifiedAt
   },
-  jsonLd: [articleJsonLd.value, breadcrumbJsonLd.value]
+  jsonLd: [articleJsonLd.value, breadcrumbJsonLd.value],
+  alternatesByLocale: articleAlternates.value?.paths
 })
+
+// articleAlternates is now a ComputedRef<ArticleAlternates | null>;
+// LanguageSwitcher reads it through the same useArticleAlternates() call,
+// so we don't need to pass it down explicitly.
 
 const dateLabel = computed(() => {
   if (!article.value?.publishedAt) return ''

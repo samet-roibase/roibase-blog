@@ -3,6 +3,7 @@ title: "Performans Pazarlamasının Yeni Çağı"
 description: "3rd-party cookie sonrası dünyada performans pazarlaması, attribution ve first-party data mimarisi."
 publishedAt: 2026-05-05
 category: marketing
+i18nKey: marketing-new-era-performance-2026-05
 tags: [performance, attribution, first-party]
 readingTime: 6
 author: Roibase

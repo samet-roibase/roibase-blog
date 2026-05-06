@@ -9,6 +9,10 @@ if (!isValidLocale(route.params.lang as string)) {
   throw createError({ statusCode: 404, statusMessage: 'Unsupported locale' })
 }
 
+// Bu sayfa makale değil — payload'daki article-alternates'i null'a sıfırla,
+// LanguageSwitcher varsayılan path swap behavior'ına dönsün.
+await loadArticleAlternates(null)
+
 // Latest articles across all categories for this locale.
 const { data: latest } = await useAsyncData(`latest-${locale.value}`, () =>
   queryContent(`/${locale.value}`)

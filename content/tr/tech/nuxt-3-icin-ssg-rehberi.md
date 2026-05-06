@@ -3,6 +3,7 @@ title: "Nuxt 3 için SSG Rehberi"
 description: "Nuxt 3 ile statik site üretimi (SSG): prerender stratejileri, performans ve dağıtım."
 publishedAt: 2026-05-04
 category: tech
+i18nKey: tech-nuxt-3-ssg-guide-2026-05
 tags: [nuxt, ssg, performance]
 readingTime: 5
 author: Roibase

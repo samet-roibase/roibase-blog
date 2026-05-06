@@ -3,6 +3,7 @@ title: "Roibase Blog Açılıyor — 7 Dilli Otonom Teknoloji Merkezi"
 description: "Roibase'in yeni içerik platformu, 7 dilde otomatik yayın ve mühendislik disiplinli içerik üretimi için tasarlandı."
 publishedAt: 2026-05-06
 category: ai
+i18nKey: ai-roibase-blog-launch-2026-05
 tags: [launch, automation, claude]
 readingTime: 4
 author: Roibase

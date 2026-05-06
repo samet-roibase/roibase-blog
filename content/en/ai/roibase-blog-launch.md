@@ -3,6 +3,7 @@ title: "Launching Roibase Blog — A 7-Language Autonomous Tech Hub"
 description: "Roibase's new content platform is built for automated multi-language publishing and engineering-grade content production."
 publishedAt: 2026-05-06
 category: ai
+i18nKey: ai-roibase-blog-launch-2026-05
 tags: [launch, automation, claude]
 readingTime: 4
 author: Roibase
