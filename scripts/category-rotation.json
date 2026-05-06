@@ -9,14 +9,7 @@
     "travel",
     "lifestyle"
   ],
-  "lastIndex": 0,
-  "lastRunAt": "2026-05-06T14:51:42.586Z",
-  "history": [
-    {
-      "at": "2026-05-06T14:51:42.586Z",
-      "category": "ai",
-      "topicId": "ai-001",
-      "i18nKey": "ai-001-2026-05"
-    }
-  ]
+  "lastIndex": -1,
+  "lastRunAt": null,
+  "history": []
 }
