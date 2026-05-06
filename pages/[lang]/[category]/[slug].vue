@@ -91,27 +91,81 @@ const dateLabel = computed(() => {
 </script>
 
 <template>
-  <article class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-    <SiteBreadcrumb
-      :items="[
-        { label: t('nav.home'), href: `/${lang}` },
-        { label: categoryName, href: `/${lang}/${category}` },
-        { label: article?.title ?? '' }
-      ]"
-    />
+  <article>
+    <!-- Hero — dark, premium magazine cover feel -->
+    <header class="bg-dark text-white border-b border-white/10">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16 md:pt-10 md:pb-24">
+        <SiteBreadcrumb
+          :items="[
+            { label: t('nav.home'), href: `/${lang}` },
+            { label: categoryName, href: `/${lang}/${category}` },
+            { label: article?.title ?? '' }
+          ]"
+          class="mb-12 [&_*]:!text-gray-500 [&_a]:hover:!text-pCyan"
+        />
 
-    <header class="mb-10">
-      <p class="kicker mb-3">{{ categoryName }}</p>
-      <h1 class="text-4xl md:text-5xl font-black tracking-tight leading-tight">{{ article?.title }}</h1>
-      <p v-if="article?.description" class="mt-4 text-xl text-gray-600 dark:text-gray-400">{{ article.description }}</p>
-      <div class="mt-6 flex items-center gap-3 text-sm text-gray-500 font-mono">
-        <time v-if="dateLabel" :datetime="article?.publishedAt">{{ dateLabel }}</time>
-        <span v-if="article?.readingTime">· {{ article.readingTime }} {{ t('blog.minRead') }}</span>
+        <NuxtLink :to="`/${lang}/${category}`" class="inline-block">
+          <p class="kicker mb-6">{{ categoryName }}</p>
+        </NuxtLink>
+
+        <h1 class="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight leading-[1.05] max-w-3xl">
+          {{ article?.title }}
+        </h1>
+
+        <p
+          v-if="article?.description"
+          class="mt-8 text-xl md:text-2xl text-gray-300 leading-relaxed max-w-2xl font-light"
+        >
+          {{ article.description }}
+        </p>
+
+        <div class="mt-12 flex flex-wrap items-center gap-3 text-sm font-mono text-gray-400">
+          <time v-if="dateLabel" :datetime="article?.publishedAt">{{ dateLabel }}</time>
+          <span v-if="article?.readingTime" class="text-gray-600">·</span>
+          <span v-if="article?.readingTime">{{ article.readingTime }} {{ t('blog.minRead') }}</span>
+          <span class="text-gray-600">·</span>
+          <span class="uppercase tracking-wider">Roibase</span>
+        </div>
       </div>
     </header>
 
-    <div class="prose prose-lg dark:prose-invert max-w-none">
-      <ContentRenderer v-if="article" :value="article" />
+    <!-- Body — light, magazine layout -->
+    <div class="bg-white dark:bg-dark">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+        <div class="article-body">
+          <ContentRenderer v-if="article" :value="article" />
+        </div>
+
+        <!-- Article footer — meta + back to category + Roibase link -->
+        <footer class="mt-24 pt-10 border-t border-gray-200 dark:border-white/10">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm">
+            <div>
+              <p class="kicker mb-3">{{ t('blog.publishedOn') }}</p>
+              <p class="text-gray-700 dark:text-gray-300 font-mono">{{ dateLabel }}</p>
+            </div>
+            <div>
+              <p class="kicker mb-3">{{ t('nav.categories') }}</p>
+              <NuxtLink
+                :to="`/${lang}/${category}`"
+                class="text-gray-700 dark:text-gray-300 hover:text-pCyan transition"
+              >
+                ← {{ categoryName }}
+              </NuxtLink>
+            </div>
+            <div>
+              <p class="kicker mb-3">Roibase</p>
+              <a
+                href="https://www.roibase.com.tr"
+                rel="noopener"
+                class="text-gray-700 dark:text-gray-300 hover:text-pCyan transition inline-flex items-center gap-1"
+              >
+                www.roibase.com.tr
+                <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+          </div>
+        </footer>
+      </div>
     </div>
   </article>
 </template>

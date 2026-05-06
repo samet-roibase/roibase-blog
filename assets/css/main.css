@@ -47,6 +47,182 @@ body {
   @apply font-mono text-xs uppercase tracking-widest text-pCyan;
 }
 
+/* ========================================================================
+   ARTICLE BODY — premium tech magazine tipografisi
+   ContentRenderer çıktısını .article-body içine sarıyoruz; descendant
+   selector'larla element-bazlı stil veriyoruz. Tailwind typography
+   plugin'ine bağımlılık yok — bağımsız, kontrollü kalıyor.
+   ======================================================================== */
+
+.article-body {
+  @apply text-lg text-gray-700 dark:text-gray-300;
+  line-height: 1.75;
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+/* Paragraflar */
+.article-body p {
+  @apply my-6;
+}
+
+/* Lead paragraph — body'nin ilk paragrafı */
+.article-body > p:first-of-type {
+  @apply text-xl font-medium leading-relaxed text-dark dark:text-white border-l-4 border-pCyan pl-6 mb-10 mt-0;
+}
+
+/* Headings — H2 üstü kicker çizgisi, H3 daha sade */
+.article-body h2 {
+  @apply text-3xl md:text-4xl font-black tracking-tight leading-tight text-dark dark:text-white mt-16 mb-5 relative;
+}
+.article-body h2::before {
+  content: "";
+  @apply block absolute left-0 -top-8 w-12 h-0.5 bg-pCyan;
+}
+.article-body h2:first-child {
+  @apply mt-0;
+}
+.article-body h2:first-child::before {
+  @apply hidden;
+}
+
+.article-body h3 {
+  @apply text-2xl font-bold tracking-tight text-dark dark:text-white mt-10 mb-3;
+}
+
+.article-body h4 {
+  @apply text-xl font-bold tracking-tight text-dark dark:text-white mt-8 mb-2;
+}
+
+/* Strong / bold */
+.article-body strong {
+  @apply font-semibold text-dark dark:text-white;
+}
+
+/* Italics */
+.article-body em {
+  @apply italic text-dark dark:text-white;
+}
+
+/* Linkler — varsayılan cyan altçizgi */
+.article-body a {
+  @apply text-pCyan font-medium underline-offset-4 decoration-2;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(34, 211, 238, 0.4);
+  transition: text-decoration-color 0.15s ease;
+}
+.article-body a:hover {
+  text-decoration-color: rgba(34, 211, 238, 1);
+}
+
+/* Roibase ana siteye giden iç linkler — pill stil, vurgulu */
+.article-body a[href*="roibase.com.tr"]:not([href^="https://blog"]) {
+  @apply inline-flex items-baseline gap-1 px-2 py-0.5 rounded font-medium no-underline;
+  background: rgba(34, 211, 238, 0.08);
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.article-body a[href*="roibase.com.tr"]:not([href^="https://blog"])::after {
+  content: "↗";
+  @apply text-xs opacity-70;
+}
+.article-body a[href*="roibase.com.tr"]:not([href^="https://blog"]):hover {
+  background: rgba(34, 211, 238, 0.18);
+}
+
+/* Inline code — JetBrains Mono, surface bg */
+.article-body code {
+  @apply font-mono text-sm rounded;
+  padding: 0.1em 0.4em;
+  background: rgba(34, 211, 238, 0.08);
+  color: #0891b2;
+}
+.dark .article-body code {
+  background: rgba(34, 211, 238, 0.12);
+  color: theme('colors.pCyan');
+}
+
+/* Code blocks — pre wrapper */
+.article-body pre {
+  @apply my-8 p-6 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed;
+  background: theme('colors.dark');
+  color: #e5e7eb;
+  border-left: 3px solid theme('colors.pCyan');
+}
+.article-body pre code {
+  @apply bg-transparent p-0 text-inherit;
+}
+
+/* Blockquote — cyan kalın bar, italic, büyük */
+.article-body blockquote {
+  @apply my-8 pl-6 border-l-4 border-pCyan text-xl italic font-medium text-dark dark:text-white;
+}
+.article-body blockquote p {
+  @apply my-2;
+}
+
+/* Unordered list — cyan dash bullets */
+.article-body ul {
+  @apply my-6 pl-0 list-none;
+}
+.article-body ul > li {
+  @apply pl-6 my-2 relative;
+}
+.article-body ul > li::before {
+  content: "—";
+  @apply absolute left-0 text-pCyan font-mono font-bold;
+  top: 0;
+}
+
+/* Ordered list — JetBrains Mono "01", "02" sayılar */
+.article-body ol {
+  @apply my-6 pl-0 list-none;
+  counter-reset: roibase-list;
+}
+.article-body ol > li {
+  @apply pl-12 my-2 relative;
+  counter-increment: roibase-list;
+}
+.article-body ol > li::before {
+  content: counter(roibase-list, decimal-leading-zero);
+  @apply absolute left-0 top-0.5 text-pCyan font-mono text-sm font-bold tracking-wider;
+}
+
+/* Tablo — minimal, cyan üst sınır */
+.article-body table {
+  @apply w-full my-8 border-collapse;
+}
+.article-body thead {
+  @apply border-b-2 border-pCyan;
+}
+.article-body th {
+  @apply text-left font-semibold text-dark dark:text-white py-3 px-3 text-sm uppercase tracking-wider;
+}
+.article-body td {
+  @apply border-b border-gray-200 dark:border-white/10 py-3 px-3;
+}
+
+/* Yatay çizgi — cyan gradient, dekoratif */
+.article-body hr {
+  @apply my-12 border-0 h-px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(34, 211, 238, 0.4),
+    transparent
+  );
+}
+
+/* İmage / figure */
+.article-body img {
+  @apply my-8 rounded-lg w-full;
+}
+
+/* H2 + paragraph follow-up için extra polish: H2'den sonra ilk paragraph
+   biraz daha vurgulu görünsün */
+.article-body h2 + p {
+  @apply text-lg;
+}
+
 /* Reduced motion — animasyonları kapat */
 @media (prefers-reduced-motion: reduce) {
   *,
