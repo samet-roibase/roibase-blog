@@ -1,0 +1,31 @@
+{
+  "$comment": "Roibase ana sitesinin 15 hizmet sayfası havuzu. Claude'a iç link kaynağı olarak verilir. URL pattern: https://www.roibase.com.tr/{lang}/{slug}. Her dil destekleniyor (tr, en, de, es, fr, it, ru). config/categories.ts ile senkron tutulmalı.",
+  "urlPattern": "https://www.roibase.com.tr/{lang}/{slug}",
+  "supportedLocales": ["tr", "en", "de", "es", "fr", "it", "ru"],
+  "services": [
+    { "slug": "dijitalpazarlama", "label": "Dijital Pazarlama", "categories": ["marketing"] },
+    { "slug": "ppc", "label": "Performans Pazarlaması (PPC)", "categories": ["marketing"] },
+    { "slug": "seo", "label": "Teknik SEO", "categories": ["marketing"] },
+    { "slug": "geo", "label": "Generative Engine Optimization", "categories": ["ai"] },
+    { "slug": "aso", "label": "App Store Optimization", "categories": ["gaming"] },
+    { "slug": "premiumyayinci", "label": "Premium Yayıncı Programı", "categories": ["gaming"] },
+    { "slug": "cro", "label": "Dönüşüm Oranı Optimizasyonu", "categories": ["marketing"] },
+    { "slug": "ui-ux", "label": "UI/UX Tasarım", "categories": ["tech"] },
+    { "slug": "branding", "label": "Markalaşma & Brand Identity", "categories": ["travel", "lifestyle"] },
+    { "slug": "headless", "label": "Headless Commerce", "categories": ["tech"] },
+    { "slug": "shopify", "label": "Shopify Partner Hizmetleri", "categories": ["tech"] },
+    { "slug": "firstparty", "label": "First-Party Veri & Ölçüm Mimarisi", "categories": ["data", "ai"] },
+    { "slug": "verianalizi", "label": "Veri Analizi & İçgörü Mühendisliği", "categories": ["data", "ai"] },
+    { "slug": "retention-engineering-cdp", "label": "CDP & Retention Engineering", "categories": ["data"] },
+    { "slug": "techstack-partnership", "label": "Teknoloji Stack & İş Ortaklığı", "categories": [] }
+  ],
+  "byCategory": {
+    "ai": ["geo", "verianalizi", "firstparty"],
+    "marketing": ["dijitalpazarlama", "ppc", "cro", "seo"],
+    "tech": ["headless", "shopify", "ui-ux"],
+    "data": ["firstparty", "verianalizi", "retention-engineering-cdp"],
+    "gaming": ["aso", "premiumyayinci"],
+    "travel": ["branding"],
+    "lifestyle": ["branding"]
+  }
+}
