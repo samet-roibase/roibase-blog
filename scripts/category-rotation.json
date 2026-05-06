@@ -1,7 +1,22 @@
 {
   "$comment": "Round-robin kategori rotasyonu. n8n her run'da bu dosyayı GitHub'dan okur, sıradaki kategoriyi belirler, üretim sonrası lastIndex ve history alanını güncelleyip aynı commit'in içinde push eder. Yarış koşulu yok — tek workflow, ardışık run'lar. 7 kategori, 8 saatte bir cron = 56 saatte tam tur (~2.3 gün).",
-  "order": ["ai", "marketing", "tech", "data", "gaming", "travel", "lifestyle"],
-  "lastIndex": -1,
-  "lastRunAt": null,
-  "history": []
+  "order": [
+    "ai",
+    "marketing",
+    "tech",
+    "data",
+    "gaming",
+    "travel",
+    "lifestyle"
+  ],
+  "lastIndex": 0,
+  "lastRunAt": "2026-05-06T14:51:42.586Z",
+  "history": [
+    {
+      "at": "2026-05-06T14:51:42.586Z",
+      "category": "ai",
+      "topicId": "ai-001",
+      "i18nKey": "ai-001-2026-05"
+    }
+  ]
 }
