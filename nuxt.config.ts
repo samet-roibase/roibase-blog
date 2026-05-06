@@ -81,7 +81,45 @@ export default defineNuxtConfig({
       ],
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }
-      ]
+      ],
+      // ---------------------------------------------------------------
+      //  GOOGLE TAG MANAGER — first-party via Cloudflare Tag Gateway
+      // ---------------------------------------------------------------
+      //  Container: GTM-KVX54H4M (ana site ile AYNI — tek dashboard'ta blog
+      //              + ana site trafiği birleştirilmiş ölçüm)
+      //  Gateway path: /metrics (Cloudflare → Tag Management ayarı)
+      //
+      //  Ana siteyle birebir aynı first-party setup:
+      //    • Bypasses ad-blockers (loads from same origin)
+      //    • Bypasses ITP/Brave/Safari third-party cookie kısıtları
+      //    • Cookies first-party kalır (longer lifetime)
+      //
+      //  PRODUCTION-ONLY: NODE_ENV !== production'da inject edilmez
+      //  (dev console temiz kalır, fake event'ler raporları kirletmez).
+      //
+      //  KURULUM ŞARTI: Cloudflare → blog.roibase.com.tr için Tag Gateway
+      //  forwarding kuralının kurulu olması gerek (/metrics/* → Google).
+      //  "Set up tag" toggle'ı KAPALI olmalı — biz manuel inject ediyoruz.
+      script: process.env.NODE_ENV === 'production' ? [
+        {
+          tagPosition: 'head',
+          innerHTML:
+            "(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':" +
+            "new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0]," +
+            "j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=" +
+            "'/metrics/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);" +
+            "})(window,document,'script','dataLayer','GTM-KVX54H4M');"
+        }
+      ] : [],
+      noscript: process.env.NODE_ENV === 'production' ? [
+        {
+          tagPosition: 'bodyOpen',
+          innerHTML:
+            '<iframe src="/metrics/ns.html?id=GTM-KVX54H4M" ' +
+            'height="0" width="0" style="display:none;visibility:hidden" ' +
+            'title="Google Tag Manager fallback"></iframe>'
+        }
+      ] : []
     }
   },
 
