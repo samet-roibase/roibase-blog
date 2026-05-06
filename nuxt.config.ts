@@ -42,10 +42,10 @@ export default defineNuxtConfig({
     // Markdown articles live under content/{lang}/{category}/{slug}.md
     // Nuxt Content auto-discovers and exposes them via queryContent().
     highlight: {
-      theme: {
-        default: 'github-light',
-        dark: 'github-dark'
-      },
+      // pre background zaten dark (main.css'te theme.colors.dark) — light mode'da
+      // bile koyu zemin kullandığımız için her iki modda da dark tema kullanıyoruz.
+      // github-light + dark zemin = okunmaz; github-dark + dark zemin = okunaklı.
+      theme: 'github-dark',
       preload: ['ts', 'js', 'json', 'bash', 'vue', 'html', 'css', 'sql', 'python']
     },
     markdown: {
