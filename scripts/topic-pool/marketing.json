@@ -1,0 +1,54 @@
+{
+  "$comment": "Marketing kategorisi konu havuzu.",
+  "category": "marketing",
+  "topics": [
+    {
+      "id": "marketing-001",
+      "title": "Server-Side Conversions: Meta CAPI'yi Sıfırdan Doğru Kurmak",
+      "angle": "sGTM + Conversion API mimarisi, deduplication, event match quality",
+      "lastUsedAt": null
+    },
+    {
+      "id": "marketing-002",
+      "title": "Bayesian A/B Test ile Hızlı Karar Verme",
+      "angle": "Frequentist limitleri, sequential test, sample size dinamiği",
+      "lastUsedAt": null
+    },
+    {
+      "id": "marketing-003",
+      "title": "iOS 17 Sonrası Ad Attribution Stack'i",
+      "angle": "ATT, SKAdNetwork 4, modeled conversions, post-lookback maturity",
+      "lastUsedAt": null
+    },
+    {
+      "id": "marketing-004",
+      "title": "MMM + Incrementality: 2026'nın Attribution Setup'ı",
+      "angle": "Robyn, Meta Lift, geo experiments — hangisi ne zaman",
+      "lastUsedAt": null
+    },
+    {
+      "id": "marketing-005",
+      "title": "Creative Operations: Bidding Algoritmasına Beslenecek Variation Stratejisi",
+      "angle": "Performance Max, Advantage+ için kreatif test mimarisi",
+      "lastUsedAt": null
+    },
+    {
+      "id": "marketing-006",
+      "title": "Consent Mode v2 ve TCF 2.2: Modeling Loss'u Nasıl Yönetiriz",
+      "angle": "Yasal uyum + ölçüm kaybı tradeoff'u",
+      "lastUsedAt": null
+    },
+    {
+      "id": "marketing-007",
+      "title": "Cross-Channel Orkestrasyon: Paid + Email + Push Atribüsyon",
+      "angle": "Identity graph, lifecycle event mapping, hold-out gruplar",
+      "lastUsedAt": null
+    },
+    {
+      "id": "marketing-008",
+      "title": "Performans Pazarlamasının Yeni Çağı",
+      "angle": "Cookie sonrası era, signal mimarisi, mühendislik disiplini",
+      "lastUsedAt": null
+    }
+  ]
+}

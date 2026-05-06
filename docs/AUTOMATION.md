@@ -65,48 +65,31 @@ const category = data.order[nextIndex];
 return [{ json: { category, nextIndex, rotation: data } }];
 ```
 
-### 4. HTTP Request — GSC API: Search Analytics Query
-- POST `https://searchconsole.googleapis.com/webmasters/v3/sites/{siteUrl}/searchAnalytics/query`
-- Auth: Service Account
-- Body:
-  ```json
-  {
-    "startDate": "{28 gün önce}",
-    "endDate": "{bugün}",
-    "dimensions": ["query", "page"],
-    "rowLimit": 200
-  }
-  ```
+### 4. HTTP Request — `scripts/topic-pool/{category}.json` oku
+- Method: GET
+- URL: `https://raw.githubusercontent.com/samet-roibase/roibase-blog/main/scripts/topic-pool/{{ $json.category }}.json`
+- Cache buster: `?_=${Date.now()}`
 
-### 5. Code — Opportunity scoring
+> **Not:** Faz 2A için **statik konu havuzu** kullanılıyor. GSC eklendiğinde bu node'u GSC API'siyle değiştirip dinamik fırsat seçimine geçilecek.
+
+### 5. Code — Sıradaki konuyu seç
 ```js
-const rows = $input.first().json.rows || [];
-const cat = $('Category').item.json.category;
+const pool = $input.first().json;
+const cat = $('Pick Category').item.json.category;
 
-// Kategori-relevance: page URL'i kategori slug'ı içeriyorsa boost
-const relevance = (page) => {
-  const slug = page.toLowerCase();
-  // Kategori → ana site hizmet eşlemesi
-  const map = { ai: ['geo','firstparty','verianalizi'], marketing: ['ppc','seo','cro','dijitalpazarlama'], /* ... */ };
-  return (map[cat] || []).some(s => slug.includes(`/${s}`)) ? 1.5 : 1.0;
-};
-
-const scored = rows.map(r => ({
-  query: r.keys[0],
-  page: r.keys[1],
-  impressions: r.impressions,
-  ctr: r.ctr,
-  position: r.position,
-  score: r.impressions * (1 - r.ctr) * (1 / Math.max(r.position, 1)) * relevance(r.keys[1])
-}));
-
-const top = scored.sort((a, b) => b.score - a.score)[0];
-return [{ json: { ...top, threshold: 100, passes: top && top.score >= 100 } }];
+// Önce hiç kullanılmamış konuları al; yoksa en eski kullanılanı seç
+let candidates = pool.topics.filter(t => !t.lastUsedAt);
+if (candidates.length === 0) {
+  candidates = [...pool.topics].sort((a, b) =>
+    new Date(a.lastUsedAt) - new Date(b.lastUsedAt)
+  );
+}
+const topic = candidates[0];
+return [{ json: { topic, category: cat, pool } }];
 ```
 
-### 6. IF — Eşik geçti mi?
-- True branch: devam
-- False branch: log + END (Slack/email opsiyonel)
+### 6. (GSC eklenince eşik kontrolü buraya gelecek)
+Şimdilik atlandı — topic pool'dan konu seçilince hep devam.
 
 ### 7. Code — i18nKey + tarih + slug stub üret
 ```js

@@ -1,0 +1,48 @@
+{
+  "$comment": "Data kategorisi konu havuzu.",
+  "category": "data",
+  "topics": [
+    {
+      "id": "data-001",
+      "title": "Server-Side GTM ve Conversion API: Sıfırdan Production'a",
+      "angle": "Cloud Run/Workers deploy, container template, deduplication",
+      "lastUsedAt": null
+    },
+    {
+      "id": "data-002",
+      "title": "dbt + BigQuery ile Modern Pazarlama Data Stack",
+      "angle": "Source mapping, modeling layer, semantic layer, exposures",
+      "lastUsedAt": null
+    },
+    {
+      "id": "data-003",
+      "title": "Identity Resolution: 6 Sinyalden Tek Müşteri Kimliğine",
+      "angle": "Hash matching, probabilistic linking, household identity",
+      "lastUsedAt": null
+    },
+    {
+      "id": "data-004",
+      "title": "Reverse ETL: Data Warehouse'tan Operational Tool'lara",
+      "angle": "Hightouch, Census, Segment Reverse ETL — use case karşılaştırma",
+      "lastUsedAt": null
+    },
+    {
+      "id": "data-005",
+      "title": "Marketing Mix Modeling: Robyn ile Pratik Kurulum",
+      "angle": "Saturasyon eğrisi, adstock decay, holdout validation",
+      "lastUsedAt": null
+    },
+    {
+      "id": "data-006",
+      "title": "Privacy-First Analytics: Plausible + Sunucu Tarafı Aggregation",
+      "angle": "Cookieless tracking, KVKK/GDPR uyum, GA4 ile karşılaştırma",
+      "lastUsedAt": null
+    },
+    {
+      "id": "data-007",
+      "title": "Cohort Tablo Mimarisi: Retention Analizinin Production'da Ölçeklenmesi",
+      "angle": "Materialized views, partitioning, query cost optimization",
+      "lastUsedAt": null
+    }
+  ]
+}

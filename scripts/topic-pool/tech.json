@@ -1,0 +1,54 @@
+{
+  "$comment": "Tech kategorisi konu havuzu.",
+  "category": "tech",
+  "topics": [
+    {
+      "id": "tech-001",
+      "title": "Nuxt 3 + Cloudflare Pages: 10s LCP'den 2s'ye",
+      "angle": "Self-hosted fonts, lazy hydration, content-visibility, edge caching",
+      "lastUsedAt": null
+    },
+    {
+      "id": "tech-002",
+      "title": "Shopify Hydrogen vs Liquid: Kararı Hangi Sayılarla Verdik",
+      "angle": "TTFB, build time, dev velocity, migration cost karşılaştırması",
+      "lastUsedAt": null
+    },
+    {
+      "id": "tech-003",
+      "title": "Edge SSR ile Personalizasyon Latency'sini 40ms'ye Düşürmek",
+      "angle": "Cloudflare Workers, Vercel Edge, KV store mimarisi",
+      "lastUsedAt": null
+    },
+    {
+      "id": "tech-004",
+      "title": "Web Performance Budget'ları: Karar Mekanizmasına Bağlamak",
+      "angle": "Lighthouse CI, RUM, perf regression alarmları",
+      "lastUsedAt": null
+    },
+    {
+      "id": "tech-005",
+      "title": "Composable Commerce: MACH Mimarisi Production Realitesi",
+      "angle": "BigCommerce, commercetools, Shopify Plus tradeoff'ları",
+      "lastUsedAt": null
+    },
+    {
+      "id": "tech-006",
+      "title": "Headless E-Ticaret: Migration Roadmap ve Risk Yönetimi",
+      "angle": "Phased rollout, SEO preservation, ATC abandon analysis",
+      "lastUsedAt": null
+    },
+    {
+      "id": "tech-007",
+      "title": "Nuxt 3 için SSG Rehberi",
+      "angle": "Prerender stratejileri, route rules, build optimization",
+      "lastUsedAt": null
+    },
+    {
+      "id": "tech-008",
+      "title": "Server Components vs Client: 2026'da Doğru Çizgiyi Çizmek",
+      "angle": "React Server Components, Vue 3.5 transition, hydration cost",
+      "lastUsedAt": null
+    }
+  ]
+}

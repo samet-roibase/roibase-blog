@@ -1,0 +1,42 @@
+{
+  "$comment": "Gaming kategorisi konu havuzu.",
+  "category": "gaming",
+  "topics": [
+    {
+      "id": "gaming-001",
+      "title": "ASO Creative Testing: PPO ile 6 Hafta İçinde +%32 IPM",
+      "angle": "Custom Product Pages, Play Experiments, statistical significance",
+      "lastUsedAt": null
+    },
+    {
+      "id": "gaming-002",
+      "title": "Mobile F2P'de Bayesian Price Optimization",
+      "angle": "IAP price ladder testleri, posterior estimation, segmentation",
+      "lastUsedAt": null
+    },
+    {
+      "id": "gaming-003",
+      "title": "Live Ops Calendar: Retention Engineering ile Churn -%18",
+      "angle": "Event cadence, content depth, monetization-retention balansı",
+      "lastUsedAt": null
+    },
+    {
+      "id": "gaming-004",
+      "title": "App Store Optimization: Türkçe Pazarda Keyword Mimarisi",
+      "angle": "Lokalizasyon vs lokalizasyon ötesi, voice market specifics",
+      "lastUsedAt": null
+    },
+    {
+      "id": "gaming-005",
+      "title": "Apple Search Ads: Kampanya Mimarisini Funnel Olarak Kurmak",
+      "angle": "Discovery, competitor, brand, broad match modu — bütçe akışı",
+      "lastUsedAt": null
+    },
+    {
+      "id": "gaming-006",
+      "title": "Premium Yayıncı Programı: Ad Tech Stack'i Gelir Makinesine Dönüştürmek",
+      "angle": "Header bidding, direct sales, subscription, first-party monetization",
+      "lastUsedAt": null
+    }
+  ]
+}

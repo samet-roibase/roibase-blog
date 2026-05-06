@@ -1,0 +1,54 @@
+{
+  "$comment": "AI kategorisi için yazılacak makale konuları. n8n her run'da lastUsedAt:null olan veya en eski olanı seçer, üretim sonrası lastUsedAt'i günceller (commit içinde). Yeni konu eklemek için array'e satır ekle, lastUsedAt:null bırak.",
+  "category": "ai",
+  "topics": [
+    {
+      "id": "ai-001",
+      "title": "GEO: Markanı ChatGPT'nin Cevabına Yerleştirmek",
+      "angle": "AI overviews ve LLM citation'larında görünürlük için içerik mimarisi",
+      "lastUsedAt": null
+    },
+    {
+      "id": "ai-002",
+      "title": "LLM Citation Ölçümü — Yeni SEO Metrik Setiniz",
+      "angle": "Perplexity, ChatGPT, Gemini'de markanın atıf alma oranını nasıl ölçeriz",
+      "lastUsedAt": null
+    },
+    {
+      "id": "ai-003",
+      "title": "Production'da RAG: Retrieval Kalitesi Cost'tan Önce Gelir",
+      "angle": "Embedding modeli seçimi, chunking stratejisi, eval setup",
+      "lastUsedAt": null
+    },
+    {
+      "id": "ai-004",
+      "title": "Prompt Versiyonlama ve A/B Testi: LLM Operasyonun Disiplini",
+      "angle": "Promptfoo, LangSmith ve evaluation pipeline'ları",
+      "lastUsedAt": null
+    },
+    {
+      "id": "ai-005",
+      "title": "n8n + Claude API: Pazarlama Operasyonunda Otonomi",
+      "angle": "Otonom workflow tasarımı, idempotency, hata yönetimi",
+      "lastUsedAt": null
+    },
+    {
+      "id": "ai-006",
+      "title": "Embedding Drift: Üretimde Vector DB'leri Nasıl Sürdürürüz",
+      "angle": "Re-indexing stratejileri, model migration, cost tradeoff",
+      "lastUsedAt": null
+    },
+    {
+      "id": "ai-007",
+      "title": "AI-Generated Content ve Google: Risk Matrisi",
+      "angle": "Helpful content update sonrası AI içerik üretiminin sınırları",
+      "lastUsedAt": null
+    },
+    {
+      "id": "ai-008",
+      "title": "Multi-Agent Orchestration: Tek LLM Çağrısından Sistemlere",
+      "angle": "Agent SDK, tool use, paralel/seri agent topology'leri",
+      "lastUsedAt": null
+    }
+  ]
+}

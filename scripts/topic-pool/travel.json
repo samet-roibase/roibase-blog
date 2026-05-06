@@ -1,0 +1,36 @@
+{
+  "$comment": "Travel kategorisi konu havuzu. Bu kategori en yavaş dönmeli — havuzu az tutuyoruz.",
+  "category": "travel",
+  "topics": [
+    {
+      "id": "travel-001",
+      "title": "Uzaktan Tech Ekibi için Lizbon: 12 Ay Operasyonel Rapor",
+      "angle": "İnternet, koworking, vergi, time zone — somut tablo",
+      "lastUsedAt": null
+    },
+    {
+      "id": "travel-002",
+      "title": "Asenkron-First Kültür: 4 Time Zone'da Ürün Geliştirme",
+      "angle": "Standup yerine Linear updates, response SLA, async toplantı disiplini",
+      "lastUsedAt": null
+    },
+    {
+      "id": "travel-003",
+      "title": "Digital Nomad Vergi Stack'i — 2026 Güncel Tablo",
+      "angle": "Estonia e-residency, Portugal NHR sonrası, Türkiye dijital göçebe",
+      "lastUsedAt": null
+    },
+    {
+      "id": "travel-004",
+      "title": "Tech-Friendly Şehirler: Roibase'in 5 Hub Değerlendirmesi",
+      "angle": "İstanbul, Lizbon, Berlin, Mexico City, Bangkok — operasyonel kriterler",
+      "lastUsedAt": null
+    },
+    {
+      "id": "travel-005",
+      "title": "Travel Tech 2026: Booking Funnel'i Headless'a Geçirmek",
+      "angle": "Composable hospitality, edge personalization, conversion impact",
+      "lastUsedAt": null
+    }
+  ]
+}

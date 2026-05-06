@@ -1,0 +1,36 @@
+{
+  "$comment": "Lifestyle kategorisi konu havuzu. Bu kategori en yavaş dönmeli.",
+  "category": "lifestyle",
+  "topics": [
+    {
+      "id": "lifestyle-001",
+      "title": "Linear + Async Standup: 12 Kişilik Ekipte Toplantısız Hafta",
+      "angle": "Cycle yönetimi, daily updates, blocker escalation pattern",
+      "lastUsedAt": null
+    },
+    {
+      "id": "lifestyle-002",
+      "title": "Founder Calendar: Bağlam Anahtarlama Maliyeti ve Time-Block Disiplini",
+      "angle": "4-saatlik deep work bloğu, müşteri görüşme cadence, async response window",
+      "lastUsedAt": null
+    },
+    {
+      "id": "lifestyle-003",
+      "title": "Code Review Kültürü: Ölçülebilir Kalite, Kişisel Çatışma Yok",
+      "angle": "Time-to-review, comment density, PR size kuralları",
+      "lastUsedAt": null
+    },
+    {
+      "id": "lifestyle-004",
+      "title": "Tool Stack 2026: Roibase Ekibinin Günlük Operasyonu",
+      "angle": "Linear, Notion, Slack, Figma, Granola — entegrasyon pattern'leri",
+      "lastUsedAt": null
+    },
+    {
+      "id": "lifestyle-005",
+      "title": "Hiring for Async-First: Pratik Filtre ve Mülakat Yapısı",
+      "angle": "Trial week, written assessment, sync ön-yargısını silme",
+      "lastUsedAt": null
+    }
+  ]
+}
