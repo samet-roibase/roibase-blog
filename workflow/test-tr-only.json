@@ -18,9 +18,6 @@
               "responseFormat": "json"
             }
           },
-          "redirect": {
-            "redirect": {}
-          },
           "qs": {
             "_": "={{ Date.now() }}"
           }
@@ -34,7 +31,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $input.first().json;\nconst nextIndex = (data.lastIndex + 1) % data.order.length;\nconst category = data.order[nextIndex];\nreturn [{ json: { category, nextIndex, rotation: data } }];"
+        "jsCode": "const raw = $input.first().json;\nconst data = (raw && raw.data && typeof raw.data === 'string')\n  ? JSON.parse(raw.data)\n  : (typeof raw === 'string' ? JSON.parse(raw) : raw);\nconst nextIndex = (data.lastIndex + 1) % data.order.length;\nconst category = data.order[nextIndex];\nreturn [{ json: { category, nextIndex, rotation: data } }];"
       },
       "id": "pick-category",
       "name": "Pick Category",
@@ -46,6 +43,11 @@
       "parameters": {
         "url": "=https://raw.githubusercontent.com/samet-roibase/roibase-blog/main/scripts/topic-pool/{{ $json.category }}.json",
         "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
           "qs": {
             "_": "={{ Date.now() }}"
           }
@@ -59,7 +61,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const pool = $input.first().json;\nconst cat = $('Pick Category').item.json.category;\n\nlet candidates = pool.topics.filter(t => !t.lastUsedAt);\nif (candidates.length === 0) {\n  candidates = [...pool.topics].sort((a, b) =>\n    new Date(a.lastUsedAt) - new Date(b.lastUsedAt)\n  );\n}\nconst topic = candidates[0];\n\nconst today = new Date().toISOString().slice(0, 10);\nconst ymonth = today.slice(0, 7);\nconst topicStub = topic.id;\nconst i18nKey = `${cat}-${topicStub.replace(/^[a-z]+-/, '')}-${ymonth}`;\n\nreturn [{ json: { topic, category: cat, today, i18nKey } }];"
+        "jsCode": "const raw = $input.first().json;\nconst pool = (raw && raw.data && typeof raw.data === 'string')\n  ? JSON.parse(raw.data)\n  : (typeof raw === 'string' ? JSON.parse(raw) : raw);\nconst cat = $('Pick Category').item.json.category;\n\nlet candidates = pool.topics.filter(t => !t.lastUsedAt);\nif (candidates.length === 0) {\n  candidates = [...pool.topics].sort((a, b) =>\n    new Date(a.lastUsedAt) - new Date(b.lastUsedAt)\n  );\n}\nconst topic = candidates[0];\n\nconst today = new Date().toISOString().slice(0, 10);\nconst ymonth = today.slice(0, 7);\nconst topicStub = topic.id;\nconst i18nKey = `${cat}-${topicStub.replace(/^[a-z]+-/, '')}-${ymonth}`;\n\nreturn [{ json: { topic, category: cat, today, i18nKey } }];"
       },
       "id": "pick-topic",
       "name": "Pick Topic",
@@ -82,7 +84,7 @@
       "name": "Fetch master prompt",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1240, 200]
+      "position": [1240, 300]
     },
     {
       "parameters": {
@@ -99,28 +101,34 @@
       "name": "Fetch category prompt",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1240, 400]
+      "position": [1440, 300]
     },
     {
       "parameters": {
         "url": "https://raw.githubusercontent.com/samet-roibase/roibase-blog/main/scripts/internal-links.json",
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "id": "fetch-internal-links",
       "name": "Fetch internal links",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1240, 600]
+      "position": [1640, 300]
     },
     {
       "parameters": {
-        "jsCode": "const masterPrompt = $('Fetch master prompt').first().json.data || $('Fetch master prompt').first().json;\nconst categoryPrompt = $('Fetch category prompt').first().json.data || $('Fetch category prompt').first().json;\nconst links = $('Fetch internal links').first().json;\nconst topicData = $('Pick Topic').first().json;\n\nconst masterText = typeof masterPrompt === 'string' ? masterPrompt : JSON.stringify(masterPrompt);\nconst categoryText = typeof categoryPrompt === 'string' ? categoryPrompt : JSON.stringify(categoryPrompt);\n\nconst categorySlugs = links.byCategory[topicData.category] || [];\nconst internalLinks = categorySlugs.map(slug => {\n  const svc = links.services.find(s => s.slug === slug);\n  return { slug, label: svc?.label || slug, url: `https://www.roibase.com.tr/tr/${slug}` };\n});\n\nconst userPrompt = [\n  `TOPIC_TITLE: ${topicData.topic.title}`,\n  `TOPIC_ANGLE: ${topicData.topic.angle}`,\n  `CATEGORY: ${topicData.category}`,\n  `TODAY: ${topicData.today}`,\n  `I18N_KEY: ${topicData.i18nKey}`,\n  `INTERNAL_LINKS: ${JSON.stringify(internalLinks)}`,\n  '',\n  '--- KATEGORI YONERGESI ---',\n  categoryText\n].join('\\n');\n\nreturn [{\n  json: {\n    system: masterText,\n    user: userPrompt,\n    topicData\n  }\n}];"
+        "jsCode": "function unwrap(raw) {\n  if (raw && raw.data !== undefined) return raw.data;\n  return raw;\n}\nfunction toText(v) {\n  if (typeof v === 'string') return v;\n  return JSON.stringify(v);\n}\nfunction toObj(v) {\n  if (typeof v === 'string') {\n    try { return JSON.parse(v); } catch { return {}; }\n  }\n  return v;\n}\n\nconst masterRaw = $('Fetch master prompt').first().json;\nconst categoryRaw = $('Fetch category prompt').first().json;\nconst linksRaw = $('Fetch internal links').first().json;\n\nconst masterText = toText(unwrap(masterRaw));\nconst categoryText = toText(unwrap(categoryRaw));\nconst links = toObj(unwrap(linksRaw));\n\nconst topicData = $('Pick Topic').first().json;\n\nconst categorySlugs = (links.byCategory && links.byCategory[topicData.category]) || [];\nconst internalLinks = categorySlugs.map(slug => {\n  const svc = (links.services || []).find(s => s.slug === slug);\n  return { slug, label: svc?.label || slug, url: `https://www.roibase.com.tr/tr/${slug}` };\n});\n\nconst userPrompt = [\n  `TOPIC_TITLE: ${topicData.topic.title}`,\n  `TOPIC_ANGLE: ${topicData.topic.angle}`,\n  `CATEGORY: ${topicData.category}`,\n  `TODAY: ${topicData.today}`,\n  `I18N_KEY: ${topicData.i18nKey}`,\n  `INTERNAL_LINKS: ${JSON.stringify(internalLinks)}`,\n  '',\n  '--- KATEGORI YONERGESI ---',\n  categoryText\n].join('\\n');\n\nreturn [{\n  json: {\n    system: masterText,\n    user: userPrompt,\n    topicData\n  }\n}];"
       },
       "id": "build-prompt",
       "name": "Build Claude prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1440, 400]
+      "position": [1840, 300]
     },
     {
       "parameters": {
@@ -144,29 +152,29 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"model\": \"claude-sonnet-4-5\",\n  \"max_tokens\": 4096,\n  \"system\": {{ JSON.stringify($json.system) }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.user) }}\n    }\n  ]\n}",
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "id": "claude-tr",
       "name": "Claude — TR master",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1640, 400],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "REPLACE-WITH-CLAUDE-CRED-ID",
-          "name": "Claude Anthropic"
-        }
-      }
+      "position": [2040, 300]
     },
     {
       "parameters": {
-        "jsCode": "const resp = $input.first().json;\nconst text = resp.content?.[0]?.text || '(no content)';\nconst topicData = $('Build Claude prompt').first().json.topicData;\n\n// Frontmatter + body parse\nconst m = text.match(/^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/);\nconst frontmatter = m ? m[1] : '(parse failed)';\nconst body = m ? m[2] : text;\n\n// Title extract for slug stub\nconst titleMatch = frontmatter.match(/title:\\s*\"([^\"]+)\"/);\nconst title = titleMatch ? titleMatch[1] : '(unknown)';\n\nconst slug = title.toLowerCase()\n  .replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u')\n  .replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c')\n  .replace(/[^a-z0-9]+/g, '-')\n  .replace(/^-|-$/g, '')\n  .slice(0, 70);\n\nreturn [{\n  json: {\n    parsedTitle: title,\n    parsedSlug: slug,\n    parsedFrontmatter: frontmatter,\n    parsedBody: body.slice(0, 500) + (body.length > 500 ? '...' : ''),\n    bodyLength: body.length,\n    bodyWordCount: body.split(/\\s+/).length,\n    targetPath: `content/tr/${topicData.category}/${slug}.md`,\n    rawResponse: text,\n    topicData\n  }\n}];"
+        "jsCode": "const raw = $input.first().json;\nconst resp = (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw;\nconst text = resp.content?.[0]?.text || JSON.stringify(resp);\nconst topicData = $('Build Claude prompt').first().json.topicData;\n\nconst m = text.match(/^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/);\nconst frontmatter = m ? m[1] : '(parse failed)';\nconst body = m ? m[2] : text;\n\nconst titleMatch = frontmatter.match(/title:\\s*\"([^\"]+)\"/);\nconst title = titleMatch ? titleMatch[1] : '(unknown)';\n\nconst slug = title.toLowerCase()\n  .replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u')\n  .replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c')\n  .replace(/[^a-z0-9]+/g, '-')\n  .replace(/^-|-$/g, '')\n  .slice(0, 70);\n\nreturn [{\n  json: {\n    parsedTitle: title,\n    parsedSlug: slug,\n    parsedFrontmatter: frontmatter,\n    parsedBodyPreview: body.slice(0, 500) + (body.length > 500 ? '...' : ''),\n    bodyLength: body.length,\n    bodyWordCount: body.split(/\\s+/).filter(Boolean).length,\n    targetPath: `content/tr/${topicData.category}/${slug}.md`,\n    rawResponse: text,\n    topicData\n  }\n}];"
       },
       "id": "parse-tr",
       "name": "Parse TR output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1840, 400]
+      "position": [2240, 300]
     }
   ],
   "connections": {
@@ -183,19 +191,13 @@
       "main": [[{ "node": "Pick Topic", "type": "main", "index": 0 }]]
     },
     "Pick Topic": {
-      "main": [
-        [
-          { "node": "Fetch master prompt", "type": "main", "index": 0 },
-          { "node": "Fetch category prompt", "type": "main", "index": 0 },
-          { "node": "Fetch internal links", "type": "main", "index": 0 }
-        ]
-      ]
+      "main": [[{ "node": "Fetch master prompt", "type": "main", "index": 0 }]]
     },
     "Fetch master prompt": {
-      "main": [[{ "node": "Build Claude prompt", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Fetch category prompt", "type": "main", "index": 0 }]]
     },
     "Fetch category prompt": {
-      "main": [[{ "node": "Build Claude prompt", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Fetch internal links", "type": "main", "index": 0 }]]
     },
     "Fetch internal links": {
       "main": [[{ "node": "Build Claude prompt", "type": "main", "index": 0 }]]
