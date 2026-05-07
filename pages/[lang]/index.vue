@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CATEGORIES } from '~/config/categories'
+import { CATEGORIES, CATEGORY_COLORS } from '~/config/categories'
 import { isValidLocale } from '~/config/locales'
 
 const route = useRoute()
@@ -13,13 +13,31 @@ if (!isValidLocale(route.params.lang as string)) {
 // LanguageSwitcher varsayılan path swap behavior'ına dönsün.
 await loadArticleAlternates(null)
 
-// Latest articles across all categories for this locale.
+// Latest articles across all categories for this locale (max 50).
 const { data: latest } = await useAsyncData(`latest-${locale.value}`, () =>
   queryContent(`/${locale.value}`)
     .sort({ publishedAt: -1 })
-    .limit(9)
+    .limit(50)
     .find()
 )
+
+// Kategori başına makale sayısı — current locale bazında. Aynı i18nKey'in
+// 7 dilde farklı dosyaları olsa bile, her locale'de tek dosya = 1 sayım.
+// Bu kullanıcının ana sayfada gördüğü "kategoride X yazı" sayısıyla
+// kategori sayfasına girince gördüğü kart sayısının eşleşmesini garantiler.
+const { data: categoryCounts } = await useAsyncData(`cat-counts-${locale.value}`, async () => {
+  const all = await queryContent(`/${locale.value}`)
+    .only(['_path', 'category'])
+    .find()
+  const counts: Record<string, number> = {}
+  for (const cat of CATEGORIES) counts[cat] = 0
+  for (const a of all) {
+    if (a.category && counts[a.category] !== undefined) {
+      counts[a.category]++
+    }
+  }
+  return counts
+})
 
 useBlogSeo({
   title: `Roibase Blog · ${t('site.tagline')}`,
@@ -31,6 +49,7 @@ useBlogSeo({
 
 <template>
   <div>
+    <!-- Hero -->
     <section class="bg-dark text-white">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
         <p class="kicker mb-4">Roibase</p>
@@ -43,20 +62,44 @@ useBlogSeo({
       </div>
     </section>
 
+    <!-- Body -->
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <p class="kicker mb-3">{{ t('nav.categories') }}</p>
+      <!-- Renkli kategori grid — mobil menü dilini desktop'a taşıdık -->
+      <p class="kicker mb-4">{{ t('nav.categories') }}</p>
       <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-16">
         <NuxtLink
           v-for="cat in CATEGORIES"
           :key="cat"
           :to="`/${locale}/${cat}`"
-          class="block p-4 rounded-lg border border-gray-200 dark:border-white/10 hover:border-pCyan hover:text-pCyan transition"
+          class="group relative block overflow-hidden rounded-lg border border-gray-200 dark:border-white/10 transition"
+          :style="{ '--cat-color': CATEGORY_COLORS[cat] }"
         >
-          <p class="font-mono text-xs uppercase tracking-widest text-gray-500">{{ cat }}</p>
-          <p class="font-bold mt-1">{{ t(`categories.${cat}.name`) }}</p>
+          <!-- Sol kenar renkli stripe — hover'da geniş genişler -->
+          <div
+            class="absolute left-0 top-0 bottom-0 w-1 transition-all duration-300 group-hover:w-1.5"
+            :style="{ background: CATEGORY_COLORS[cat] }"
+          />
+          <div class="relative p-4 pl-5">
+            <p
+              class="font-mono text-[10px] uppercase tracking-widest mb-1 font-bold"
+              :style="{ color: CATEGORY_COLORS[cat] }"
+            >
+              {{ cat }}
+            </p>
+            <p class="font-bold mt-0.5 text-sm group-hover:translate-x-0.5 transition-transform">
+              {{ t(`categories.${cat}.name`) }}
+            </p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-2 font-mono">
+              <span class="font-bold" :style="{ color: CATEGORY_COLORS[cat] }">
+                {{ categoryCounts?.[cat] ?? 0 }}
+              </span>
+              {{ t('blog.articleCount') }}
+            </p>
+          </div>
         </NuxtLink>
       </div>
 
+      <!-- Latest 50 articles -->
       <p class="kicker mb-6">{{ t('blog.latestPosts') }}</p>
       <div v-if="latest && latest.length" class="asym-grid">
         <ArticleCard

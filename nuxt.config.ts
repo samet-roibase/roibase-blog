@@ -80,7 +80,12 @@ export default defineNuxtConfig({
         ...(NOINDEX ? [{ name: 'robots', content: 'noindex, nofollow, noarchive' }] : [])
       ],
       link: [
-        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        // Performance: Roibase ana sitesine giden iç linkler için DNS pre-resolve.
+        // Makale içinde "[hizmet adı](https://www.roibase.com.tr/...)" linklerine
+        // hover/click zamanı geldiğinde DNS lookup gecikmesi olmaz.
+        { rel: 'dns-prefetch', href: 'https://www.roibase.com.tr' },
+        { rel: 'preconnect', href: 'https://www.roibase.com.tr', crossorigin: '' }
       ],
       // ---------------------------------------------------------------
       //  GOOGLE TAG MANAGER — first-party via Cloudflare Tag Gateway

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ParsedContent } from '@nuxt/content/dist/runtime/types'
+import { CATEGORY_COLORS, type Category } from '~/config/categories'
 
 interface Article extends ParsedContent {
   title?: string
@@ -16,10 +17,7 @@ const props = defineProps<{
 
 const { locale, t } = useT()
 
-const href = computed(() => {
-  // _path looks like "/tr/ai/some-article" — Nuxt Content auto-derives from file path
-  return props.article._path ?? '#'
-})
+const href = computed(() => props.article._path ?? '#')
 
 const dateLabel = computed(() => {
   if (!props.article.publishedAt) return ''
@@ -29,19 +27,33 @@ const dateLabel = computed(() => {
     return props.article.publishedAt
   }
 })
+
+// Kategori rengi — kicker + feature variant border
+const categoryColor = computed(() =>
+  props.article.category ? CATEGORY_COLORS[props.article.category as Category] ?? '#22d3ee' : '#22d3ee'
+)
 </script>
 
 <template>
   <article
     class="group"
-    :class="variant === 'feature' ? 'border-l-4 border-pCyan pl-6' : ''"
+    :class="variant === 'feature' ? 'border-l-4 pl-6' : ''"
+    :style="variant === 'feature' ? { borderColor: categoryColor } : undefined"
   >
-    <p v-if="article.category" class="kicker mb-2">{{ t(`categories.${article.category}.name`, article.category) }}</p>
+    <p
+      v-if="article.category"
+      class="font-mono text-xs uppercase tracking-widest mb-2"
+      :style="{ color: categoryColor }"
+    >
+      {{ t(`categories.${article.category}.name`, article.category) }}
+    </p>
     <h3
-      class="font-bold tracking-tight group-hover:text-pCyan transition"
+      class="font-bold tracking-tight transition"
       :class="variant === 'feature' ? 'text-3xl md:text-4xl' : 'text-xl'"
     >
-      <NuxtLink :to="href">{{ article.title }}</NuxtLink>
+      <NuxtLink :to="href" class="hover-cat-color" :style="{ '--cat-color': categoryColor }">
+        {{ article.title }}
+      </NuxtLink>
     </h3>
     <p v-if="article.description" class="mt-2 text-gray-600 dark:text-gray-400" :class="variant === 'feature' ? 'text-lg' : 'text-sm'">
       {{ article.description }}
@@ -52,3 +64,12 @@ const dateLabel = computed(() => {
     </div>
   </article>
 </template>
+
+<style scoped>
+.hover-cat-color {
+  transition: color 0.15s ease;
+}
+.hover-cat-color:hover {
+  color: var(--cat-color);
+}
+</style>

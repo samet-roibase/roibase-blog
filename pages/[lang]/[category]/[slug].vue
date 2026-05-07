@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isValidCategory } from '~/config/categories'
+import { isValidCategory, CATEGORY_COLORS, type Category } from '~/config/categories'
 import { isValidLocale } from '~/config/locales'
 
 const route = useRoute()
@@ -32,6 +32,7 @@ await loadArticleAlternates(article.value.i18nKey)
 const articleAlternates = useArticleAlternates()
 
 const categoryName = computed(() => t(`categories.${category}.name`))
+const categoryColor = computed(() => CATEGORY_COLORS[category as Category] ?? '#22d3ee')
 
 const articleJsonLd = computed(() => ({
   '@context': 'https://schema.org',
@@ -105,7 +106,12 @@ const dateLabel = computed(() => {
         />
 
         <NuxtLink :to="`/${lang}/${category}`" class="inline-block">
-          <p class="kicker mb-6">{{ categoryName }}</p>
+          <p
+            class="font-mono text-xs uppercase tracking-widest mb-6 font-bold"
+            :style="{ color: categoryColor }"
+          >
+            {{ categoryName }}
+          </p>
         </NuxtLink>
 
         <h1 class="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight leading-[1.05] max-w-3xl">

@@ -43,7 +43,8 @@
       "readMore": "Devamını oku",
       "publishedOn": "Yayınlandı",
       "minRead": "dk okuma",
-      "noPosts": "Henüz bu kategoride yazı yok."
+      "noPosts": "Henüz bu kategoride yazı yok.",
+      "articleCount": "yazı"
     },
     "footer": {
       "rights": "Tüm hakları saklıdır.",
@@ -94,7 +95,8 @@
       "readMore": "Read more",
       "publishedOn": "Published",
       "minRead": "min read",
-      "noPosts": "No posts in this category yet."
+      "noPosts": "No posts in this category yet.",
+      "articleCount": "posts"
     },
     "footer": {
       "rights": "All rights reserved.",
@@ -145,7 +147,8 @@
       "readMore": "Weiterlesen",
       "publishedOn": "Veröffentlicht",
       "minRead": "Min Lesezeit",
-      "noPosts": "Noch keine Beiträge in dieser Kategorie."
+      "noPosts": "Noch keine Beiträge in dieser Kategorie.",
+      "articleCount": "Beiträge"
     },
     "footer": {
       "rights": "Alle Rechte vorbehalten.",
@@ -196,7 +199,8 @@
       "readMore": "Leer más",
       "publishedOn": "Publicado",
       "minRead": "min de lectura",
-      "noPosts": "Aún no hay publicaciones en esta categoría."
+      "noPosts": "Aún no hay publicaciones en esta categoría.",
+      "articleCount": "artículos"
     },
     "footer": {
       "rights": "Todos los derechos reservados.",
@@ -247,7 +251,8 @@
       "readMore": "Lire la suite",
       "publishedOn": "Publié",
       "minRead": "min de lecture",
-      "noPosts": "Aucun article dans cette catégorie pour le moment."
+      "noPosts": "Aucun article dans cette catégorie pour le moment.",
+      "articleCount": "articles"
     },
     "footer": {
       "rights": "Tous droits réservés.",
@@ -298,7 +303,8 @@
       "readMore": "Continua a leggere",
       "publishedOn": "Pubblicato",
       "minRead": "min di lettura",
-      "noPosts": "Nessun articolo in questa categoria ancora."
+      "noPosts": "Nessun articolo in questa categoria ancora.",
+      "articleCount": "articoli"
     },
     "footer": {
       "rights": "Tutti i diritti riservati.",
@@ -349,7 +355,8 @@
       "readMore": "Читать далее",
       "publishedOn": "Опубликовано",
       "minRead": "мин чтения",
-      "noPosts": "В этой категории пока нет публикаций."
+      "noPosts": "В этой категории пока нет публикаций.",
+      "articleCount": "публикаций"
     },
     "footer": {
       "rights": "Все права защищены.",
