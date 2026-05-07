@@ -89,6 +89,18 @@ const dateLabel = computed(() => {
     return article.value.publishedAt
   }
 })
+
+// GTM dataLayer tracking — view_content + blog_to_website.
+// view_content: makale ilk açılışında bir kez fire eder.
+// blog_to_website: document-level click handler ile Roibase ana sitesine
+// giden her tıklamada fire eder (markdown body içindeki linkler dahil).
+const trackingContext = {
+  contentName: article.value.title,
+  contentCategory: category,
+  contentLocale: lang
+}
+useViewContentEvent(trackingContext)
+useBlogToWebsiteTracking(trackingContext)
 </script>
 
 <template>
