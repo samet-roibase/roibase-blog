@@ -361,6 +361,19 @@
     },
     {
       "parameters": {
+        "jsCode": "// Validate & fix Roibase ana site iç linkleri.\n// İki tip hata yakalar + düzeltir:\n//   1) Locale prefix yanlış (örn RU makalesinde /tr/ppc → /ru/ppc)\n//   2) Slug whitelist dışı (örn /de/first-party-data-strategie → /de/firstparty)\n//\n// Defense in depth: Claude translate prompt'una rağmen yine hata yaparsa\n// burada catch + auto-fix. Hatalar logged.\n\nconst VALID_SERVICES = new Set([\n  'dijitalpazarlama', 'ppc', 'seo', 'geo', 'aso', 'premiumyayinci',\n  'cro', 'ui-ux', 'branding', 'headless', 'shopify', 'firstparty',\n  'verianalizi', 'retention-engineering-cdp', 'techstack-partnership'\n]);\nconst VALID_LOCALES = new Set(['tr','en','de','es','fr','it','ru']);\n\n// Bilinen yanlış slug → doğru slug fallback map (Claude'un en sık yaptığı hatalar)\nconst SLUG_FALLBACKS = {\n  // firstparty varyantları\n  'first-party-data-strategie': 'firstparty', 'first-party-data': 'firstparty',\n  'first-party': 'firstparty', 'erste-partei-daten': 'firstparty',\n  'datos-de-primera-parte': 'firstparty', 'donnees-first-party': 'firstparty',\n  'dati-first-party': 'firstparty', 'dannye-pervoy-storony': 'firstparty',\n  // dijitalpazarlama varyantları\n  'dijital-pazarlama': 'dijitalpazarlama', 'digital-marketing': 'dijitalpazarlama',\n  'digitales-marketing': 'dijitalpazarlama', 'marketing-digital': 'dijitalpazarlama',\n  'marketing-digitale': 'dijitalpazarlama', 'tsifrovoy-marketing': 'dijitalpazarlama',\n  // techstack-partnership\n  'tech-stack': 'techstack-partnership', 'techstack': 'techstack-partnership',\n  'partnership': 'techstack-partnership', 'tech-partnership': 'techstack-partnership',\n  // retention-engineering-cdp\n  'cdp': 'retention-engineering-cdp', 'retention': 'retention-engineering-cdp',\n  'retention-engineering': 'retention-engineering-cdp',\n  // verianalizi\n  'data-analysis': 'verianalizi', 'data-analytics': 'verianalizi',\n  'datenanalyse': 'verianalizi', 'analisis-de-datos': 'verianalizi',\n  'analyse-de-donnees': 'verianalizi', 'analisi-dei-dati': 'verianalizi',\n  // aso\n  'app-store-optimization': 'aso', 'aso-optimization': 'aso',\n  // geo\n  'generative-engine-optimization': 'geo', 'gen-engine-optimization': 'geo',\n  // seo\n  'seo-technical': 'seo', 'technical-seo': 'seo', 'technische-seo': 'seo',\n  // cro\n  'conversion-rate-optimization': 'cro', 'cro-optimization': 'cro',\n  // ui-ux\n  'ui': 'ui-ux', 'ux': 'ui-ux', 'ui-ux-design': 'ui-ux', 'design': 'ui-ux',\n  // branding\n  'brand': 'branding', 'brand-identity': 'branding',\n  'markenidentitaet': 'branding', 'identidad-de-marca': 'branding',\n  'identite-de-marque': 'branding', 'identita-di-marca': 'branding',\n  // headless\n  'headless-commerce': 'headless', 'headless-ecommerce': 'headless',\n  // shopify\n  'shopify-plus': 'shopify', 'shopify-partner': 'shopify',\n  // premiumyayinci\n  'premium-publisher': 'premiumyayinci', 'publisher': 'premiumyayinci',\n  // ppc\n  'pay-per-click': 'ppc', 'performance-marketing': 'ppc'\n};\n\nfunction fixUrl(matchedUrl, articleLang) {\n  const m = matchedUrl.match(/^https:\\/\\/www\\.roibase\\.com\\.tr\\/([a-z]{2})\\/([a-z0-9-]+)/);\n  if (!m) return { url: matchedUrl, fixed: false };\n  const [, lang, slug] = m;\n\n  let fixedLang = lang;\n  let fixedSlug = slug;\n  let didFix = false;\n\n  // Locale prefix article lang ile uyumsuz mu?\n  if (lang !== articleLang && VALID_LOCALES.has(articleLang)) {\n    fixedLang = articleLang;\n    didFix = true;\n  }\n\n  // Slug whitelist'te değilse fallback\n  if (!VALID_SERVICES.has(slug)) {\n    const fallback = SLUG_FALLBACKS[slug];\n    if (fallback) {\n      fixedSlug = fallback;\n      didFix = true;\n    } else {\n      // Substring match dene\n      const guess = [...VALID_SERVICES].find(s => slug.includes(s));\n      if (guess) {\n        fixedSlug = guess;\n        didFix = true;\n      } else {\n        // Hiç bulunamadı → 'dijitalpazarlama' (genel hizmet) fallback\n        fixedSlug = 'dijitalpazarlama';\n        didFix = true;\n      }\n    }\n  }\n\n  return {\n    url: `https://www.roibase.com.tr/${fixedLang}/${fixedSlug}`,\n    fixed: didFix,\n    original: matchedUrl\n  };\n}\n\nconst agg = $input.first().json;\nconst fixes = [];\n\nconst fixedFiles = agg.files.map(f => {\n  const articleLang = f.lang;\n  let content = f.content;\n  const urlPattern = /https:\\/\\/www\\.roibase\\.com\\.tr\\/[a-z]{2}\\/[a-z0-9-]+/g;\n  content = content.replace(urlPattern, (match) => {\n    const result = fixUrl(match, articleLang);\n    if (result.fixed) {\n      fixes.push({ lang: articleLang, slug: f.slug, from: match, to: result.url });\n    }\n    return result.url;\n  });\n  return { ...f, content };\n});\n\nreturn [{\n  json: {\n    ...agg,\n    files: fixedFiles,\n    linkFixes: fixes,\n    linkFixCount: fixes.length\n  }\n}];\n"
+      },
+      "id": "validate-fix-links",
+      "name": "Validate & fix internal links",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3340,
+        300
+      ]
+    },
+    {
+      "parameters": {
         "jsCode": "// 9-file commit manifest: 7 makale + rotation state + topic-pool state\nconst agg = $input.first().json;\nconst trData = $('Parse TR output').first().json;\nconst pickCategoryData = $('Pick Category').first().json;\nconst pickTopicData = $('Pick Topic').first().json;\n\nfunction unwrap(raw) { return (raw && raw.data !== undefined) ? raw.data : raw; }\nfunction toObj(v) {\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } }\n  return v;\n}\n\nconst poolRaw = $('Fetch topic pool').first().json;\nconst pool = toObj(unwrap(poolRaw));\n\n// Rotation güncelle\nconst rotation = pickCategoryData.rotation;\nconst nextIndex = pickCategoryData.nextIndex;\nconst nowIso = new Date().toISOString();\nconst usedTopic = pickTopicData.topic;\n\nconst newRotation = {\n  ...rotation,\n  lastIndex: nextIndex,\n  lastRunAt: nowIso,\n  history: [\n    ...(rotation.history || []),\n    { at: nowIso, category: pickCategoryData.category, topicId: usedTopic.id, i18nKey: pickTopicData.i18nKey }\n  ].slice(-50)  // son 50 run'ı tut, sınırsız büyümesin\n};\n\n// Topic-pool güncelle (kullanılan topic'in lastUsedAt'i)\nconst newPool = {\n  ...pool,\n  topics: (pool.topics || []).map(t =>\n    t.id === usedTopic.id ? { ...t, lastUsedAt: nowIso } : t\n  )\n};\n\nconst commitFiles = [\n  ...agg.files.map(f => ({ path: f.path, content: f.content })),\n  { path: 'scripts/category-rotation.json', content: JSON.stringify(newRotation, null, 2) + '\\n' },\n  { path: `scripts/topic-pool/${pickCategoryData.category}.json`, content: JSON.stringify(newPool, null, 2) + '\\n' }\n];\n\nconst commitMessage = `Auto: ${pickCategoryData.category} — ${trData.parsedTitle}\\n\\nTopic ID: ${usedTopic.id}\\ni18nKey: ${pickTopicData.i18nKey}\\nFiles: ${commitFiles.length} (${agg.files.length} articles + 2 metadata)`;\n\nreturn [{\n  json: {\n    files: commitFiles,\n    message: commitMessage,\n    fileCount: commitFiles.length,\n    summary: agg.summary\n  }\n}];"
       },
       "id": "build-commit-manifest",
@@ -368,7 +381,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3440,
+        3640,
         300
       ]
     },
@@ -391,7 +404,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3640,
+        3840,
         300
       ],
       "credentials": {
@@ -423,7 +436,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3840,
+        4040,
         300
       ],
       "credentials": {
@@ -445,7 +458,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4040,
+        4240,
         300
       ]
     },
@@ -472,7 +485,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4240,
+        4440,
         300
       ],
       "credentials": {
@@ -494,7 +507,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4440,
+        4640,
         300
       ]
     },
@@ -521,7 +534,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4640,
+        4840,
         300
       ],
       "credentials": {
@@ -557,7 +570,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4840,
+        5040,
         300
       ],
       "credentials": {
@@ -593,7 +606,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5040,
+        5240,
         300
       ],
       "credentials": {
@@ -615,7 +628,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5240,
+        5440,
         300
       ]
     }
@@ -801,7 +814,7 @@
       "main": [
         [
           {
-            "node": "Build commit manifest",
+            "node": "Validate & fix internal links",
             "type": "main",
             "index": 0
           }
@@ -901,6 +914,17 @@
         [
           {
             "node": "Final summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & fix internal links": {
+      "main": [
+        [
+          {
+            "node": "Build commit manifest",
             "type": "main",
             "index": 0
           }

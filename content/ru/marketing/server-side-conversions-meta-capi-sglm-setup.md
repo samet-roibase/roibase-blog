@@ -29,7 +29,7 @@ CAPI можно настроить без Server-side GTM — отправлят
 3. **Измените GA4 тег в client-side GTM:** Обычно GA4 событие отправляется напрямую Google. Если установить URL транспорта на sGTM, данные GA4 сначала идут на ваш сервер, потом в Google. Это также даёт возможность нормализовать IP и user-agent на сервере.
 4. **Добавьте Meta CAPI тег в sGTM container:** Используйте шаблон "Meta Conversions API". Введите `Pixel ID` и `Access Token`. Access Token получите из Events Manager > Settings > Conversions API. Протестируйте события, отправив test event.
 
-Преимущество sGTM: из одного запроса можно отправить события и в GA4 и в CAPI. Client-side `dataLayer.push` срабатывает один триггер, server-side срабатывают два тега. Тем самым не нужно писать два API call'а в backend. Но здесь важная деталь: `client_id` из GA4 — не то же самое, что `fbp`, который нужен Meta. Вы должны создать transformation variable в sGTM container — взять cookie `fbp` и смапить в CAPI тег. Это требует [архитектуры first-party данных](https://www.roibase.com.tr/tr/ppc); иначе идентификаторы не синхронизируются, EMQ упадёт.
+Преимущество sGTM: из одного запроса можно отправить события и в GA4 и в CAPI. Client-side `dataLayer.push` срабатывает один триггер, server-side срабатывают два тега. Тем самым не нужно писать два API call'а в backend. Но здесь важная деталь: `client_id` из GA4 — не то же самое, что `fbp`, который нужен Meta. Вы должны создать transformation variable в sGTM container — взять cookie `fbp` и смапить в CAPI тег. Это требует [архитектуры first-party данных](https://www.roibase.com.tr/ru/ppc); иначе идентификаторы не синхронизируются, EMQ упадёт.
 
 ## Повышение Event Match Quality
 

@@ -29,7 +29,7 @@ Das Setup funktioniert so:
 3. **GA4-Tag in Client-GTM ändern:** Normalerweise geht GA4 direkt zu Google. Wenn du sGTM-URL als Transport-URL setzt, fließen GA4-Daten erst zu deinem Server, dann zu Google. Das ermöglicht auch IP-Anonymisierung und User-Agent-Normalisierung auf der Serverseite.
 4. **Meta Conversions API-Tag in sGTM hinzufügen:** Nutze die Template "Meta Conversions API". Gib `Pixel ID` und `Access Token` ein. Den Access Token holst du über Events Manager > Settings > Conversions API. Hier kannst du mit einem Test-Event die Verbindung überprüfen.
 
-Ein Vorteil von sGTM: Ein einzelner Request kann Events an GA4 und CAPI senden. Ein Client-seitiges `dataLayer.push`, das einen Trigger auslöst, kann zwei verschiedene Server-seitige Tags zünden. Das erspart dir separate API-Calls im Backend. Aber auch hier: `client_id` aus GA4 ist nicht identisch mit Meta's `fbp`. In sGTM brauchst du eine Transformation-Variable — `fbp`-Cookie auslesen und zum CAPI-Tag mappen. Diese Zuordnung erfordert eine [First-Party-Daten-Architektur](https://www.roibase.com.tr/de/first-party-data-strategie); sonst synchronisieren sich Identifier nicht, EMQ sinkt.
+Ein Vorteil von sGTM: Ein einzelner Request kann Events an GA4 und CAPI senden. Ein Client-seitiges `dataLayer.push`, das einen Trigger auslöst, kann zwei verschiedene Server-seitige Tags zünden. Das erspart dir separate API-Calls im Backend. Aber auch hier: `client_id` aus GA4 ist nicht identisch mit Meta's `fbp`. In sGTM brauchst du eine Transformation-Variable — `fbp`-Cookie auslesen und zum CAPI-Tag mappen. Diese Zuordnung erfordert eine [First-Party-Daten-Architektur](https://www.roibase.com.tr/de/firstparty); sonst synchronisieren sich Identifier nicht, EMQ sinkt.
 
 ## Event Match Quality erhöhen
 

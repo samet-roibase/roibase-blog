@@ -54,14 +54,44 @@ Slug kuralları:
 - Teknik terimler: hedef dilde yerleşmiş kullanımı tercih et (örn EN "attribution"u DE'de "Attribution" olarak bırak; "Zuordnung" demeyin — sektörde kabul görmemiş)
 - Sayılar, kod blokları, tablolar: AYNEN aktar (sayı formatlama yerel olabilir: 1,000 vs 1.000)
 
-**4) İç link lokalizasyonu:**
-TR makaledeki Roibase iç linklerini hedef dile çevir:
-- `https://www.roibase.com.tr/tr/{slug}` → `https://www.roibase.com.tr/{{TARGET_LANG}}/{slug}`
-- Link metnini de hedef dilde yeniden yaz, slug değişmez
+**4) İç link lokalizasyonu — KRİTİK KURAL, EN ÖNEMLİ:**
 
-Örnek:
+Roibase ana site iç linkleri SADECE 2 değişiklik alır:
+- (a) **Locale prefix** Türkçe'den hedef dile geçer: `/tr/` → `/{{TARGET_LANG}}/`
+- (b) **Anchor text** (link metni) hedef dile çevrilir
+
+**HİÇBİR ŞEY DEĞİŞTİRİLMEZ:**
+- ❌ **Slug ASLA değişmez** — Türkçe makaledeki slug ne ise hedef dilde de AYNEN o slug.
+- ❌ Slug'ı çevirme. Lokalize etme. Yorumlama. Türev üretme.
+- ❌ Whitelist'te olmayan slug ÜRETME.
+
+**Geçerli slug'ların TAM LİSTESİ** (sadece bunları kullan):
+`dijitalpazarlama`, `ppc`, `seo`, `geo`, `aso`, `premiumyayinci`, `cro`, `ui-ux`, `branding`, `headless`, `shopify`, `firstparty`, `verianalizi`, `retention-engineering-cdp`, `techstack-partnership`
+
+**URL formatı (ZORUNLU):** `https://www.roibase.com.tr/{{TARGET_LANG}}/{slug-from-source}`
+
+Örnekler:
+
+✅ **DOĞRU:**
 - TR: `[performans pazarlaması](https://www.roibase.com.tr/tr/ppc)`
-- EN: `[performance marketing](https://www.roibase.com.tr/en/ppc)`
+- EN: `[performance marketing](https://www.roibase.com.tr/en/ppc)` (slug aynı, sadece locale ve text değişti)
+- DE: `[Performance-Marketing](https://www.roibase.com.tr/de/ppc)`
+- IT: `[performance marketing](https://www.roibase.com.tr/it/ppc)`
+- RU: `[перформанс-маркетинг](https://www.roibase.com.tr/ru/ppc)` (locale RU'ya geçti, slug aynı)
+
+❌ **YASAK örnekler:**
+- TR: `/tr/firstparty` → DE: `/de/first-party-data-strategie` ← **YANLIŞ, slug çevrildi**
+  Doğrusu: `/de/firstparty`
+- TR: `/tr/ppc` → RU: `/tr/ppc` ← **YANLIŞ, locale prefix Türkçe kaldı**
+  Doğrusu: `/ru/ppc`
+- TR: `/tr/dijitalpazarlama` → EN: `/en/digital-marketing` ← **YANLIŞ, slug değişti**
+  Doğrusu: `/en/dijitalpazarlama` (slug HEP Türkçe kalır, ana site yapısı bu)
+
+**Self-check:** Çıktı vermeden önce link'lerine tek tek bak:
+1. Locale prefix `{{TARGET_LANG}}` mı?
+2. Slug whitelist'teki kelimelerden biri mi? (Türkçe orijinal halinde)
+3. Anchor text hedef dilde mi?
+Üçüne de evet ise OK; herhangi biri hayırsa düzelt.
 
 **5) Yasaklı dönüşümler:**
 - "Roibase" markasını çevirme — her dilde "Roibase"
