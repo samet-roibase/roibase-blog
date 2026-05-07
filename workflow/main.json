@@ -225,7 +225,7 @@
               "responseFormat": "json"
             }
           },
-          "timeout": 30000
+          "timeout": 180000
         }
       },
       "id": "claude-tr",
@@ -238,7 +238,7 @@
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {
@@ -318,7 +318,7 @@
               "responseFormat": "json"
             }
           },
-          "timeout": 30000
+          "timeout": 180000
         }
       },
       "id": "claude-translate",
@@ -331,7 +331,7 @@
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {
