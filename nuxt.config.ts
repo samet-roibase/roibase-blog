@@ -2,18 +2,13 @@
 // - Outplane (node-server) default; cloudflare-pages override via NITRO_PRESET env
 // - Nuxt Content v2 for Markdown-driven articles
 // - Tailwind + @nuxt/image (AVIF) + @nuxt/fonts (Inter + JetBrains Mono self-hosted)
-// - noindex flag (NUXT_PUBLIC_NOINDEX) controls robots.txt + meta robots tag
-//   so the entire site can be hidden from search engines during staging.
+// - Production yayında: arama motorlarına AÇIK. Önceki NUXT_PUBLIC_NOINDEX
+//   staging flag'i kaldırıldı — site artık her zaman indexlenebilir.
 
 import siteConfig from './config/site.json'
 import { SUPPORTED_LOCALES, DEFAULT_LOCALE } from './config/locales'
 
 const NITRO_PRESET = process.env.NITRO_PRESET || 'node-server'
-
-// noindex defaults to TRUE — site is hidden from crawlers until we explicitly
-// flip NUXT_PUBLIC_NOINDEX=false in production. This protects the staging
-// build from being indexed before we are ready to launch.
-const NOINDEX = process.env.NUXT_PUBLIC_NOINDEX !== 'false'
 
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
@@ -25,8 +20,7 @@ export default defineNuxtConfig({
       siteName: siteConfig.siteName,
       defaultLocale: DEFAULT_LOCALE,
       supportedLocales: SUPPORTED_LOCALES,
-      contactEmail: siteConfig.contactEmail,
-      noindex: NOINDEX
+      contactEmail: siteConfig.contactEmail
     }
   },
 
@@ -73,11 +67,7 @@ export default defineNuxtConfig({
         { name: 'viewport', content: 'width=device-width, initial-scale=1.0, viewport-fit=cover' },
         { name: 'format-detection', content: 'telephone=no' },
         { name: 'theme-color', content: '#0b1120' },
-        { name: 'color-scheme', content: 'light dark' },
-        // STAGING noindex — flipped via NUXT_PUBLIC_NOINDEX=false at launch.
-        // Belt-and-braces: robots.txt also Disallows everything while NOINDEX
-        // is true, but compliant crawlers respect the meta tag too.
-        ...(NOINDEX ? [{ name: 'robots', content: 'noindex, nofollow, noarchive' }] : [])
+        { name: 'color-scheme', content: 'light dark' }
       ],
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
@@ -148,6 +138,13 @@ export default defineNuxtConfig({
         '/',
         '/sitemap.xml',
         '/robots.txt',
+        // LLMs.txt ekosistemi — 16 endpoint (1 nav root + 7 nav per-locale +
+        // 1 full root + 7 full per-locale). AI crawler'lar için well-known path.
+        '/llms.txt',
+        '/llms-full.txt',
+        ...SUPPORTED_LOCALES.map((l) => `/llms-${l}.txt`),
+        ...SUPPORTED_LOCALES.map((l) => `/llms-full-${l}.txt`),
+        // Locale homepages — crawlLinks geri kalanı keşfeder
         ...SUPPORTED_LOCALES.map((l) => `/${l}`)
       ]
     },
