@@ -9,8 +9,8 @@
     "travel",
     "lifestyle"
   ],
-  "lastIndex": 6,
-  "lastRunAt": "2026-05-18T14:01:55.461Z",
+  "lastIndex": 0,
+  "lastRunAt": "2026-05-18T22:02:36.257Z",
   "history": [
     {
       "at": "2026-05-07T08:24:08.085Z",
@@ -221,6 +221,12 @@
       "category": "lifestyle",
       "topicId": "lifestyle-005",
       "i18nKey": "lifestyle-005-2026-05"
+    },
+    {
+      "at": "2026-05-18T22:02:36.257Z",
+      "category": "ai",
+      "topicId": "ai-006",
+      "i18nKey": "ai-006-2026-05"
     }
   ]
 }
