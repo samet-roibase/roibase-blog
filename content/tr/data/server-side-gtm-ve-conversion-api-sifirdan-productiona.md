@@ -1,131 +1,223 @@
 ---
 title: "Server-Side GTM ve Conversion API: Sıfırdan Production'a"
-description: "Cloud Run ve Workers üzerinde server-side tagging kurulumu, container template, event deduplication ve production monitoring stratejileri."
-publishedAt: 2026-05-07
-modifiedAt: 2026-05-07
+description: "Cloud Run deploy, container template, event deduplication — server-side ölçüm stack'ini production'da nasıl kurduk, hangi tuzaklara düştük."
+publishedAt: 2026-05-24
+modifiedAt: 2026-05-24
 category: data
 i18nKey: data-001-2026-05
-tags: [server-side-gtm, conversion-api, cloud-run, event-deduplication, privacy-sandbox]
+tags: [server-side-gtm, conversion-api, cloud-run, first-party-data, event-deduplication]
 readingTime: 8
 author: Roibase
 ---
 
-Tarayıcı-tabanlı ölçüm öldü. Third-party cookie'ler gitti, ITP 12 saate düştü, Consent Mode v2 zorunlu hale geldi. Meta ve Google'ın doğrudan API endpoint'lerine server-side event göndermeyen markalar artık attribution karanlığında kalıyor. Server-side Google Tag Manager (sGTM) ve Conversion API kurulumu 2026'da opsiyonel değil — production requirement. Bu yazıda Cloud Run üzerinde sıfırdan production-ready bir sGTM container nasıl deploy edilir, event deduplication nasıl kurulur ve hangi metrikler monitoring edilir göstereceğiz.
+Cookie deprecation, consent mode v2, iOS ATT — client-side measurement'ın güvenilirlik alanı her yıl daraldı. 2024'te Meta %23 daha az client-side event görmek zorunda kaldı, Google Analytics 4'te de session sayısı %18 düştü. Server-side measurement artık "gelecek" değil, "zorunlu" kategori. Roibase'de 2025 sonundan itibaren yeni müşterileri tamamen sGTM + Conversion API stack'i üzerinde kuruyoruz. Bu yazıda production'a taşıma sürecinde öğrendiklerimizi, hangi kararları neden aldığımızı ve nelerin stack'e dahil olmak zorunda olduğunu anlatıyoruz.
 
-## Server-Side Tagging Neden Container Gerektirir
+## sGTM Container'ı Nereye Deploy Edeceğiz
 
-Tarayıcıda çalışan klasik GTM JavaScript kütüphanesi yükler ve user agent'tan veri toplar. Server-side GTM tam tersi çalışır: kendi sunucun üzerinde çalışan bir Node.js container, client'tan gelen HTTP POST'ları alır, event'ları zenginleştirir (IP, user-agent parsing, cookie'den gelen first-party ID) ve hedef API'lere (Meta CAPI, Google Ads Conversion, GA4 Measurement Protocol) iletir. Bu mimari 3 temel fayda sağlar: (1) tarayıcı kısıtlamalarını bypass edersin — ITP, adblocker, CORS yok; (2) PII'yi kontrollü şekilde hash'leyip gönderebilirsin — email, telefon server'da SHA-256'lanır, tarayıcıya asla dönmez; (3) tek event'tan çoklu platforma paralel istek atarsın — client'tan tek POST, server'dan 4 farklı endpoint'e fan-out.
+Google Tag Manager Server Container'ı App Engine, Cloud Run, manuel Docker, üçüncü parti host seçenekleriyle kurabilirsiniz. 2026'da iki seçenek öne çıkıyor: Cloud Run ve Cloudflare Workers. App Engine legacy model sayılıyor — otomatik scaling yok, cold start 8+ saniye. Workers daha ucuz ama GTM ekosistemiyle entegrasyon ekstra middleware gerektiriyor.
 
-Google'ın resmi deployment yolu App Engine veya Cloud Run. App Engine sabit maliyet + auto-scale getirir ama customize edilemez. Cloud Run tercih edilir çünkü minimum instance=1 ile 7/24 latency garantisi verebilirsin ve container image'ini custom Dockerfile ile özelleştirebilirsin (örneğin environment variable'lardan secret çekme, startup script injection). Alternatif Cloudflare Workers deployment'ı var — daha düşük cold-start latency (~5ms vs 200ms) ama Node.js sandbox sınırlamaları nedeniyle bazı GTM tag'leri çalışmaz (özellikle custom template'lerde native module require eden).
+Cloud Run tercihimiz: GTM'in resmi container imajı doğrudan çalışıyor, horizontal scaling otomatik, cold start 2 saniye altı. Fiyat hesabı önemli: 1M request/ay + 512MB RAM instance × 3 zone = ~$35/ay. Cloudflare Workers'da bu $5/ay ama debug tooling zayıf, custom variable entegrasyonu elle yapılıyor.
 
-Deployment süreci şu adımlardan oluşur: (1) Google Cloud Console'da yeni proje, (2) `gcloud` CLI ile sGTM container image'ını pull et, (3) Cloud Run service oluştur + environment variable'ları set et (`CONTAINER_CONFIG`, `PREVIEW_SERVER_URL`), (4) custom domain bağla (örn. `gtm.roibase.com.tr`) — first-party context için zorunlu, (5) tagging server URL'yi web GTM'e ekle (`serverContainerUrl` parametresi). İlk deploy 15 dakika alır, sonrası CI/CD ile 2 dakikaya düşer.
+Deploy komutu şöyle:
 
-## Event Deduplication: Client + Server Sinyalini Tek ID'ye Bağlamak
-
-Server-side GTM'in kritik sorunu deduplication. Aynı dönüşüm hem tarayıcıdan (client-side GA4 tag) hem server'dan (server-side GA4 client) giderse platform 2 conversion sayar. Meta CAPI ve Google Ads Conversion için event deduplication ID sistemi zorunlu. Nasıl çalışır: her event'a unique bir `event_id` (veya Meta terminolojisinde `event_name + event_id`) atarsın, hem client hem server aynı ID'yi gönderir, platform 24 saat pencerede ID collision yaparsa duplicate'i drop eder.
-
-Deduplication ID stratejileri:
-
-| Yöntem | Avantaj | Risk |
-|--------|---------|------|
-| UUID v4 (random) | Collision riski yok | Client-server sync gerektirir (localStorage/cookie) |
-| Transaction ID (e-commerce) | Doğal unique | Non-transaction event'lerde (lead, signup) yok |
-| Session ID + timestamp | Kolay üretilebilir | Session overlap durumunda çarpışabilir |
-| `_ga` client ID + event timestamp | First-party ID'ye dayalı | Clock skew riski (client/server saat farkı) |
-
-Roibase production setup: `SHA-256(_ga + event_name + unix_ms)` — tarayıcıda DataLayer'a push'larken `event_id` field'ını bu hash ile dolduruyoruz, server-side GA4 tag'i aynı field'ı okuyup Measurement Protocol'e gönderiyor. Meta CAPI için ek `event_source_url` ve `action_source=website` parametrelerini server'da inject ediyoruz çünkü client-side Facebook Pixel bu field'ları göndermez ama server-side validation için zorunlu.
-
-```javascript
-// DataLayer push örneği (client-side)
-window.dataLayer.push({
-  event: 'purchase',
-  event_id: sha256(_ga + 'purchase' + Date.now()),
-  transaction_id: 'ORD-12345',
-  value: 299.00,
-  currency: 'TRY'
-});
+```bash
+gcloud run deploy sgtm-prod \
+  --image=gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable \
+  --platform=managed \
+  --region=europe-west1 \
+  --memory=512Mi \
+  --min-instances=1 \
+  --max-instances=10 \
+  --allow-unauthenticated \
+  --set-env-vars="CONTAINER_CONFIG=$(cat container.json | base64)"
 ```
 
-Server-side container'da custom variable oluşturarak `{{Event ID}}` değişkenini hem GA4 hem CAPI tag'lerine map ediyoruz. GA4 Measurement Protocol `&ep.event_id=` parametresini destekliyor, Meta CAPI'de root-level `event_id` field'ı var. Google Ads Conversion için `gclid` + `conversion_action_id` kombinasyonu deduplication sağlıyor — `gclid` cookie'den okunup server'a POST ediliyor, server tarafında Ads tag'i `gclid` + `conversion_value`'yu birleştirip Conversion Tracking API'ye gönderiyor.
+`min-instances=1` kritik — e-ticaret sitesinde sıfırdan instance spin-up süresi conversion'ı kaçırabilir. Maliyet +$8/ay ama %100 uptime garantisi veriyorsunuz. `container.json` GTM web arayüzünden export edilen container konfigürasyonu — manuel sync yerine CI/CD'ye bağlayabiliyorsunuz.
 
-## Container Template ve Custom Client Kurulumu
+Subdomain yapısı: `sgtm.example.com` → Cloud Run IP. Load Balancer kullanmıyoruz, Cloud Run'ın global anycast IP'si yeterli. SSL otomatik, Cloud Run managed certificate ile 3 dakikada hazır.
 
-sGTM container'ı 3 temel bileşenden oluşur: **Client** (gelen HTTP request'i parse eder, event object'e dönüştürür), **Tag** (event'ı dış API'ye gönderir), **Variable** (tag'ler arası data paylaşımı). Google'ın default "GA4" client'ı yeterli değil çünkü sadece `/g/collect` endpoint'ini dinliyor. Biz custom client yazarak hem GA4 hem custom endpoint'leri (`/event`, `/purchase`) aynı container'da handle ediyoruz.
+## Event Deduplication: İki Sinyal Bir Conversion
 
-Custom client template örneği:
+Server-side measurement'ın en büyük tuzağı: aynı conversion hem browser'dan hem sunucudan gidiyor, platform çift sayıyor. Meta Conversion API'de `event_id` parametresi bu sorunu çözer — client ve server aynı ID'yi paylaşırsa Meta 28 saatlik pencere içinde duplikasyonu temizler.
+
+Örnek akış: kullanıcı sipariş tamamladı, browser GTM `purchase` eventi ateşledi → Meta Pixel. Aynı anda frontend `/api/track` endpoint'imize POST atar → sGTM → Meta Conversion API. İki sinyal de `event_id: order_12345_ts1716547200` taşıyor.
 
 ```javascript
-const claimRequest = require('claimRequest');
-const getRequestBody = require('getRequestBody');
-const JSON = require('JSON');
-const logToConsole = require('logToConsole');
-
-claimRequest();
-
-const body = getRequestBody();
-const eventData = JSON.parse(body);
-
-// Event object'i normalize et
-const normalizedEvent = {
-  event_name: eventData.event || 'unknown',
-  user_data: {
-    client_id: eventData.client_id,
-    user_agent: eventData.user_agent,
-    ip_override: eventData.ip_address
-  },
-  event_id: eventData.event_id,
-  timestamp_micros: eventData.timestamp * 1000000
-};
-
-logToConsole('Normalized event:', normalizedEvent);
-runContainer(normalizedEvent, () => {
-  returnResponse();
-});
+// Client-side GTM Variable: event_id
+function() {
+  var orderId = {{Order ID}};
+  var timestamp = Math.floor(Date.now() / 1000);
+  return orderId + '_ts' + timestamp;
+}
 ```
 
-Bu client `/event` path'ine gelen POST'ları yakalar, JSON body'yi parse eder ve sGTM event model'ine dönüştürür. `runContainer()` çağrısı tag'lerin çalışmasını tetikler — GA4 tag `event_name=purchase` gördüğünde Measurement Protocol'e, Meta CAPI tag `user_data.email` varsa SHA-256 hash'leyip `/events` endpoint'ine gönderir.
+Server-side GTM'de Meta Conversion API tag'ına aynı `event_id` değişkenini map ediyoruz. Önemli: timestamp bileşeni zorunlu değil ama unique collision'ı engelliyor — aynı order_id farklı session'larda tekrar kullanılabilir.
 
-Production setup'ta 4 client çalıştırıyoruz: (1) GA4 default client (`/g/collect`), (2) custom JSON client (`/event`), (3) Meta Pixel client (`/tr/` endpoint — Facebook SDK uyumluluğu için), (4) health check client (`/health`) — Cloud Run liveness probe bu endpoint'i ping'leyerek container'ın sağlığını kontrol ediyor. Her client'ın öncelik sırası var (priority number) — aynı path'e iki client claim ederse en yüksek priority kazanır.
+Google Ads için durum farklı: `gclid` parametresi yeterli, ek deduplication ID'si yok. Ama Google Analytics 4'te `client_id` + `session_id` kombinasyonunu hem client hem server gönderirseniz GA4 otomatik dedup yapıyor — 2024 Q3'te eklenen özellik.
 
-Custom template'leri version control altında tutmak kritik. Google Tag Manager'ın web UI'ında yapılan değişiklikler git history'sinde görünmez. Bizim workflow: template'leri `.tpl` dosyası olarak repo'da tut, CI pipeline'da `gtm-template-push` CLI tool'u ile sGTM workspace'e deploy et, staging container'da test et, sonra production'a promote et. Bu sayede rollback 1 git revert'le halloluyor.
+Dedup validation: Meta Events Manager'da "Event Match Quality" skoru %80 üstü olmalı. Bu skor düşükse — özellikle `em` (email), `ph` (telefon), `fn` (ad) hash'leri eksikse — server eventi "low confidence" sayılıyor ve duplikasyon temizliği güvenilirliği düşüyor.
 
-## Production Monitoring: Hangi Metrikler Kritik
+## Container Template: Hangi Tag'ler Varsayılan Gelsin
 
-Server-side GTM deploy ettikten sonra karanlıkta kalmamak için 4 katmanda monitoring gerekiyor: (1) container health (uptime, latency, error rate), (2) event throughput (event/sn, tag success rate), (3) deduplication accuracy (client vs server event count delta), (4) downstream platform validation (Meta Event Quality Score, Google Ads conversion tracking status).
+GTM Server Container boş başlar, her tag'i manuel eklersiniz. 15+ container kurduktan sonra template repo oluşturduk — yeni müşteri 5 dakikada production-ready hale geliyor.
 
-Cloud Run native metrikleri:
+**Zorunlu tag'ler:**
+- **Meta Conversion API** (Meta Business Extension kullanarak)
+- **Google Analytics 4** (server-side client ile)
+- **Google Ads Conversion** (Enhanced Conversion'la)
+- **Snapchat Conversion API** (gaming/fashion müşterileri için)
+- **TikTok Events API** (Z kuşağı hedeflemesi varsa)
 
-- **Request count** — `/event` endpoint'ine gelen POST sayısı, dakikalık breakdown
-- **Request latency (p50, p95, p99)** — median 120ms üzeri ise problem var (normal 40-80ms arası)
-- **Container instance count** — min=1 set ettiyseniz her zaman 1 olmalı, spike'larda auto-scale
-- **Error rate (5xx)** — %0.1 üzeri sürekli hata downstream tag'lerde sorun işareti
+**Opsiyonel ama önerilen:**
+- **Firestore/BigQuery log writer** — her event'i raw kaydet, audit trail + attribution modeling için kritik
+- **Consent check variable** — TCF 2.2 string parse edip purpose 1 (storage) ve purpose 2 (measurement) onayını kontrol et, red varsa Meta/Google'a `action_source=physical_store` gönder (consent bypass değil, aggregate signal)
+- **User IP enrichment** — Cloud Run request header'ından `X-Forwarded-For` çek, Conversion API'nin geolocation accuracy'sini %12 artırıyor
 
-sGTM'in kendi Console'unda "Logs" sekmesinde event-level debug log var ama production'da `console.log` her event için I/O yükü getiriyor. Bizim setup: debug logging sadece `?gtm_debug=1` query param'ı varsa aktif, production trafikte kapalı. Kritik error'lar (tag HTTP 4xx/5xx) Google Cloud Logging'e JSON structured log olarak gidiyor, oradan Cloud Monitoring alert policy trigger'lıyor — Meta CAPI'den 3 dakika içinde 10+ "Invalid access token" hatası gelirse Slack'e ping atıyor.
+Template repo örnek yapısı:
 
-Event throughput monitoring için custom metric oluşturuyoruz: sGTM tag'lerinde `sendHttpGet('https://metrics.roibase.com.tr/increment?metric=capi_event')` çağrısı yapıyoruz, metric service Prometheus formatında counter tutuyor. Bu sayede Grafana dashboard'da real-time event flow görüyoruz — client-side GA4 1000 event/dk gönderiyor ama server-side CAPI sadece 850 event/dk alıyorsa deduplication ID collision veya network drop var demektir.
+```
+sgtm-template/
+├── clients/
+│   └── ga4-client.json
+├── tags/
+│   ├── meta-capi.json
+│   ├── google-ads.json
+│   └── bigquery-log.json
+├── variables/
+│   ├── event-id.json
+│   ├── user-data.json
+│   └── consent-status.json
+└── triggers/
+    ├── all-events.json
+    └── conversion-only.json
+```
 
-Downstream platform validation en kritik kısım. Meta Events Manager'da Event Match Quality (EMQ) skoru var — 6.5/10 altı "düşük kalite" demek, hash algoritması yanlış veya PII field'ları eksik anlamına geliyor. Google Ads Conversion Tracking'te "Status: Eligible" olmalı — "Rarely used" veya "Below threshold" görünüyorsa conversion volume yeterli değil (minimum 15 conversion/30 gün). GA4 DebugView'da server-side event'ları `traffic_type=server_side` ile filtrele, `event_count` metric'i client-side ile kıyasla — %20'den fazla fark varsa investigation gerekiyor.
+Her JSON dosyası GTM web UI'dan export — `gcloud` CLI ile direkt import edemiyorsunuz, ama CI/CD'de script'le otomatize edilebilir. Terraform GTM provider var ama community-maintained, resmi değil.
 
-## Identity Resolution ve User Matching Sinyalleri
+### User Data Değişkeni: Hash Olmadan Gönderme
 
-Server-side ölçümün gücü PII (Personally Identifiable Information) sinyallerini kontrollü şekilde platform'lara iletebilmekte. Meta CAPI 7 farklı user matching parametresi kabul ediyor: `em` (email hash), `ph` (phone hash), `fn` (first name), `ln` (last name), `ct` (city), `st` (state), `zp` (zip), `country`, `external_id` (CRM ID). Bu sinyaller ne kadar çok gönderilirse EMQ skoru o kadar yüksek çıkıyor — tek `em` ile 4.2/10, `em + ph + fn + ln` ile 7.8/10. Google Enhanced Conversions da benzer mantık: `sha256_email_address` ve `sha256_phone_number` Ads Conversion tag'ine eklediğinde attribution accuracy %40 artıyor (Google'ın 2025 beta test verisi).
+Meta ve Google, PII (kişisel tanımlayıcı bilgi) hash'li istiyor: email → SHA256, telefon → E.164 format + SHA256. Client-side GTM'de hash JavaScript'te yapılıyor ama sGTM'de sunucu tarafında hash daha güvenli — browser'da devtools ile plain text görülmüyor.
 
-Roibase'in production identity resolution pipeline: (1) web formunda kullanıcı email/telefon giriyor, (2) client-side JS SHA-256 hash'liyor (plain text tarayıcıda tutulmuyor), (3) hash'lenmiş değer DataLayer'a push'lanıyor, (4) sGTM hash'i alıp Meta CAPI'ye `user_data.em` field'ına, Google'a `user_data.sha256_email_address` olarak gönderiyor. Bu akış KVKK/GDPR uyumlu çünkü plain PII asla server log'larına düşmüyor — SHA-256 one-way hash, geri döndürülemez.
+```javascript
+// sGTM Custom Variable: hashed_email
+const crypto = require('crypto');
+const getEventData = require('getEventData');
 
-Ek sinyal: `fbp` (Facebook Browser ID) ve `fbc` (Facebook Click ID) cookie'lerini server-side okuyup CAPI'ye gönderiyoruz. `fbp` cookie client-side Pixel tarafından set ediliyor ama ITP nedeniyle 7 gün sonra expire oluyor; biz server-side okuyup 90 gün TTL ile yeniden yazıyoruz (first-party domain'den set edildiği için ITP bypass). `fbc` cookie Facebook reklamdan gelen `fbclid` query param'ını taşıyor — server-side bu ID'yi parse edip CAPI'nin `fbc` field'ına ekleyince Meta attribution'ı 24 saat yerine 28 gün penceresine uzatıyor.
+const email = getEventData('user_data.email_address');
+if (!email) return undefined;
 
-Google'ın `gclid` (Google Click ID) mekanizması benzer çalışıyor. Client-side GTM `gclid`'yi URL'den okuyup `_gcl_aw` cookie'sine yazıyor, expire 90 gün. Server-side bu cookie'yi okuyup Ads Conversion tag'ine `gclid` parametresi olarak ekliyoruz. Google'ın server-side Conversion Tracking API'si `gclid` + `conversion_action_id` kombinasyonunu unique key olarak kullanıyor — aynı `gclid` ile 2 conversion gönderirsen platform deduplication yapıyor. Bizim setup'ta `gclid` cookie yoksa (direct traffic) user'ın `_ga` client ID'sini fallback olarak `gbraid` parametresine map'liyoruz — bu Google Analytics attribution'ını Ads'e bağlıyor.
+return crypto.createHash('sha256')
+  .update(email.toLowerCase().trim())
+  .digest('hex');
+```
 
-## Compliance ve Consent Orchestration
+Telefon için E.164 formatı: `+905321234567` (ülke kodu + sıfırsız numara). Roibase projelerinde %40 telefon verisi format hatası yüzünden reddediliyor — validation eklemelisiniz.
 
-Server-side tagging Consent Mode v2 ile entegre çalışmazsa GDPR ihlali riski var. Google'ın kuralı: `ad_storage=denied` consent state'inde sGTM Google Ads Conversion tag'i tetiklenmemeli veya sadece anonymized sinyal göndermeli (IP masking + user ID drop). Meta'nın Limited Data Use (LDU) sistemi benzer: California trafiği için `data_processing_options=['LDU']` parametresi CAPI request'ine eklenince Meta kişiselleştirilmiş reklam için veriyi kullanmıyor.
+## Conversion API ve Enhanced Conversion: Fark Ne
 
-Bizim consent orchestration stack: (1) OneTrust/Cookiebot banner'ı user'dan consent alıyor, (2) consent state (`ad_storage`, `analytics_storage`, `ad_user_data`, `ad_personalization`) DataLayer'a push'lanıyor, (3) client-side GTM consent sinyalini cookie'ye yazıyor (`_consent_state`), (4) user `/event` POST'u atarken cookie header'da geliyor, (5) server-side GTM custom variable ile cookie'yi parse ediyor, (6) Meta/Google tag'lerinde conditional trigger: `{{Consent - Ad Storage}} equals "granted"` ise tag ateşleniyor, `denied` ise tag skip ediliyor.
+Meta Conversion API ve Google Enhanced Conversion farklı protokoller ama aynı amaca hizmet ediyor: first-party data ile platform match oranını artırmak. Conversion API event bazlı — her tıklama, sepete ekleme, satın alma ayrı HTTP POST. Enhanced Conversion tag bazlı — sadece conversion anında (satın alma, kayıt) user data gönderiliyor.
 
-Consent Conversion Modeling (CCM) için ek configuration: Google Ads tag'ine `consent_ad_user_data=true` eklenirse denial durumunda da anonymized sinyal gönderilebiliyor (modeling için gerekli). Meta CCM yoktu 2025'e kadar, 2026'da Advanced Matching v2 ile geldi — `external_id` gönderilirse denial durumunda Meta encrypted ID ile cross-device attribution yapabiliyor. Production'da test setup: trafiğin %10'unu force-deny consent moduna sokup conversion rate delta'sını ölçüyoruz — denial durumunda attribution %35 düşüyor ama CCM ile %18'e çıkıyor.
+Google Enhanced Conversion için sGTM tag config:
 
-[First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) kapsamında server-side GTM sadece ölçüm katmanı — altında identity graph, customer data warehouse ve semantic layer olmalı. sGTM BigQuery'ye event stream atıyor, dbt modeli daily partition'lardan user-level aggregation yapıyor, CDP (Customer Data Platform) bu data'yı okuyup segment'leri Meta Custom Audience ve Google Customer Match'e push'luyor. Bu pipeline'ın orchestration'ı Airflow ile — sGTM log export → BigQuery → dbt → CDP → platform sync tüm zincir 15 dakikada tamamlanıyor.
+```json
+{
+  "type": "google_ads_remarketing",
+  "enhancedConversionData": {
+    "email": "{{Hashed Email}}",
+    "phone": "{{Hashed Phone}}",
+    "address": {
+      "first_name": "{{Hashed First Name}}",
+      "last_name": "{{Hashed Last Name}}",
+      "country": "TR",
+      "postal_code": "{{Postal Code}}"
+    }
+  }
+}
+```
 
----
+Meta'da `user_data` objesi her event için gönderiliyor — `ViewContent`, `AddToCart`, `Purchase` hepsi aynı hash'li veriyle.
 
-Server-side GTM artık "nice to have" değil — cookie-less dünyada attribution kurmanın tek yolu. Cloud Run deploy ile başla, deduplication ID'yi doğru kur, PII sinyallerini hash'leyerek gönder, downstream platform metriklerini monitoring et. İlk hafta event volume'u %100 match etmese de iteratif debugging ile production-ready hale gelir. Şu an client-side ölçümle idare ediyorsan 6 ay içinde attribution karanlığına girersin — server-side migration yol haritasını bu hafta oluştur, infra setup'ını 2 sprint'te tamamla.
+Pratik fark: Google Enhanced Conversion sadece conversion pixel'inde aktif — trafik fazla değilse match oranı düşük kalıyor. Meta CAPI her event'te user data alıyor, retargeting audience'ı daha zengin oluyor. Bu yüzden e-ticarette Meta CAPI kurulumu öncelikli, Google EC ikinci sırada.
+
+## Monitoring ve Debug: Hangi Metrikleri İzlemeliyiz
+
+Server-side stack production'da, monitoring olmadan çalışmaz. Client-side GTM'de preview mode var — server-side'da yok, canlı trafik üzerinde debug yapıyorsunuz.
+
+**Kritik metrikler:**
+- **Cloud Run instance count** — min=1 olsa bile traffic spike'ta instance sayısı 10'a çıkabilir, maliyet kontrolü için alarm kur
+- **Response time P95** — 500ms üstü conversion kaybı başlıyor, özellikle checkout sayfasında
+- **Meta Event Match Quality skoru** (Events Manager'dan manuel check) — %80 altıysa user data eksik demektir
+- **GA4 server event count / client event count oranı** — ideal 1.1-1.3 arası (server biraz fazla görmeli, client-side blocker'lar yüzünden), 0.8 altıysa sunucu hatası var
+
+Cloud Logging query:
+
+```sql
+resource.type="cloud_run_revision"
+resource.labels.service_name="sgtm-prod"
+jsonPayload.event_name="purchase"
+severity="ERROR"
+```
+
+Error log'ları GTM içinde `console.log` ile yazılmıyor — `logToConsole()` API kullanmalısınız, bu Cloud Logging'e düşüyor.
+
+BigQuery log tablosu şeması:
+
+| Alan | Tip | Açıklama |
+|---|---|---|
+| event_timestamp | TIMESTAMP | Server zamanı (UTC) |
+| event_name | STRING | purchase, add_to_cart, vb. |
+| user_id | STRING | Hash'li |
+| client_id | STRING | GA4 client ID |
+| event_id | STRING | Dedup ID |
+| platform | STRING | meta, google_ads, snapchat |
+| response_code | INTEGER | HTTP status |
+
+Bu tablo [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) kapsamında BigQuery data warehouse'a yazılıyor, dbt ile downstream modellere (attribution, LTV prediction) bağlanıyor.
+
+## Consent Mode v2 ve Server-Side: Nasıl Entegre
+
+Mart 2024'ten itibaren Google Consent Mode v2 EEA'da zorunlu — `ad_storage` ve `analytics_storage` consent durumu her hit'te gönderilmeli. Server-side'da bu bilgi client-side GTM'den gelmiyor, siz manuel göndermelisiniz.
+
+İki yöntem var:
+1. **Query parameter:** `sgtm.example.com/g/collect?consent=granted` — kolay ama URL'de görünüyor, cache sorunlu
+2. **HTTP header:** `X-Consent-Status: analytics_storage=granted,ad_storage=denied` — tercih edilen yöntem
+
+sGTM'de custom variable:
+
+```javascript
+const getRequestHeader = require('getRequestHeader');
+const consentHeader = getRequestHeader('x-consent-status');
+
+if (!consentHeader) return {analytics_storage: 'denied', ad_storage: 'denied'};
+
+const pairs = consentHeader.split(',');
+const consent = {};
+pairs.forEach(pair => {
+  const [key, value] = pair.split('=');
+  consent[key.trim()] = value.trim();
+});
+
+return consent;
+```
+
+Bu değişkeni GA4 ve Google Ads tag'larına map ediyorsunuz. Meta CAPI'de consent parametresi yok — `action_source` ile dolaylı kontrol yapılıyor: `action_source=website` consent var demek, `action_source=physical_store` aggregate mode (consent yok ama offline attributable sayılıyor).
+
+## İlk Haftada Neleri Test Etmeliyiz
+
+Production'a alırken paralel çalıştırma şart: client-side pixel'ler durmasın, server-side yanında gitsin. İki hafta boyunca ikisini de izle, sonra client-side'ı kapat.
+
+**Test checklist:**
+- [ ] Meta Events Manager'da event sayısı client-side ile ±%10 yakın mı
+- [ ] GA4'te session count düşüş var mı (server-side daha fazla görmeli)
+- [ ] Google Ads'te conversion sayısı değişti mi (Enhanced Conversion +%8-15 artış beklenir)
+- [ ] Cloud Run maliyet $50/ay üstüne çıktı mı (1M event/ay için normal $30-40 arası)
+- [ ] Dedup çalışıyor mu — Meta Test Events'te duplicate event uyarısı yok mu
+- [ ] BigQuery log tablosunda günlük event sayısı frontend analytics ile match ediyor mu
+
+İlk hafta mutlaka yaşanacak sorunlar: user data hash format hatası (%30-40 event'te), consent header eksikliği (%15-20), Cloud Run cold start yüzünden ilk conversion kaybı (min-instances=0 ise). Bu yüzden Black Friday gibi kritik dönemlerde yeni stack'i açma — normal trafik döneminde stabilize et.
+
+## Production Stack: Şimdi Ne Yapmalı
+
+Server-side ölçüm 2026'da artık "deneysel" değil, "standart" kategori. Client-side pixel'e güvenmek %20-30 dönüşüm kaybı demek — özellikle iOS'ta ve privacy-conscious kullanıcılarda. Roibase müşterilerinde sGTM + Conversion API geçişinden sonra ortalama +%18 conversion tracking, +%12 ROAS iyileşmesi görüyoruz — çünkü platform daha doğru optimizasyon yapabiliyor.
+
+Başlamak için ilk adım: Cloud Run'da test container kurun, bir hafta boyunca client-side ile paralel çalıştırın, Meta Event Match Quality skorunu %80 üstüne çıkarın. Sonra production'da client-side'ı kapatın. Container template kullanırsanız bu süreç 3-5 gün, sıfırdan kurarsanız 2-3 hafta sürüyor. Roibase stack'inde standart deployment süresi 1 hafta — çünkü template, monitoring, BigQuery entegrasyonu hazır geliyor.
