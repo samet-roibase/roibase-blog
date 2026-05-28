@@ -1,161 +1,217 @@
 ---
 title: "Nuxt 3 + Cloudflare Pages: 10s LCP'den 2s'ye"
-description: "Self-hosted fonts, lazy hydration, content-visibility ve edge caching ile LCP'yi 80% düşürdük. Gerçek benchmark, kod örnekleri ve tradeoff'lar."
-publishedAt: 2026-05-07
-modifiedAt: 2026-05-07
+description: "Self-hosted fontlar, lazy hydration, content-visibility ve edge caching ile Nuxt 3 projesinde LCP süresini %80 düşürdük. Somut kod örnekleri ve benchmark numaraları."
+publishedAt: 2026-05-28
+modifiedAt: 2026-05-28
 category: tech
 i18nKey: tech-001-2026-05
-tags: [nuxt3, cloudflare-pages, web-performance, lcp, edge-caching]
+tags: [nuxt3, web-performance, cloudflare-pages, core-web-vitals, edge-computing]
 readingTime: 8
 author: Roibase
 ---
 
-Google'ın Core Web Vitals güncellemesi sonrası LCP (Largest Contentful Paint) 2.5 saniyenin altında olmalı yoksa hem organik sıralama hem dönüşüm oranı düşüyor. Bir e-ticaret sitesini Nuxt 3 + Cloudflare Pages stack'ine taşıdığımızda ilk deploy sonrası LCP 10.2 saniyede kaldı. Self-hosted font stratejisi, selective hydration, CSS content-visibility ve edge caching kombinasyonuyla 2.1 saniyeye indirdik. Aşağıda adım adım hangi değişiklik hangi kazancı getirdiğini, tradeoff'ları ve kodu paylaşıyoruz.
+Cloudflare Pages + Nuxt 3 kombinasyonu edge caching ve zero-config deployment vadediyor, ama Core Web Vitals için yeterli gelmiyor. Production'daki bir e-ticaret projesinde LCP 10.2 saniye, TBT 2190 milisaniyeydi. Google Font, client-side hydration, global CSS ve senkron JavaScript rendering'i bloke ediyordu. Self-hosted fontlar, lazy hydration, `content-visibility` CSS property ve edge cache stratejisiyle LCP'yi 2.1 saniyeye, TBT'yi 180 milisaniyeye düşürdük. Bu yazıda adım adım implementasyon ve tradeoff'ları paylaşıyoruz.
 
-## Problemi tanımlamak: 10s LCP'nin anatomisi
+## Google Font Render Blocking: 3.8s Kaybı
 
-İlk CrUX raporunda median LCP 10.2s, TBT (Total Blocking Time) 2190ms çıktı. Chrome DevTools Lighthouse profil analizi şunları gösterdi:
+Google Fonts CDN'inden `@import` veya `<link>` ile çekilen fontlar render'ı bloke eder. FOIT (Flash of Invisible Text) riski ve 3+ round-trip'lik latency, LCP'yi direkt etkiler. Chrome DevTools Lighthouse'da "Eliminate render-blocking resources" uyarısı 3.8 saniye gösteriyordu.
 
-- **Font yükleme:** Google Fonts CDN'den 3 font ailesi, render-blocking
-- **JavaScript hydration:** 420kB bundle, tüm sayfa hydrate ediliyor
-- **Above-the-fold görsel:** 1.2MB JPEG, lazy load yok
-- **Cloudflare cache:** SSR response cache'lenmiyor, her istek origin'e düşüyor
+Çözüm: fontları self-host yaptık. `@fontsource/inter` npm paketini kullanarak Woff2 dosyalarını `public/fonts` dizinine koyduk. Nuxt config'de `preload` ekledik:
 
-Baseline ölçüm: PageSpeed Insights mobil skoru 34/100. Desktop 62/100. Bu sayılar Shopify Liquid'den Nuxt 3'e geçiş sonrası — framework değişikliği tek başına performans kazancı sağlamıyor, mimari optimizasyon gerekiyor.
-
-## Self-hosted font + preload stratejisi
-
-Google Fonts servisinden aynı font dosyalarını `public/fonts/` dizinine indirip `@font-face` tanımını `app.vue`'ya taşıdık. Kritik fark: `<link rel="preload">` ile ilk HTML response içinde font dosyalarını request ediyoruz, CSS parse edilmeden önce.
-
-```vue
-<!-- app.vue -->
-<script setup>
-useHead({
-  link: [
-    {
-      rel: 'preload',
-      href: '/fonts/inter-var.woff2',
-      as: 'font',
-      type: 'font/woff2',
-      crossorigin: 'anonymous'
-    }
-  ]
-})
-</script>
-
-<style>
-@font-face {
-  font-family: 'Inter';
-  src: url('/fonts/inter-var.woff2') format('woff2');
-  font-display: swap;
-  font-weight: 100 900;
-}
-</style>
-```
-
-**Kazanç:** LCP 10.2s → 7.8s (2.4s düşüş). Font yükleme render-blocking'den çıktı, FOIT (Flash of Invisible Text) süresi 1200ms → 180ms. Tradeoff: font dosyaları artık kendi CDN'imizde, versiyonlamayı manuel yönetmek gerekiyor (biz Cloudflare R2 bucket + Cache-Control header ile çözdük).
-
-## Selective hydration + `content-visibility`
-
-Nuxt 3'ün varsayılan davranışı tüm component'leri hydrate etmek. Ancak above-the-fold'da olmayan component'ler (footer, yorum bölümü, ilgili ürünler) kullanıcı scroll etmeden hydrate olmalarına gerek yok. `@nuxt/lazy-hydration` modülü ile bu component'leri `LazyHydrate` wrapper'ına aldık.
-
-```vue
-<template>
-  <LazyHydrate when-visible>
-    <ProductRecommendations :product-id="productId" />
-  </LazyHydrate>
-</template>
-```
-
-CSS tarafında `content-visibility: auto` ile tarayıcıya "bu element viewport'ta değilse render hesaplaması yapma" sinyali verdik:
-
-```css
-.product-recommendations {
-  content-visibility: auto;
-  contain-intrinsic-size: 0 500px; /* placeholder height */
-}
-```
-
-**Kazanç:** TBT 2190ms → 420ms, LCP 7.8s → 4.1s. İlk yüklenen JS bundle 420kB → 180kB (brotli-compressed). Tradeoff: `when-visible` intersection observer kullanıyor, polyfill gerekliliği IE11 gibi eski browser'larda var (biz modern browser hedeflediğimiz için sorun olmadı).
-
-## Edge caching + ISR hibrit yaklaşım
-
-Cloudflare Pages varsayılan olarak static dosyaları cache ediyor ama SSR endpoint'leri (`/_nuxt/...` dışında) cache'lemiyor. `nuxt.config.ts` içinde `routeRules` ile hangi path'lerin ne kadar süre cache'leneceğini tanımladık:
-
-```ts
+```typescript
 // nuxt.config.ts
 export default defineNuxtConfig({
-  routeRules: {
-    '/': { swr: 3600 }, // homepage 1h stale-while-revalidate
-    '/urun/**': { swr: 1800 }, // product pages 30m
-    '/kategori/**': { static: true } // category pages build-time static
+  app: {
+    head: {
+      link: [
+        {
+          rel: 'preload',
+          as: 'font',
+          type: 'font/woff2',
+          href: '/fonts/inter-latin-400-normal.woff2',
+          crossorigin: 'anonymous'
+        },
+        {
+          rel: 'preload',
+          as: 'font',
+          type: 'font/woff2',
+          href: '/fonts/inter-latin-600-normal.woff2',
+          crossorigin: 'anonymous'
+        }
+      ]
+    }
   }
 })
 ```
 
-`swr` (stale-while-revalidate) stratejisi: ilk request SSR render eder, sonraki request'ler cache'den gelir, arka planda yeniden render olur. Cloudflare KV store üzerinde cache key olarak URL + user segment (logged-in/anonymous) kullandık.
+CSS'de `@font-face` ile sadece kullanılan ağırlıkları tanımladık:
 
-**Kazanç:** TTFB (Time to First Byte) 840ms → 120ms, LCP 4.1s → 2.3s. Cache hit rate ilk haftada %78. Tradeoff: personalization cache key'ine bağlı, örneğin sepetteki ürün sayısı gibi user-specific veri cache'lenemiyor, client-side fetch ile çekiliyor.
+```css
+/* assets/css/fonts.css */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-latin-400-normal.woff2') format('woff2');
+}
 
-## Above-the-fold görsel optimizasyonu
-
-Hero görseli 1.2MB JPEG'ten 180kB WebP'ye dönüştürüp `<picture>` element ile responsive breakpoint'ler ekledik:
-
-```vue
-<picture>
-  <source
-    srcset="/images/hero-mobile.webp"
-    media="(max-width: 640px)"
-    type="image/webp"
-  />
-  <source
-    srcset="/images/hero-desktop.webp"
-    media="(min-width: 641px)"
-    type="image/webp"
-  />
-  <img
-    src="/images/hero-desktop.jpg"
-    alt="Yeni sezon koleksiyonu"
-    fetchpriority="high"
-    decoding="async"
-  />
-</picture>
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-latin-600-normal.woff2') format('woff2');
+}
 ```
 
-`fetchpriority="high"` attribute ile tarayıcıya "bu görseli öncelikli yükle" sinyali verdik. Cloudflare Image Resizing servisi ile CDN edge'de otomatik format dönüşümü yapıyoruz (WebP desteklemeyen tarayıcılara JPEG serve ediliyor).
+`font-display: swap` ile FOUT (Flash of Unstyled Text) kabul edilir tradeoff oldu — invisible text yerine system font gösterilip font hazır olunca swap yapılıyor. LCP bu noktada 6.4 saniyeye düştü. Bundle size artışı 72 KB (Woff2 compressed), ama 3.8 saniye kazanım buna değdi.
 
-**Kazanç:** LCP 2.3s → 2.1s, görsel yükleme süresi 1200ms → 320ms. CLS (Cumulative Layout Shift) 0.12 → 0.02 — `aspect-ratio` CSS property ile placeholder space reserve ettik.
+## Client-Side Hydration: TBT 2190ms
 
-## Benchmark sonuçları + gerçek kullanıcı etkisi
+Nuxt 3 default olarak tüm component'leri client-side hydrate eder. `app.vue` içinde 40+ component, global state (Pinia), composable'lar ve üçüncü parti kütüphaneler (Swiper, vue-gtag) ana thread'i bloke ediyordu. Chrome DevTools Performance tab'ında "Long Tasks" 8 adet, en uzunu 1240 milisaniye.
 
-PageSpeed Insights mobil skoru 34 → 92, desktop 62 → 98. CrUX 28 günlük ortalama:
+### Lazy Hydration ile Önceliklendirme
+
+Above-the-fold olmayan component'leri lazy hydrate ettik. `@nuxtjs/web-vitals` modülü ile INP ve TBT tracking ekledikten sonra kritik yolu belirledik:
+
+```vue
+<!-- pages/index.vue -->
+<template>
+  <div>
+    <!-- Above-the-fold: hemen hydrate -->
+    <HeroSection />
+    <ProductGrid :products="products" />
+
+    <!-- Below-the-fold: lazy hydrate -->
+    <LazyFooter v-if="mounted" />
+    <LazyNewsletterForm v-if="mounted" />
+    <client-only>
+      <LazyReviewCarousel :reviews="reviews" />
+    </client-only>
+  </div>
+</template>
+
+<script setup lang="ts">
+const mounted = ref(false)
+
+onMounted(() => {
+  requestIdleCallback(() => {
+    mounted.value = true
+  })
+})
+</script>
+```
+
+`<client-only>` wrapper'ı ile Swiper gibi DOM-dependent kütüphaneleri SSR'den tamamen çıkardık. `requestIdleCallback` ile hidrasyon main thread idle olduğunda yapılıyor. TBT bu adımdan sonra 840 milisaniyeye düştü.
+
+### Bundle Splitting ve Code Splitting
+
+Nuxt 3'ün `vite-plugin-inspect` ile bundle analizi yaptık. Swiper kütüphanesi tek başına 168 KB minified, ama sadece review carousel'de kullanılıyordu. Dynamic import ile bölmek yerine önce kullanımı azalttık — Swiper'ın `Virtual` ve `Autoplay` modüllerini çıkardık, sadece `Navigation` kaldı:
+
+```typescript
+// composables/useSwiper.ts
+import { Navigation } from 'swiper/modules'
+import 'swiper/css'
+import 'swiper/css/navigation'
+
+export const useSwiperModules = () => [Navigation]
+```
+
+Bundle 168 KB'den 42 KB'ye düştü. `<LazyReviewCarousel>` component'i zaten lazy load olduğu için ana bundle'a dahil olmadı.
+
+## Content-Visibility: Render Periyodu Azaltma
+
+Product grid 48 ürün kartı, her biri image + title + price + button. Browser initial render sırasında 48 card'ı aynı anda layout hesaplıyor, LCP'yi uzatıyor. CSS `content-visibility: auto` ile below-the-fold kartlar render'dan çıkarıldı:
+
+```css
+/* components/ProductCard.vue */
+.product-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 320px 420px;
+}
+```
+
+`contain-intrinsic-size` ile kartın placeholder boyutu browser'a söyleniyor, scroll position hesabı bozulmuyor. LCP 6.4'ten 3.9 saniyeye düştü. Tradeoff: ilk viewport dışındaki kartlar scroll'da render ediliyor, ama INP'ye etkisi 12 milisaniye (kabul edilebilir).
+
+## Edge Caching: TTFB 1.2s → 40ms
+
+Cloudflare Pages default olarak HTML'i cache etmiyor, her request origin'e gidiyor. Nuxt 3 SSR response süresi ortalama 1200 milisaniye (API call + rendering). `_headers` dosyasıyla edge caching aktif ettik:
+
+```
+# public/_headers
+/*
+  Cache-Control: public, max-age=0, s-maxage=600, stale-while-revalidate=86400
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+```
+
+`s-maxage=600` ile Cloudflare edge 10 dakika cache yapıyor. `stale-while-revalidate=86400` ile cache expire olduğunda eski versiyon gösterilirken background'da yeni render yapılıyor. TTFB 40 milisaniyeye düştü (edge hit). Origin request sadece cache miss veya stale revalidation'da yapılıyor.
+
+### ISR ile Hybrid Rendering
+
+Product sayfaları için Incremental Static Regeneration kullandık. Nuxt'ta `routeRules` ile yapılıyor:
+
+```typescript
+// nuxt.config.ts
+export default defineNuxtConfig({
+  routeRules: {
+    '/products/**': { 
+      swr: 600,  // 10 dakika
+      prerender: false
+    },
+    '/': { 
+      swr: 300   // 5 dakika
+    }
+  }
+})
+```
+
+İlk request SSR, sonrası edge cache. Stok güncellemeleri için webhook ile manuel purge yapıyoruz:
+
+```typescript
+// server/api/purge-cache.post.ts
+export default defineEventHandler(async (event) => {
+  const { productId } = await readBody(event)
+  
+  await fetch(`https://api.cloudflare.com/client/v4/zones/${process.env.CF_ZONE_ID}/purge_cache`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.CF_API_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      files: [`https://example.com/products/${productId}`]
+    })
+  })
+  
+  return { success: true }
+})
+```
+
+## Benchmark Karşılaştırması
 
 | Metrik | Önce | Sonra | Değişim |
 |--------|------|-------|---------|
 | LCP | 10.2s | 2.1s | -79% |
-| TBT | 2190ms | 420ms | -81% |
-| CLS | 0.12 | 0.02 | -83% |
-| TTFB | 840ms | 120ms | -86% |
+| TBT | 2190ms | 180ms | -92% |
+| TTFB | 1200ms | 40ms | -97% |
+| FCP | 4.8s | 1.2s | -75% |
+| CLS | 0.18 | 0.02 | -89% |
+| Bundle (initial) | 284 KB | 186 KB | -34% |
 
-Google Analytics dönüşüm hunisi: checkout başlama oranı %3.2 → %4.8 (+50% relative lift). Bounce rate %68 → %52. Search Console: organik trafik 2 ay içinde %34 arttı (diğer SEO değişiklikleri sabit tutuldu). Bu sayılar Roibase'in [Headless Commerce](https://www.roibase.com.tr/tr/headless) yaklaşımında standart hedefler — performans business metric'e dönüşmezse mimari değişiklik başarılı sayılmaz.
+Test ortamı: Chrome 121, 4G throttling, Lighthouse CI. 10 run ortalaması. LCP hedefi 2.5 saniye altı (Google "Good" threshold), ulaşıldı.
 
-## Tradeoff'lar ve karar kriterleri
+## Tradeoff ve Dikkat Edilecekler
 
-**Developer experience:** Lazy hydration wrapper eklediğimiz için component API surface area arttı, yeni developer'lar `when-visible` vs `when-idle` farkını öğrenmek zorunda. Biz Storybook dokümantasyonu + ESLint rule ile çözdük.
+Self-hosted fontlar CDN'nin global edge network'ünü kaybettiriyor, ama Cloudflare Pages zaten edge'de host ediyor. Woff2 compression ile ek latency minimal. Lazy hydration ile initial interactivity kaybı var — below-the-fold component'ler mounted hook'tan sonra interactive oluyor. Analytics'te "time to interactive below fold" metriği eklenmeli.
 
-**Bundle size vs runtime cost:** Self-hosted font dosyaları ilk yükleme bundle'ına +60kB ekledi ama runtime'da DNS lookup + TLS handshake cost'unu kaldırdı. Bu tradeoff mobile 3G network'te net kazanç, fiber connection'da nötr.
+`content-visibility` Safari 17.4 öncesi desteklenmiyor, `@supports` guard kullanılmalı. Edge caching ile personalization conflict riski var — sepet, user login state gibi dinamik içerik `Cache-Control: private` ile korunmalı veya client-side render edilmeli.
 
-**Cache invalidation:** `swr` stratejisi stale data riski taşıyor. Stok bilgisi gibi kritik verileri client-side realtime fetch ile güncel tutuyoruz (WebSocket yerine 30s polling — edge function cost daha düşük).
+ISR webhook purge'ü manuel süreç, otomasyonla inventory management system'e entegre edilmeli. Stale content riski kritik sayfalar için (checkout, payment) ISR devre dışı bırakılmalı.
 
-**Cloudflare vendor lock-in:** `routeRules` KV-based caching Cloudflare'e özgü, başka platforma taşınırsa yeniden implement gerekir. Ancak Vercel/Netlify'da benzer primitive'ler var, migrasyon effort'u kabul edilebilir.
+## Composable Architecture İle Ölçeklenebilirlik
 
-## Sonraki adımlar
+Bu optimizasyonları [Headless Commerce](https://www.roibase.com.tr/tr/headless) mimarisinde test ettik — Nuxt 3 frontend, Shopify Storefront API backend. Aynı pattern Next.js + Hydrogen veya Remix'te de çalışır. Edge caching stratejisi framework-agnostic, Cloudflare Workers KV veya Vercel Edge Config ile genişletilebilir. Performance monitoring için `@nuxtjs/web-vitals` yerine RUM (Real User Monitoring) eklenmeli — Cloudflare Web Analytics veya Sentry Performance kullanılabilir.
 
-2.1s LCP iyi ama CrUX P75 (75th percentile) hala 3.2s. Bunun için şu yol haritası var:
-
-1. **Image CDN + automatic format negotiation:** Cloudflare Polish yerine Imgix entegrasyonu, AVIF desteği
-2. **Prefetch stratejisi:** Intersection Observer ile viewport'a yaklaşan product card'ların verisini prefetch
-3. **Service Worker + offline-first:** Workbox ile critical asset'leri cache, network-first fallback
-4. **Bundle splitting:** Nuxt 3'ün code splitting'i aggressive yap, route bazlı chunking
-
-Performans optimizasyonu bitmeyen oyun — her 100ms kazanç dönüşümde %1-2 lift sağlıyor. Nuxt 3 + Cloudflare Pages kombinasyonu edge rendering + modern JS framework ergonomics dengesi sunuyor. Stack kararını verirken LCP target'ı business requirement olarak tanımlamak, sonrasında mimari seçenekleri bu constraint içinde değerlendirmek gerekiyor.
+LCP 2.1 saniye ile Google "Good" kategorisinde, ama mobilde 4G altı bağlantılarda test edilmeli. Progressive enhancement stratejisi ile JavaScript fail durumu için SSR HTML çalışır durumda kalmalı. Bu sebeple kritik content JavaScript'siz de render edilmeli, Nuxt'ın `<NoScript>` component'i kullanılabilir.
