@@ -1,8 +1,8 @@
 ---
 title: "dbt + BigQuery ile Modern Pazarlama Data Stack"
-description: "Source mapping, modeling layer, semantic layer, exposures — pazarlama datasını karar mekanizmasına bağlayan dört katman mimarisi."
-publishedAt: 2026-05-10
-modifiedAt: 2026-05-10
+description: "Source mapping, modeling layer, semantic layer, exposures: dbt ve BigQuery ile pazarlama datasını karar mekanizmasına bağlayan production-ready mimari."
+publishedAt: 2026-05-29
+modifiedAt: 2026-05-29
 category: data
 i18nKey: data-002-2026-05
 tags: [dbt, bigquery, data-modeling, semantic-layer, marketing-analytics]
@@ -10,132 +10,226 @@ readingTime: 8
 author: Roibase
 ---
 
-Pazarlama ekipleri her zamankinden fazla dataya ulaşıyor ama kararları yine tahmine dayalı. Spreadsheet'lerde birleştirilen raporlar, her dashboard'da farklı rakam veren metrikler, "gerçek CAC neydi" sorusuna üç farklı cevap. Sorun data eksikliği değil — source'dan insight'a giden yolda kayıp var. dbt + BigQuery kombinasyonu bu kaybı ortadan kaldıran mimariyi kuruyor: source mapping ile ham veriyi toplayıp, modeling layer ile iş mantığına çevirip, semantic layer ile ekip genelinde ortak dili yaratıp, exposures ile production kullanıma açıyorsunuz.
+Pazarlama ekipleri hâlâ "kampanya performansını dashboard'a bakmadan bilemiyorum" cümlesini kuruyor. Analist, her soruda yeni bir SQL yazıyor. CFO, CAC hesabının neden her raporda farklı olduğunu anlayamıyor. Sorun teknik değil — data pipeline'ı var, kaynak bağlı, veri akıyor. Sorun mimaride: kaynak tablolardan dashboard'a giden yolda tanım katmanı yok. dbt + BigQuery kombinasyonu bu sorunu çözüyor: source mapping, modeling layer, semantic layer, exposures ile datayı görsel değil, mantık katmanında standardize ediyorsun.
 
-## Source Mapping: Ham Veriden Güvenilir Kaynağa
+## Source Mapping: Ham Veriyi Kontrata Bağlamak
 
-Source mapping dbt'nin ilk katmanı — pazarlama datasını BigQuery'ye çektiğiniz andan sonra yapılan ilk dönüşüm. Google Ads API'sinden, Meta Ads'ten, Shopify'dan gelen raw event'ler staging katmanında standartlaştırılıyor. `stg_google_ads__campaign_performance` modelinde 127 sütun var ama siz 12'sini kullanıyorsunuz. Source mapping bu 12'yi seçip, timestamp'leri UTC'ye çevirip, campaign_id'yi string'e cast edip, null'ları işleyip temiz bir tablo yaratıyor.
+BigQuery'ye akan data CRM'den, GA4'ten, Meta Ads'ten, Klaviyo'dan geliyor. Her kaynak farklı şema, farklı naming convention, farklı timestamp formatı kullanıyor. dbt source mapping, bu kaynakları kod olarak tanımlayıp test etmeni sağlıyor. `sources.yml` dosyasında her tabloyu declare ediyorsun, freshness kontrolü koyuyorsun, unique constraint test ediyorsun.
 
-BigQuery'de source tanımı `sources.yml` dosyasında yapılıyor. Freshness check'leri burada tanımlıyorsunuz — Google Ads'ten veri son 2 saatte gelmemişse dbt run başarısız sayılıyor. Bu enforced contract: data pipeline'ı güvenli hale getiriyorsunuz. Source'tan direkt select yapmak yerine `{{ source('google_ads', 'campaign_stats') }}` macro'su kullanıyorsunuz — dbt lineage graph'ta hangi raw table'ın hangi modele beslendiğini gösteriyor.
+Örnek source tanımı:
 
 ```yaml
+version: 2
+
 sources:
-  - name: google_ads
-    database: production
-    schema: raw_google_ads
+  - name: raw_ga4
+    database: analytics_lake
+    schema: raw_ga4_events
     tables:
-      - name: campaign_stats
+      - name: events
         freshness:
-          warn_after: {count: 2, period: hour}
-          error_after: {count: 6, period: hour}
+          warn_after: {count: 6, period: hour}
+          error_after: {count: 12, period: hour}
         columns:
-          - name: campaign_id
+          - name: event_timestamp
             tests:
               - not_null
-              - unique
+          - name: user_pseudo_id
+            tests:
+              - not_null
 ```
 
-## Modeling Layer: İş Mantığını Kod Haline Getirmek
+Bu tanım şu kontratı kuruyor: "GA4 eventi 6 saatte gelmezse uyar, 12 saatte gelmezse fail yap." Production'da bu test CI/CD'ye bağlanır, kaynak sorununu anında tespit edersin. dbt docs ile otomatik lineage graph üretiliyor — hangi dashboard'un hangi source'a bağlı olduğunu görebiliyorsun.
 
-Staging'den sonra intermediate ve mart katmanları geliyor — burada pazarlama datasına iş mantığı uygulanıyor. `int_campaign_attribution` modelinde first-touch ve last-touch attribution'ı hesaplıyorsunuz. `fct_customer_lifetime_value` tablosunda cohort bazlı LTV analizi yapıyorsunuz. Bu modeller dbt'nin incremental materialization özelliğiyle çalışıyor — her run'da sadece son 3 günün verisi işleniyor, eski kayıtlar dokunulmuyor. BigQuery'de 40 milyon satır customer_event tablosu var ama dbt incremental stratejisiyle her run 2 dakika sürüyor.
+Source mapping olmadan analyst, `SELECT * FROM analytics_lake.raw_ga4_events.events` diye başlar. Hangi kolonun ne anlama geldiğini bilmez, test yok, belge yok. dbt ile source'u referans alıyorsun: `{{ source('raw_ga4', 'events') }}`. Tablo adı değişirse tek yerde güncelliyorsun, tüm downstream modeller otomatik uyuyor.
 
-Mart katmanında business unit'lere özel tablolar oluşturuyor: `mart_paid_media__daily_performance`, `mart_crm__email_engagement`, `mart_finance__revenue_attribution`. Bu tablolar Looker Studio, Tableau, Amplitude'e direkt bağlanıyor — herkes kendi alanındaki metriği aynı source'tan çekiyor. CAC hesabı artık tartışma konusu değil çünkü `paid_media_spend / new_customers` formülü dbt modelinde tanımlı. Kod review'dan geçiyor, test ediliyor, version control altında.
+## Modeling Layer: Staging, Intermediate, Mart
+
+dbt'nin gücü modelleme katmanlarında. Üç seviyeye ayırıyorsun: staging (kaynak versiyon formatını normalize et), intermediate (iş mantığı uygula), mart (nihai metrik tabloları).
+
+**Staging layer:** Her source için 1:1 model. Sadece veri tipi dönüşümü, kolon isimlendirme, timestamp UTC'ye çekme. İş mantığı YOK.
 
 ```sql
--- models/marts/paid_media/mart_paid_media__daily_performance.sql
-{{ config(materialized='incremental', unique_key='date_campaign_id') }}
-
-with campaign_spend as (
-  select
-    date,
-    campaign_id,
-    sum(cost_micros) / 1e6 as spend
-  from {{ ref('stg_google_ads__campaign_performance') }}
-  {% if is_incremental() %}
-    where date >= date_sub(current_date(), interval 3 day)
-  {% endif %}
-  group by 1, 2
-),
-
-conversions as (
-  select
-    date(timestamp) as date,
-    campaign_id,
-    count(distinct user_id) as conversions
-  from {{ ref('stg_ga4__conversions') }}
-  {% if is_incremental() %}
-    where date(timestamp) >= date_sub(current_date(), interval 3 day)
-  {% endif %}
-  group by 1, 2
+-- models/staging/stg_ga4__events.sql
+WITH source AS (
+    SELECT * FROM {{ source('raw_ga4', 'events') }}
 )
 
-select
-  c.date,
-  c.campaign_id,
-  c.spend,
-  coalesce(cv.conversions, 0) as conversions,
-  safe_divide(c.spend, nullif(cv.conversions, 0)) as cpa
-from campaign_spend c
-left join conversions cv using (date, campaign_id)
+SELECT
+    TIMESTAMP_MICROS(event_timestamp) AS event_at,
+    user_pseudo_id AS user_id,
+    event_name,
+    (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_location') AS page_url
+FROM source
+WHERE event_date >= CURRENT_DATE() - 90
 ```
 
-## Semantic Layer: Ortak Dil Yaratmak
+**Intermediate layer:** İş mantığını uygula. Session tanımla, ürün kategorilerini map et, attribution penceresini uygula. Bu modeller final kullanıcıya gitmez — sadece downstream modellere girdi sağlar.
 
-Semantic layer dbt'nin 1.6 versiyonuyla gelen özellik — metriği kod olarak tanımlıyorsunuz, her araç bu tanımı kullanıyor. `revenue` metriği `sum(order_total)` değil, `sum(case when payment_status = 'completed' then order_total end)` olarak tanımlanıyor. "İade edilen siparişler dahil mi" sorusu ortadan kalkıyor çünkü metrik tanımı GitHub'da duruyor. Marketing, finance, product ekipleri aynı `revenue` metriğini kullanıyor — sadece farklı dimension'larla kesiyor.
+```sql
+-- models/intermediate/int_sessions.sql
+WITH events AS (
+    SELECT * FROM {{ ref('stg_ga4__events') }}
+),
 
-Roibase'in [first-party veri & ölçüm mimarisi](https://www.roibase.com.tr/tr/firstparty) çalışmalarında semantic layer zorunlu adım. Farklı touch point'lerden gelen customer event'lerini birleştirirken metrik tanımları sabitlenmezse her analiz farklı sonuç veriyor. dbt'de `metrics.yml` dosyasında tanımlanan metrikler BI tool'lara API üzerinden sunuluyor — Looker, Hex, Mode semantic layer'dan metrik çekiyor, her yerde aynı rakam görünüyor.
+session_windows AS (
+    SELECT
+        user_id,
+        event_at,
+        SUM(CASE WHEN TIMESTAMP_DIFF(event_at, LAG(event_at) OVER (PARTITION BY user_id ORDER BY event_at), MINUTE) > 30 THEN 1 ELSE 0 END) 
+            OVER (PARTITION BY user_id ORDER BY event_at) AS session_index
+    FROM events
+)
+
+SELECT
+    user_id,
+    session_index,
+    MIN(event_at) AS session_start_at,
+    MAX(event_at) AS session_end_at,
+    COUNT(*) AS event_count
+FROM session_windows
+GROUP BY 1, 2
+```
+
+**Mart layer:** Nihai metrik tabloları. Dashboard'a, BI tool'a, Looker'a bağlanacak tablo. `fct_` (fact) veya `dim_` (dimension) prefix kullan.
+
+```sql
+-- models/marts/fct_daily_channel_performance.sql
+SELECT
+    DATE(session_start_at) AS date,
+    traffic_source.medium AS channel,
+    COUNT(DISTINCT user_id) AS users,
+    SUM(revenue) AS revenue,
+    SAFE_DIVIDE(SUM(revenue), COUNT(DISTINCT user_id)) AS revenue_per_user
+FROM {{ ref('int_sessions') }}
+LEFT JOIN {{ ref('int_transactions') }} USING (user_id, session_index)
+GROUP BY 1, 2
+```
+
+Bu yapı ile analist `fct_daily_channel_performance` tablosunu kullanır, staging/intermediate mantığına dokunmaz. Metrik tanımı değişirse tek yerde güncellenir, tüm dashboard'lar tutarlı kalır.
+
+## Semantic Layer: Metrik Tanımlarını Kodla
+
+BigQuery + dbt kombinasyonunda "semantic layer" kavramı iki şekilde uygulanır: dbt metrics (deprecated 2023'te) veya dbt semantic models (yeni yaklaşım). Semantic model, metriği SQL'den soyutlayıp YAML'da tanımlar. Looker, Tableau, Mode gibi araçlar bu tanımı okur, CAC, LTV, ROAS gibi metrikleri tutarlı hesaplar.
+
+Örnek semantic model:
 
 ```yaml
-# models/metrics/metrics.yml
-metrics:
-  - name: marketing_qualified_leads
-    label: Marketing Qualified Leads
-    model: ref('fct_leads')
-    calculation_method: count_distinct
-    expression: lead_id
-    timestamp: created_at
-    time_grains: [day, week, month]
+# models/marts/semantic_models.yml
+semantic_models:
+  - name: channel_performance
+    model: ref('fct_daily_channel_performance')
     dimensions:
-      - utm_source
-      - utm_campaign
-      - landing_page
-    filters:
-      - field: lead_status
-        operator: '='
-        value: "'MQL'"
+      - name: date
+        type: time
+        type_params:
+          time_granularity: day
+      - name: channel
+        type: categorical
+    measures:
+      - name: total_revenue
+        agg: sum
+        expr: revenue
+      - name: total_users
+        agg: count_distinct
+        expr: user_id
+
+metrics:
+  - name: revenue_per_user
+    type: derived
+    type_params:
+      expr: total_revenue / total_users
+      metrics:
+        - total_revenue
+        - total_users
 ```
 
-## Exposures: Production'a Açmak
+Bu tanım ile "revenue per user" metriki her yerde aynı hesaplanır. Analist Looker'da "RPU" seçer, backend dbt semantic layer'dan çeker, SQL el ile yazılmaz. Tanım değişirse (örneğin canceled orders hariç tutulacak) tek yerde güncellenir.
 
-Exposures dbt'nin downstream dependency tracking özelliği — hangi dashboard'un hangi dbt modelinden besleneceğini tanımlıyorsunuz. Looker'da "Weekly Campaign Performance" dashboard'u var, `mart_paid_media__daily_performance` tablosundan veri çekiyor. dbt'de bu bağımlılık `exposures.yml` dosyasına yazılıyor. Şimdi `mart_paid_media__daily_performance` modelinde breaking change yaparsanız dbt size uyarı veriyor: "Bu model 3 dashboard tarafından kullanılıyor, impact analizi yap."
+Semantic layer olmadan her dashboard "revenue / users" hesabını tekrar yazıyor. Bir raporda refund hariç, diğerinde dahil. CMO iki farklı sayı görür, güveni kaybolur. [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) ile bu katmanı production'a kurmak kritik — attribution, consent, TCF sinyallerini de aynı mantıkla tanımlıyorsun.
 
-Exposure'lar documentation'da da görünüyor — dbt docs'ta bir modele tıkladığınızda "Used in 5 dashboards, 2 reverse ETL jobs, 1 ML pipeline" yazıyor. Data lineage'ı BI katmanına kadar uzanıyor. Production'da hangi dashboard'un hangi SQL'den geldiğini biliyorsunuz. Debug süresi düşüyor çünkü problem olan dashboard'u bulup source modele ulaşıyorsunuz.
+## Exposures: Datanın Nihai Kullanım Noktalarını İzle
 
-| Exposure Tipi | Kullanım | Tracking Yöntemi |
-|---|---|---|
-| Dashboard | Looker, Tableau, Metabase | URL + model ref |
-| Reverse ETL | Census, Hightouch | Job ID + source table |
-| ML Pipeline | Vertex AI, SageMaker | Model name + feature table |
-| Operational Tool | Braze, Iterable kampanya segmenti | Segment ID + dbt model |
-
-## Pipeline Orchestration: Her Katmanın Çalışma Düzeni
-
-dbt Cloud Scheduler veya Airflow ile pipeline'ı orchestrate ediyorsunuz. Sabah 6:00'da raw data BigQuery'ye yükleniyor (Fivetran, Stitch, Airbyte), 6:30'da dbt run başlıyor. Staging modelleri 5 dakikada, intermediate modelleri 10 dakikada, mart modelleri 15 dakikada tamamlanıyor. 7:00'de semantic layer expose ediliyor, 7:15'te Looker dashboard'ları refresh oluyor. Ekip 9:00'da ofise geldiğinde dünün datasını görüyor — 3 saat pipeline delay yok.
-
-Test suite her run'da çalışıyor: `not_null`, `unique`, `accepted_values`, `relationships`. `stg_google_ads__campaign_performance` tablosunda `campaign_id` unique değilse dbt run başarısız sayılıyor. Slack'e alert düşüyor. Data quality gate'i kod seviyesinde enforce ediliyor. Production'a broken data ulaşmıyor.
+dbt exposure, "bu model hangi dashboard'a, hangi ML pipeline'a, hangi operasyonel sisteme gidiyor" sorusunu cevaplıyor. `exposures.yml` dosyasında tanımlıyorsun:
 
 ```yaml
-# dbt_project.yml on-run-end hooks
-on-run-end:
-  - "{{ log_dbt_results() }}"
-  - "{{ send_slack_notification() }}"
-  - "{{ update_looker_cache() }}"
+exposures:
+  - name: marketing_dashboard
+    type: dashboard
+    maturity: high
+    url: https://lookerstudio.google.com/reporting/abc123
+    description: "CMO günlük channel performance dashboard"
+    depends_on:
+      - ref('fct_daily_channel_performance')
+    owner:
+      name: Marketing Analytics Team
+      email: analytics@company.com
 ```
 
-## Tradeoff: Complexity vs Governance
+Exposure tanımı iki şey sağlar: **impact analysis** (bu modeli değiştirirsem hangi dashboard bozulur?) ve **stakeholder mapping** (dashboard sahibi kim, sorunu kime escalate edeceğim?).
 
-dbt + BigQuery stack'i complexity getiriyor. Analyst ekibinde SQL bilgisi zorunlu hale geliyor — "Excel'de pivot yapayım" artık yetmiyor. Git workflow, code review, CI/CD pipeline öğrenilmesi gereken kavramlar. Küçük ekiplerde bu overhead maliyetli olabilir. Ama tradeoff net: governance kazanıyorsunuz. Spreadsheet'lerde kaybolmuş formül yerine version control altında kod var. "Bu rakam nereden geldi" sorusu Git blame ile 10 saniyede cevap buluyor.
+Production'da exposures şu akışta çalışır: dbt build → test fail olursa → lineage graph'tan etkilenen exposure'ları gör → Slack'e otomatik bildirim gönder → dashboard sahibi erken uyarılır. Bu sayede "dashboard neden boş?" sorusu kullanıcıdan değil, CI/CD sisteminden gelir.
 
-BigQuery maliyeti başka tradeoff. Full table scan'ler pahalı — partition ve cluster stratejisi zorunlu. dbt incremental modellerde `partition_by` ve `cluster_by` config'leri kritik. Aylık 100 GB data işleyen pipeline BigQuery'de $50 slot cost + $5 storage maliyeti oluşturuyor. Managed service olduğu için infra overhead yok ama query optimization yapılmazsa fatura şişiyor.
+Exposures olmadan data team körleme model deploy eder, kimin etkilendiğini bilmez. Exposure ile her model "bu tablo production'da canlı, dokunma" etiketini taşır.
 
-Pazarlama datasını karar mekanizmasına bağlamak artık spreadsheet ve BI tool ile çözülemez. dbt + BigQuery stack'i source'dan exposure'a her katmanı kodlaştırıyor. Source mapping ile ham veriyi güvenilir hale getirip, modeling layer ile iş mantığını uygulayıp, semantic layer ile ortak dili yaratıp, exposures ile production kullanıma açıyorsunuz. Code review, test, version control — data pipeline artık yazılım geliştirme disipliniyle yönetiliyor.
+## Incremental Models ve Partitioning: Maliyet + Performans
+
+BigQuery'de tam table scan pahalı. 1 TB veri için query $5, günde 10 query $50, ayda $1500. dbt incremental model ile sadece yeni satırları işliyorsun, geçmiş data immutable kalıyor.
+
+```sql
+{{ config(
+    materialized='incremental',
+    unique_key='event_id',
+    partition_by={'field': 'event_at', 'data_type': 'timestamp', 'granularity': 'day'},
+    cluster_by=['user_id', 'event_name']
+) }}
+
+SELECT * FROM {{ ref('stg_ga4__events') }}
+WHERE event_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 DAY)
+
+{% if is_incremental() %}
+    AND event_at > (SELECT MAX(event_at) FROM {{ this }})
+{% endif %}
+```
+
+Bu config şu optimizasyonu yapıyor: Her run'da sadece son 2 günü işle, eski data dokunulmaz. `partition_by` ile BigQuery partition pruning uygular, `cluster_by` ile query selectivity artar. Aynı veri setinde maliyeti %90 düşürür.
+
+Production'da incremental model + dbt snapshot ile SCD Type 2 uygulanır: dimension table'da tarihsel değişimi izlersin (user segment değişimi, product category mapping değişimi). Analist "geçen ay user X hangi segmentte idi" diye sorduğunda snapshot'tan çeker, data tutarlı.
+
+## Production Pipeline: CI/CD, Tests, Alerts
+
+dbt projesi GitHub'da tutuluyor, her commit CI pipeline'ını tetikliyor:
+
+1. **Lint:** `sqlfluff` ile SQL formatını kontrol et
+2. **Test:** `dbt test` ile schema test (not_null, unique, foreign_key) ve data test (revenue > 0, session_duration < 24h) çalıştır
+3. **Build:** `dbt build --select state:modified+` ile sadece değişen modelleri rebuild et
+4. **Deploy:** Production'a merge olursa BigQuery'de tablo güncelle
+
+Test fail olursa merge bloklenir. Örnek data test:
+
+```sql
+-- tests/assert_no_negative_revenue.sql
+SELECT * FROM {{ ref('fct_daily_channel_performance') }}
+WHERE revenue < 0
+```
+
+Bu test 0 satır dönerse pass, 1 satır dönerse fail. Production'da negatif revenue anomali olarak algılanır, pipeline durur.
+
+Alert senaryosu: dbt Cloud'da job schedule et (her gün 06:00), `on-run-end` hook ile Slack'e bildirim gönder:
+
+```yaml
+on-run-end:
+  - "{{ post_to_slack_on_failure() }}"
+```
+
+[Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/tr/verianalizi) ile bu pipeline'ı production'a kurmak 4-6 hafta sürüyor: source mapping + staging layer + intermediate layer + mart + semantic model + exposure + test + CI/CD.
+
+## Tradeoff: Complexity vs Control
+
+dbt + BigQuery stack öğrenme eğrisi dik. SQL bilgisi yetmez, Jinja templating, YAML config, Git workflow, CI/CD gerekiyor. Küçük ekiplerde (1-2 kişi) bu overhead fazla gelebilir — doğrudan BigQuery view'ları + Looker Studio daha hızlı başlatır.
+
+Ama ölçek büyüdüğünde (10+ dashboard, 50+ source, 5+ analyst) dbt olmadan kontrol kaybedilir. Her analyst kendi SQL'ini yazıyor, metrik tanımları çelişiyor, test yok, belge yok. dbt bu noktada teknik borç ödemek yerine borç almamayı sağlıyor.
+
+Alternatif yaklaşım: Looker LookML ile semantic layer kurmak. LookML dbt'ye benzer (kod olarak metrik tanımı) ama vendor lock-in var, BigQuery dışı source'lara bağlanmak zor. dbt açık kaynak, portable, BigQuery/Snowflake/Redshift arasında taşınabilir.
+
+Modern pazarlama data stack source mapping ile başlar, semantic layer ile ölçeklendirilir, exposure ile production'da izlenir. dbt + BigQuery bu üç katmanı kod olarak tanımlar, test edilebilir, versiyonlanabilir, tekrarlanabilir hale getirir. Dashboard'a bakmadan metrik tutarlılığını garanti ediyorsun.
