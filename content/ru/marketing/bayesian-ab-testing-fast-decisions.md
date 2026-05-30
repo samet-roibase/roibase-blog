@@ -22,7 +22,7 @@ Frequentist A/B test, p-value ve confidence interval üzerine kuruludur. Null hi
 
 **Binary karar mekanizması.** P-value 0.049 ise "anlamlı", 0.051 ise "anlamsız" dichotomy'si. Gerçek dünyada belirsizlik bu kadar keskin değildir. 0.06'lık bir p-value'yu "marjinal kanıt var ama test uzatılmalı" şeklinde yorumlayamazsın — ya reddet ya kabul.
 
-Bu yapısal limitler, özellikle [Dönüşüm Oranı Optimizasyonu](https://www.roibase.com.tr/tr/cro) süreçlerinde test velocity'sini düşürür. Haftada 1 test kapasitesi yerine 2-3 hipotez iterasyonu döndürebilecekken, sample size kuralına takılı kalıyorsun.
+Bu yapısal limitler, özellikle [Dönüşüm Oranı Optimizasyonu](https://www.roibase.com.tr/ru/cro) süreçlerinde test velocity'sini düşürür. Haftada 1 test kapasitesi yerine 2-3 hipotez iterasyonu döndürebilecekken, sample size kuralına takılı kalıyorsun.
 
 ## Bayesian Test: Posterior Probability ve Sequential Monitoring
 
@@ -111,4 +111,4 @@ Bayesian A/B test'i ekip kültürüne entegre etmek teknik değil organizasyonel
 
 ---
 
-Bayesian A/B test, test velocity artırır ama istatistiksel disiplin gerektirir. Sample size zorunluluğunu sequential monitoring ile aşarsın, ama prior seçimi ve stopping rule'u dikkatli tanımlamalısın. Organizasyonuna Bayesian adoption'ı kademeli yap — ilk 10 test non-informative prior ile paralel koş, ekip güvendiğinde informative prior + erken durdurma modeline geç. Sonuç: aynı rigor, %40-60 daha hızlı iterasyon, daha yüksek learning throughput.
+Bayesian A/B test, test velocity artırır ama istatistiksel disiplin gerektirir. Sample size zorunluluğunu sequential monitoring ile aşarsın, ama prior seçimi ve stopping rule'u dikkatli tanımlamalısın. Organizasyonuna Bayesian adoption'ı kademeli yap — ilk 10 test non-informative prior ile paralel koş, ekip güvendiğinde informative prior + erken durdurma modeline geç. Son
