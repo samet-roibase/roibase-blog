@@ -1,119 +1,141 @@
 ---
-title: "Identity Resolution: Von 6 Signalen zur einheitlichen Kundenidentität"
-description: "Hash Matching, Probabilistic Linking und Household Identity – moderne Lösungsarchitekturen, um fragmentierte Signale in eine einheitliche Kundenidentität zu transformieren."
-publishedAt: 2026-05-12
-modifiedAt: 2026-05-12
+title: "Identity Resolution: 6 Signale zu einer Kundenidentität"
+description: "Hash-Matching, probabilistische Verknüpfung und Household Identity – die technische Architektur zur Konsolidierung fragmentierter Signale in einem einzigen Kundenprofil."
+publishedAt: 2026-05-31
+modifiedAt: 2026-05-31
 category: data
 i18nKey: data-003-2026-05
-tags: [identity-resolution, hash-matching, probabilistic-linking, cdp, first-party-data]
+tags: [identity-resolution, cdp, first-party-data, probabilistic-matching, hash-matching]
 readingTime: 9
 author: Roibase
 ---
 
-Der durchschnittliche E-Commerce-Kunde wird von sechs verschiedenen Geräten aus 11 Touchpoints aus sichtbar, bevor er eine Kaufentscheidung trifft. GA4 erfasst diese als 4 unterschiedliche User, das CRM registriert 2 verschiedene Leads, die E-Mail-Plattform 1 Subscriber. In einer Cookie-losen Welt ist Attribution ohne Zusammenführung dieser Fragmente unmöglich, Segmentierung bedeutungslos, die Berechnung des Customer Lifetime Value nicht durchführbar. Identity Resolution ist die Data Engineering-Disziplin, die diese Fragmente zusammenbringt – eine 3-schichtige Architektur, die vom deterministischen Hash Matching bis zum Probabilistic Linking reicht.
+Ein Nutzer registriert sich per E-Mail, bestellt über die Mobile App, eröffnet wenige Tage später ein Support-Ticket im Desktop-Browser. Cookie-ID, Device-ID, gehashte E-Mail, IP-Adresse, Session-ID, Benutzer-ID – sechs verschiedene Signale. Ohne Identity Resolution erscheinen diese als sechs unterschiedliche „Kunden". Die Attributionsmessung wird verzerrt, das Lifetime-Value-Modell bleibt ungenau, Retention-Signale gehen verloren. Google Analytics 4's User-ID-Zusammenführung verbindet nur authentifizierte Sessions, nicht anonyme Nutzeraktivität. CDPs werben mit „probabilistic stitching", zeigen aber keine Tabellenstrukturen. Um Identity Graphs produktiv zu nutzen, musst du Hash-Matching, probabilistische Verknüpfung und Household Identity zusammen orchestrieren.
 
-## Hash Matching: Die deterministische Identitäts-Wirbelsäule
+## Hash-Matching: Das Rückgrat der deterministischen Verknüpfung
 
-Deterministisches Matching funktioniert auf Basis von SHA-256 Hashes. Die E-Mail-Adresse "user@example.com" wird zu Hash "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8" – wenn jedes System denselben Hash hat, ist es dieselbe Person. Du fügst die `user_data.email_sha256`-Parameter zur Server-seitigen GTM Event Payload hinzu, sobald sich der Nutzer anmeldet. In BigQuery werden Web-Sessions, CRM-Leads und Klaviyo-Subscriber in einer Zeile über diesen Hash zusammengeführt.
-
-Zwei kritische Punkte: Hash-Salt-Strategie und Collision-Risiko. Wenn du einen Hash direkt ohne Salt berechnest, besteht ein Rainbow-Table-Angriffsrisiko – aber in einer Pazarlama-Datenpipeline muss der Salt über alle Systeme hinweg konsistent sein, sonst generiert dieselbe E-Mail verschiedene Hashes. Das Collision-Risiko ist bei SHA-256 theoretisch – praktische Kollisionen im 2^256-Raum sind nicht realistisch, aber bei Feldern mit niedriger Entropie wie Telefonnummern wird der Determinismus schwächer. Deshalb ist eine E-Mail + Telefonnummern-Kombination eine sicherere Identitäts-Grundlage.
-
-Wenn du Daten aus Klaviyo in BigQuery ziehst, fügst du die `user_properties.email_sha256`-Spalte hinzu und machst in deinem dbt-Modell ein `LEFT JOIN web_events USING (email_sha256)`. So wird die anonyme Web-Session mit dem Subscriber-Profil in einer Zeile zusammengeführt. Die Snapshot-Tabellen-Strategie ist entscheidend – Hash-Matches sollten in täglichen Snapshots gespeichert werden, da alte Matches nicht verloren gehen dürfen, wenn ein Nutzer seine E-Mail-Adresse ändert.
-
-## Probabilistic Linking: Fuzzy Logic zur Signalverschmelzung
-
-Deterministisches Matching reicht in der cookie-losen mobilen Web nicht aus. Ein Nutzer meldet sich ab, ohne sich einzuloggen oder eine E-Mail anzugeben, aber die Kombination IP + User Agent + Zeitzone + Sprache ist mit 87% Wahrscheinlichkeit dieselbe Person. Hier kommt der probabilistische Identity Graph ins Spiel – du gewichtest Signale mit Bayesscher Wahrscheinlichkeit.
-
-Es gibt sechs grundlegende Signalschichten: Device Fingerprint (Canvas Hash, WebGL Renderer), Netzwerkschicht (IP-Subnetz, ASN), Verhaltensmuster (Session Duration, Path Sequence), Geolokalisierung (GPS lat/long Clustering), Zeitsignal (Active Hour Pattern) und Kontextuelle Metadaten (Referrer Domain, UTM Konsistenz). Jedes Signal erhält einen Konfidenz-Score von 0–100, und wenn die gewichtete Summe über 70 liegt, wird eine temporäre `probabilistic_id` zugewiesen.
-
-In BigQuery modellierst du das folgendermaßen:
+Hash-Matching verbindet zwei Signale „eindeutig", indem du SHA-256-Hashes derselben E-Mail oder Telefonnummer abgleichst. Wenn ein Nutzer sich auf deiner Website mit `user@example.com` registriert, hashst du diesen Wert mit SHA-256 und speicherst ihn in deiner BigQuery-Tabelle `identity_signals` als Spalte `hashed_email`. Meldet sich derselbe Nutzer später über die Mobile App mit der gleichen E-Mail an, ist der gehashte Wert identisch – die beiden Datensätze lassen sich zusammenführen.
 
 ```sql
-WITH signal_scores AS (
+-- Deterministischer Match in BigQuery
+CREATE OR REPLACE TABLE `project.dataset.merged_identities` AS
+SELECT
+  web.anonymous_id AS web_cookie_id,
+  mobile.device_id AS mobile_device_id,
+  web.hashed_email,
+  MIN(web.first_seen_timestamp) AS first_seen
+FROM `project.dataset.web_events` web
+INNER JOIN `project.dataset.mobile_events` mobile
+  ON web.hashed_email = mobile.hashed_email
+WHERE web.hashed_email IS NOT NULL
+GROUP BY 1,2,3;
+```
+
+Diese Query verbindet Web-Cookie-ID und Mobile-Device-ID über die gehashte E-Mail. Das `INNER JOIN` ist deterministisch – es kommen nur exakte Übereinstimmungen zustande. Um die verbundenen Signale unter einer einzigen `canonical_user_id` zu vereinen, nutze `ROW_NUMBER()` oder UUID-Generierung. Hash-Matching hat seine Grenzen: Wenn ein Nutzer seine E-Mail ändert (alter Account + neuer Account), bleiben sie als separate Identitäten bestehen. An diesem Punkt kommt die probabilistische Schicht ins Spiel.
+
+Hash-Matching ist DSGVO und KVKK-konform, weil du plaintext-E-Mails nicht speicherst – der Hash ist unidirektional und nicht umkehrbar. Es besteht aber eine Rainbow-Table-Anfälligkeit, deshalb solltest du E-Mail-Hashes mit einem zusätzlichen Signal – etwa Device-Fingerprint oder IP-Range – kombinieren. Eine einzelne Hash-Spalte genügt nicht; halte `hashed_email`, `hashed_phone` und `hashed_customer_id` in separaten Spalten vor. Partitioniere die Tabelle nach `DATE(timestamp)`, da die Identity-Auflösung meist inkrementell erfolgt und vollständige historische Scans kostspielig sind.
+
+## Probabilistische Verknüpfung: Unsicherheit durch Scores managen
+
+Wenn sich ein Nutzer ohne Registrierung durch deine Seite bewegt, existiert keine gehashte E-Mail – nur Cookie-ID, IP, User-Agent, Session-Timestamp. Probabilistic Matching gewichtet diese Signale und erzeugt ein „Wahrscheinlichkeits-Score", dass zwei Datensätze zu derselben Person gehören. Ein Score über dem Schwellenwert (z.B. 0,85) führt zu einer Verknüpfung; darunter bleiben sie getrennt. Anbieter wie LiveRamp, Merkle und Neustar verkaufen solche Scores, aber du kannst ein regelbasiertes Modell in deinem Warehouse selbst aufbauen.
+
+Beispiel-Logik: Gleiche IP + gleicher Browser-Fingerprint (Canvas-Hash) + Session-Unterschied unter 5 Minuten → 90 % Match-Score. Gleiche IP + anderer Browser + 2 Stunden Abstand → 40 % Score. Bei einem Schwellenwert von 0,7 werden die ersten zwei verbunden, die zweiten getrennt. In BigQuery modellierst du das mit `CASE WHEN`-Blöcken:
+
+```sql
+SELECT
+  a.session_id AS session_a,
+  b.session_id AS session_b,
+  CASE
+    WHEN a.ip_address = b.ip_address
+      AND a.canvas_hash = b.canvas_hash
+      AND TIMESTAMP_DIFF(b.timestamp, a.timestamp, MINUTE) <= 5
+    THEN 0.90
+    WHEN a.ip_address = b.ip_address
+      AND TIMESTAMP_DIFF(b.timestamp, a.timestamp, HOUR) <= 2
+    THEN 0.40
+    ELSE 0.0
+  END AS match_score
+FROM `project.dataset.anonymous_sessions` a
+CROSS JOIN `project.dataset.anonymous_sessions` b
+WHERE a.session_id < b.session_id
+  AND a.ip_address = b.ip_address
+QUALIFY match_score >= 0.70;
+```
+
+Diese Query verwendet `CROSS JOIN` – bei Millionen von Reihen explodiert die Rechenzeit. In der Produktion brauchst du Window Functions oder Bucketing: Partitioniere IP-Ranges nach Prefix (etwa `/24` CIDR), vergleiche jede Session mit den letzten 100. Das Risiko beim probabilistic Matching ist ein False-Positive – wenn zwei verschiedene Nutzer von der gleichen IP (Büro-WLAN, gemeinsames VPN) zur gleichen Zeit zugreifen, können sie fälschlicherweise zusammengeführt werden. Deshalb sollte der Score-Schwellenwert zwischen 0,85 und 0,90 liegen; verifiziere zusätzlich über Cross-Device-Signale.
+
+Ein ML-basiertes probabilistisches Modell ist anspruchsvoller: logistische Regression oder Gradient Boosting für die binäre Klassifikation „gleicher Nutzer". Merkmale sind IP-Hamming-Distanz, User-Agent-Levenshtein-Ähnlichkeit, Timezone-Offset, Session-Count. Trainings-Labels kommen aus bekannten `user_id`-Paaren (positive) und unterschiedlichen `user_id`-Paaren (negative). Das Modell gibt einen Score zwischen 0 und 1 aus, der Schwellenwert wird manuell justiert. Diesen Aufwand zu treiben erfordert – über dbt-Modelle hinaus – Vertex AI oder SageMaker; Data Engineering und ML Engineering müssen zusammenarbeiten.
+
+## Household Identity: Unterschiedliche Nutzer, gleiches Zuhause
+
+Im Identity-Resolution-Layer gibt es eine „Household"-Ebene: Du gruppierst verschiedene Nutzer mit gleicher IP oder gleicher Postadresse als „Haushaltseinheit" für Targeting und Analyse. Ein E-Commerce-Beispiel: Mutter schaut sich Kinderkleidung an, Vater kauft Elektronik – zwei unterschiedliche User-IDs, aber die gleiche Lieferadresse. Das Household-Graph vereint sie unter einer `household_id`. Marketing-Plattformen (Facebook Ads, Google Ads) verkaufen Household Targeting, aber du musst diese Beziehung im First-Party-Graph selbst modellieren.
+
+Normalisiere in BigQuery die Lieferadressen: Großbuchstaben, Leerzeichen, Apartmentnummern bereinigen, dann hashen und als `household_key` nutzen:
+
+```sql
+CREATE OR REPLACE TABLE `project.dataset.household_mapping` AS
+SELECT
+  user_id,
+  TO_HEX(SHA256(
+    LOWER(REGEXP_REPLACE(CONCAT(street, city, postal_code), r'\s+', ''))
+  )) AS household_key
+FROM `project.dataset.user_addresses`
+WHERE street IS NOT NULL AND postal_code IS NOT NULL;
+```
+
+Diese Tabelle bildet `user_id` auf `household_key` ab. Gruppiere Nutzer unter dem gleichen `household_key` und vergebe eine `household_id`. Household Identity unterscheidet sich von Cross-Device Identity – nicht ein Gerät einer Person, sondern mehrere Personen eines Haushalts. Das Privacy-Risiko ist erhöht: Zwei erwachsene Nutzer unter dem gleichen Household zusammenzuführen könnte gegen KVKK m.5 (Datenminimierung) verstoßen. Nutze das Household-Graph daher nur für Aggregat-Analysen und anonymes Targeting, nicht zur Zusammenführung individueller Profile.
+
+Zusätzliche Signale für die Household-Graph: Wi-Fi SSID-Hash (wenn die App dies ausliest), Bluetooth-Beacon (physische Ladenfrequenzen), gemeinsame Zahlungsmethode (gleiche Kreditkarte). Da diese PII sind, brauchst du Hashing + verschlüsselte Speicherung. CDP-Systeme (Segment, mParticle, RudderStack) bieten Household-Auflösung als „Relationship Graph" an; mit BigQuery-Modellen erhältst du aber mehr Kontrolle – du siehst, wie jedes Signal gewichtet wird. Roibase's [CDP & Retention Engineering](https://www.roibase.com.tr/de/retention-engineering-cdp) integriert diese Ebene in ein produktives Pipeline-Setup.
+
+## Graph Database vs Relational: Welcher Ansatz ist schneller
+
+Ein Identity-Graph in BigQuery (relational) speichern ist möglich, aber „A → B → C" Kettenverknüpfungen (transitive Closure) abzufragen ist kostspielig. Graph-Datenbanken (Neo4j, Amazon Neptune, TigerGraph) lösen das über Node/Edge-Strukturen – die Query „alle Geräte eines Nutzers X finden" läuft mit `MATCH (u:User)-[:HAS_DEVICE]->(d:Device)` in Millisekunden. In BigQuery schreibst du das mit `RECURSIVE CTE` oder `ARRAY_AGG`, aber bei großen Tabellen steigt der Slot-Verbrauch.
+
+Trade-off: Graph DB ist sehr schnell, aber Schema-Änderungen sind schwierig; Node/Edge-Modell ist nicht die SQL-Syntax, die Data Teams kennen. Relational Warehouse ist langsamer, aber dbt ermöglicht Version Control, Tests, Dokumentation. Die meisten Production-Umgebungen nutzen einen Hybrid-Ansatz: Täglich einen Identity-Mapping-Table in BigQuery via dbt bauen, in Neo4j synchronisieren, Real-Time-Lookups von Neo4j abfragen. Beispiel-Pipeline: dbt-Modell → BigQuery-View → Cloud Function Trigger → Neo4j Cypher INSERT.
+
+```sql
+-- Transitive Closure in BigQuery mit RECURSIVE CTE (langsamer)
+WITH RECURSIVE identity_chain AS (
+  SELECT signal_a, signal_b, 1 AS depth
+  FROM `project.dataset.identity_edges`
+  UNION ALL
+  SELECT ic.signal_a, e.signal_b, ic.depth + 1
+  FROM identity_chain ic
+  JOIN `project.dataset.identity_edges` e
+    ON ic.signal_b = e.signal_a
+  WHERE ic.depth < 5
+)
+SELECT DISTINCT signal_a, signal_b
+FROM identity_chain;
+```
+
+Diese Query verfolgt Kettenverbindungen bis zu maximaler Tiefe 5. Ohne Depth-Kontrolle droht eine Endlosschleife – bei zirkulären Kanten (A → B → A). Graph DB handhaben solche Zyklen mit Built-in-Mechanismen; BigQuery braucht eine manuelle `WHERE`-Bedingung. Wenn dein Identity-Graph 10M+ Edges hat, ist eine dedizierte Graph-Engine wie Neo4j wartbarer. Unter 1M Edges ist BigQuery + dbt ausreichend.
+
+## Datenschutz und Consent: Die rechtlichen Grenzen des Identity Graph
+
+Identity Resolution fällt unter DSGVO m.4(4) „Profiling". E-Mails deterministisch + probabilistisch zu verknüpfen ohne Consent ist ein Rechtshazard. Consent Mode v2 (Google) trennt „analytics_storage" und „ad_storage", aber für Identity Stitching könnte eine zusätzliche Kategorie „personalization_storage" nötig sein. Under TCF 2.2 brauchst du Purpose 1 (Device Storage) + Purpose 9 (Personalized Ads) – ohne beides ist sogar Hash-Matching rechtswidrig.
+
+Gehashte E-Mails sind in der DSGVO „Pseudo-Daten" (Recital 26) – bleiben persönliche Daten. Ist ein Reverse-Lookup oder Rainbow-Table möglich, ist es „Pseudonymisierung", nicht „Anonymisierung". Deshalb solltest du Hashes mit einem Salt versehen (E-Mail + Site-Spezifisches Secret → SHA-256) und den Salt in HSM oder Secret Manager lagern. Bei einem Nutzer-„Unlink"-Request (DSGVO m.18 Restriction of Processing) lösche die Edges aus dem Graph und unterbrich die deterministischen Verbindungen.
+
+KVKK m.7 fordert „explicit consent": „Persönliche Datenverarbeitung erfordert explizite, sachgebundene, informierte und freiwillige Zustimmung." Identity Stitching muss explizit im Consent-Formular genannt werden – vage Formulierungen wie „besseres Erlebnis" genügen nicht. Wenn der Nutzer seinen Consent widerruft (`consent_revoked_at` Timestamp), lösche alle Edges dieses `user_id` aus dem Graph und setze `deleted_at`. In BigQuery machst du ein Soft-Delete – statt physisches Löschen ein `WHERE deleted_at IS NULL`-Filter.
+
+## Implementierung: Inkrementelle Identity-Pipeline mit dbt
+
+In der Produktion läuft Identity Resolution nicht als Batch, sondern inkrementell – täglich neue Signale addieren, Graph aktualisieren. Mit dbt incremental models kannst du das bauen:
+
+```sql
+{{
+  config(
+    materialized='incremental',
+    unique_key='edge_id',
+    partition_by={'field': 'created_date', 'data_type': 'date'},
+    cluster_by=['signal_a_type', 'signal_b_type']
+  )
+}}
+
+WITH new_edges AS (
   SELECT
-    session_id,
-    device_fingerprint,
-    ip_subnet,
-    SUM(
-      CASE WHEN device_fingerprint_match THEN 40 ELSE 0 END +
-      CASE WHEN ip_subnet_match AND hour_diff < 4 THEN 25 ELSE 0 END +
-      CASE WHEN behavior_vector_similarity > 0.8 THEN 20 ELSE 0 END
-    ) AS total_confidence
-  FROM event_stream
-  WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-)
-SELECT session_id, device_fingerprint, total_confidence,
-  CASE WHEN total_confidence >= 70 
-    THEN GENERATE_UUID() 
-    ELSE NULL 
-  END AS probabilistic_id
-FROM signal_scores
-```
-
-Der Trade-off dieses Ansatzes ist das False-Positive-Risiko – geteilte Geräte (Office-Computer) oder VPN-Nutzung können verschiedene Personen zusammenführen. Deshalb müssen probabilistische IDs immer gegen deterministische Hashes validiert werden – wenn sich ein Nutzer anmeldet, wird eine "Merge"-Operation über den Hash durchgeführt und alte probabilistische Sessions werden korrigiert.
-
-## Household Identity: Von Device-Clustern zur Haushaltseinheit
-
-Die Entscheidungseinheit ist normalerweise nicht das Individuum, sondern der Haushalt. Von derselben IP aus nutzen 3 Geräte: MacBook (morgens nutzt ihn eine Frau), iPhone (tagsüber), iPad (abends nutzt es ein Kind). Diese als ein "Individuum" zu mergen ist falsch, aber als "Haushalt" zu gruppieren ist für Segmentierung kritisch – besonders bei Gebrauchsgütern (Weiße Ware, Möbel), wo die Kaufentscheidung auf Haushaltsebene getroffen wird.
-
-Der Household Graph wird über Router/Modem MAC-Adresse + IP-Subnetz + GPS-Standort aufgebaut. Device Fingerprint reicht nicht aus, du brauchst Network Fingerprint, da der WiFi-Router auf jedem Gerät die gleiche Gateway-MAC liefert. Hier ist Vorsicht bei öffentlichem WiFi geboten – wenn du 200 Geräte von einer Starbucks-IP als "Haushalt" gruppierst, bricht dein Modell zusammen. Das filterst du durch Session-Count Threshold (dieselbe IP + 50+ unique Devices → Blacklist) und Dwelling-Time Pattern (dieselbe IP, 2+ Stunden Session nicht vorhanden → Einzelhandel/Cafe).
-
-In BigQuery vergibst du die Household ID folgendermaßen:
-
-```sql
-CREATE OR REPLACE TABLE households AS
-WITH network_clusters AS (
-  SELECT ip_subnet, router_mac, GPS_lat, GPS_long,
-    APPROX_COUNT_DISTINCT(device_id) AS device_count,
-    AVG(session_duration_sec) AS avg_session
-  FROM sessions
-  WHERE DATE(timestamp) > DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
-  GROUP BY 1,2,3,4
-  HAVING device_count BETWEEN 1 AND 8 AND avg_session > 120
-)
-SELECT *, GENERATE_UUID() AS household_id
-FROM network_clusters
-```
-
-Auf Haushaltsebene ist die Lifetime-Value-Berechnung aussagekräftiger, da der Kauf von Weiße Ware nicht von einer Person entschieden wird, sondern für den Haushalt. In [CDP & Retention Engineering](https://www.roibase.com.tr/de/retention-engineering-cdp) Architekturen liefern Haushalt-Segmente 23% höhere ROAS in Kampagnenzielgruppen als individuelle Segmente – weil eine einzelne Telefonnummer Nachrichten über verschiedene Geräte zu versenden ersetzt wird durch Haushalt-Strategie als zielgerichtete Einheit.
-
-## Graph Stitching: Zeitlich verteilte Identitätsverschmelzung
-
-Der Identity Graph ist nicht statisch – der Nutzer ist heute anonym, morgen gibt er eine E-Mail an, in 5 Tagen meldet er sich an, in 2 Monaten aktualisiert er seine Telefonnummer. Mit jedem neuen Signal werden alte Fragmente "gesticht" – das heißt, alte probabilistische IDs werden mit dem neuen deterministischen Hash gemerged.
-
-Du löst das in einer Event-driven-Architektur: jedes `user_identified` Event geht in Pub/Sub, eine Cloud Function wird ausgelöst, ein BigQuery `MERGE` Statement läuft. Beispiel: Ein Nutzer meldet sich an → E-Mail-Hash kommt → alle probabilistische IDs aus den letzten 90 Tagen, die mit demselben Device Fingerprint erstellt wurden, werden an diesen Hash gebunden. Diese Backfill-Operation sollte so lange zurückgehen wie dein Attribution Window – mit einem 30-Tage-Conversion-Window solltest du 30 Tage zurück stitchen.
-
-```sql
-MERGE INTO unified_identity AS target
-USING (
-  SELECT probabilistic_id, email_sha256, MAX(timestamp) AS last_seen
-  FROM identification_events
-  WHERE event_name = 'user_login'
-  GROUP BY 1,2
-) AS source
-ON target.probabilistic_id = source.probabilistic_id
-WHEN MATCHED THEN UPDATE SET 
-  target.email_sha256 = source.email_sha256,
-  target.is_deterministic = TRUE,
-  target.stitched_at = CURRENT_TIMESTAMP()
-```
-
-Stitching birgt Race-Condition-Risiken – wenn sich ein Nutzer von 2 Geräten gleichzeitig anmeldet, können zwei unterschiedliche Hash-Merge-Versuche kollidieren. Du löst das mit Transaction Locks oder Idempotency Keys. Der Idempotency Key ist normalerweise `device_id + timestamp_truncated_to_second` – zwei `user_login` Events vom selben Gerät in derselben Sekunde werden als Duplikat behandelt und lösen nur einen Merge aus.
-
-## Datenschutz + Compliance: Gehashte PII und Datenminimierung
-
-Identity Resolution fällt unter KVKK und GDPR unter die Kategorien "automatisierte Entscheidungsfindung" und "Profiling" – das heißt, ohne explizite Zustimmung nicht möglich. Wenn vom Consent Management Platform (OneTrust, Cookiebot) kein `analytics_storage=granted` Signal kommt, kannst du nicht einmal einen Hash erfassen. Im Consent Mode v2 ist mit grundlegender Zustimmung der `user_data`-Parameter leer, nach verbesserter Zustimmung wird der Hash hinzugefügt.
-
-Hash ist keine PII, aber Pseudonymisierung – das heißt, unter GDPR "Recht auf Vergessenwerden" müssen auch Hashes gelöscht werden. In BigQuery musst du bei Löschanfragen ein `DELETE` Statement über `email_sha256` ausführen und diese Löschung muss zu Downstream-Systemen (CDP, CRM) propagiert werden. Deshalb sollte die Hash-Mapping-Tabelle zentral sein – in verteilten Systemen sollten Hashes nicht verstreut vorhanden sein, sondern von einer Single Source of Truth stammen.
-
-Das Datenminimumspeicherungsprinzip sollte deinen Identity Graph auf 90 Tage begrenzen. Probabilistische IDs älter als 90 Tage sollten archiviert werden; nur deterministische Hashes sollten langfristig gespeichert werden. Das ist sowohl für Compliance als auch für Storage-Kosten kritisch – in BigQuery reduziert Partition Pruning mit einem 90-Tage-Rolling-Window die Query-Kosten um 60%.
-
-## Produktions-Pipeline-Architektur: Batch + Streaming Hybrid
-
-Die Identity Resolution Pipeline läuft in zwei Schichten: Streaming Layer (Echtzeit-Signalerfassung) und Batch Layer (nächtliches Stitching). Der Streaming Layer läuft mit Pub/Sub → Dataflow → BigQuery write mit Streaming Insert, Latenz <10 Sekunden. Der Batch Layer wird mit dbt Scheduled Run um 04:00 Uhr morgens ausgelöst; alles Graph Stitching und Household Clustering läuft in dieser Schicht.
-
-Im Streaming Layer werden nur Signale erfasst – Hash Matching und Probabilistic Scoring werden nicht durchgeführt, weil komplexe JOINs im Streaming teuer sind. Events werden in Firestore geschrieben, eine `event_id` Unique Constraint verhindert Duplikat-Schreibvorgänge. Der Batch Layer liest diese Events und transformiert sie in BigQuery zu einem Dimensional Model. dbt Macros verketten Hash Generation, Score Calculation und Graph Merge in einer Pipeline.
-
-Für Monitoring ist die Graph-Coverage-Metrik entscheidend: `identified_users / total_active_users` Verhältnis. Unter 40% deutet auf fehlende deterministische Signale hin – Login Flows sollten optimiert werden, Lead Forms sollten auf E-Mail-Erfassung ausgerichtet sein. Über 75% ist gesunde Coverage. Diese Metrik wird als dbt Test in `data_tests/identity_coverage.sql` definiert und läuft vor jedem Deployment in der CI/CD.
-
-Identity Resolution ist das Rückgrat des modernen Marketing Stack. Die cookie-lose Welt hat deterministisches Hashing zur Goldstandard gemacht, aber allein reicht es nicht aus – mit Probabilistic Linking und Household Clustering aufgebaut sollte dein 3-schichtiger Identity Graph Consent-aware, Privacy-compliant und Production-ready sein. Wenn dieser in BigQuery mit dbt modellierte Pipeline läuft, kannst du Attribution Modelle, Segmentierungsstrategien und Lifetime-Value-Vorhersagen auf einer einzigen Kundenansicht aufbauen.
+    GENERATE_UUID() AS edge_id,
+    a.signal_id AS signal_a,
+    a.signal_type AS signal_a_type,
+    b.signal_id AS signal
