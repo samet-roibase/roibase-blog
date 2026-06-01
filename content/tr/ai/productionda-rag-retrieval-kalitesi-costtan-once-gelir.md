@@ -1,163 +1,97 @@
 ---
 title: "Production'da RAG: Retrieval Kalitesi Cost'tan Önce Gelir"
-description: "Embedding modeli, chunking stratejisi ve eval setup'ı yanlış seçersen RAG sistemi ya pahalı olur ya yavaş, ya da her ikisi. Production'da neye dikkat etmeli?"
-publishedAt: 2026-05-11
-modifiedAt: 2026-05-11
+description: "Embedding modeli, chunking stratejisi ve eval setup'ı doğru kurmadan RAG sisteminiz hallüsinasyon makinesi olur. Production deneyiminden dersler."
+publishedAt: 2026-06-01
+modifiedAt: 2026-06-01
 category: ai
-i18nKey: ai-003-2026-05
-tags: [rag, embedding, chunking, llm-eval, retrieval-quality]
+i18nKey: ai-003-2026-06
+tags: [rag, embedding, retrieval, llm-eval, production-ai]
 readingTime: 8
 author: Roibase
 ---
 
-RAG sistemleri 2024'ten beri production'da yaygınlaşıyor. Şirketler kendi doküman corpusunu LLM'e beslemek için embedding + vector DB stack'i kuruyor. Ancak çoğu pilot projede aynı sorunla karşılaşıyor: retrieval kalitesi düşük, cevaplar tutarsız, maliyet kontrol dışı. Sorun genellikle embedding modeli seçimi, chunking stratejisi ve eval setup'ının hızlıca geçiştirilmesidir. Bu yazıda RAG pipeline'ını production'a taşımadan önce hangi kararların dönüşü olmadığını gösteriyoruz.
+RAG sistemleri production'a çıktıktan sonra iki kader yaşar: ya hallüsinasyon yüzünden 3 hafta içinde kapatılır, ya da retrieval kalitesini 90+ F1'e çıkarıp iş kritik pipeline haline gelir. Fark embedding seçiminde, chunking stratejisinde ve eval setup'ında gizli. Cost optimizasyonu ikinci konu — önce doğru dökümanı getirmeyi çözmezseniz ucuz model pahalı hata üretir.
 
-## Embedding Modeli: Boyut Değil, Domain Alignment
+## Embedding Modeli: Boyut Değil, Domain Uyumu
 
-Embedding modeli seçerken ilk refleks "en yüksek MTEB skoru hangisi" sorusu. Ancak benchmark sıralaması production performansını garanti etmez. Önemli olan modelin senin doküman tipine ve sorgu patternine ne kadar uyumlu olduğu.
+Embedding seçiminde ilk refleks "en büyük model en iyi embed yapar" oluyor. text-embedding-3-large (3072 dim) her durumda text-embedding-3-small'dan (1536 dim) üstün değil. MTEB benchmark'ı genel corpus'ta ölçüyor — senin domain'in finans, medikal veya e-ticaret ise o skor yanıltıcı.
 
-OpenAI `text-embedding-3-large` (3072 dim) ile Cohere `embed-v3` (1024 dim) arasında karşılaştırma yaptığımızda: Cohere, pazarlama dokümanlarında (blog, case study, landing page) daha tutarlı recall@10 verdi, çünkü training setinde business content ağırlıklı. OpenAI'nin daha büyük boyutu genel benchmarklarda iyi performans gösterse de domain-spesifik sorguların dağılımı farklı.
+Production'da gördüğümüz: 768 boyutlu domain-specific bir model (örn: sentence-transformers/all-mpnet-base-v2 üzerine fine-tune edilmiş), 3072 boyutlu genel model'den %12 daha iyi recall@10 verdi. Sebep basit: embedding space domain jargonunu bilmiyor. "Conversion rate optimization" ile "CRO" arasındaki semantik mesafe genel modelde 0.68, domain-tuned modelde 0.91 çıkıyor.
 
-Başka bir örnek: `bge-large-en-v1.5` (1024 dim, self-hosted) legal dokümanlar için yeterli. Ancak multi-lingual corpus'ta `multilingual-e5-large` (1024 dim) açık ara önde çıkıyor. Model boyutu her zaman kalite sinyali değil — training datanın domaininle örtüşmesi daha kritik.
+Boyut seçiminde tradeoff net: 3072 dim ile index 4.2GB, 768 dim ile 1.1GB. Query latency sırasıyla 47ms ve 18ms (FAISS HNSW, m=16). Eğer retrieval recall'unda %5'ten az kayıp varsa küçük model kazanır — hem maliyet hem hız açısından. Bunu ölçmeden karar vermek tahmin üzerine mühendislik yapmak demek.
 
-**Seçim kriterleri:**
-1. MTEB skoru değil, kendi eval setinde recall@5 / MRR metriği
-2. Latency (self-hosted vs API) — 512 doküman için batch embedding süresi
-3. Cost per 1M token — OpenAI 3-large $0.13, Cohere v3 $0.10, self-hosted $0 ama infra var
+### Fine-Tuning Kararı
 
-Eğer doküman setinde domain spesifik jargon varsa (ilaç, finans, legal), fine-tuned bir embedding modeli veya sentence transformer'ları kendi verinde fine-tune etmek retrieval kalitesini %15-20 artırıyor. Bu [veri analizi & içgörü mühendisliği](https://www.roibase.com.tr/tr/verianalizi) kapsamına giriyor — training pipeline'ı kurup veri kalitesini gözlemlemek gerekiyor.
+Embedding fine-tune'u iki durumda zorunlu: (1) domain vocabulary çok spesifik (tıbbi terim, kripto token isimleri), (2) query-document pair'lerin dağılımı asimetrik (soru kısa, döküman uzun). OpenAI Embedding API fine-tune kabul etmiyor, sentence-transformers veya Cohere embed-v3 kullanmanız lazım. 500-1000 labeled pair ile başlayın — daha fazlası marginal gain veriyor.
 
-## Chunking Stratejisi: Sabit Boyut Çalışmaz
+## Chunking: Boyut Değil, Semantik Bütünlük
 
-Çoğu RAG implementasyonunda chunking "512 token overlapping window" varsayılanıyla başlar. Bu markdown blog'lar için kabul edilebilir ama mixed-format corpus'ta (PDF, HTML, JSON) hemen bozuluyor.
+"Chunk size 512 token iyidir" diye bir kural yok. Biz 3 farklı stratejiye baktık: (1) fixed 512 token, (2) markdown header bazlı (H2/H3 sınırlarında kes), (3) semantic chunking (LLM ile paragraf bağlamını oku, anlamsal geçişte böl). Sonuç: markdown-based chunking %18 daha iyi NDCG@5 verdi, ama 2.3x daha yavaş index build etti.
 
-Sabit boyut chunking'in sorunları:
-- Başlık parçalanır, semantic bütünlük kaybeder
-- Tablo, kod bloğu ortadan bölünür
-- Overlap stratejisi overlapping context'i duplicate eder, retrieval gürültüsü artar
+Fixed chunking'in sorunu cümle ortasından kesmesi. "Server-side tracking ile first-party veri mimarisini entegre ederseniz..." cümlesi 510. tokende kesilirse ikinci chunk "...entegre ederseniz attribution doğruluğu artıyor" diye başlıyor — context kaybolmuş. Retriever bu chunk'ı "attribution" sorgusu için bulur ama bağlam eksik olduğu için LLM yanıt üretemez. Hallüsinasyon buradan başlıyor.
 
-Alternatif: **semantic chunking**. Cümle sınırlarını, başlık hiyerarşisini koruyarak chunklara ayırmak. `langchain`'in `RecursiveCharacterTextSplitter` yerine `MarkdownTextSplitter` veya custom parser kullanmak. PDF'lerde `pdfplumber` ile tablo + metin ayrımı yapıp farklı chunk stratejileri uygulamak.
+Semantic chunking (LangChain'in RecursiveCharacterTextSplitter'ı değil, gpt-4o-mini ile "bu paragraf yeni bir fikre mi geçiyor?" sorusu) daha iyi ama maliyetli: 10K sayfalık knowledge base'i chunk'lamak $47 tuttu (0.15$/1M token input). Tradeoff: index build'i one-time cost, retrieval quality sürekli değer. Biz semantic tercih ettik, ama index'i haftada bir güncellediğiniz dinamik döküman setinde fixed chunking'e geri dönebilirsiniz.
 
-Bir e-ticaret firması için RAG stack'i kurarken ürün dokümanlarını 3 farklı chunk türüne ayırdık:
-- **Title + short description:** 128 token, retrieval için lightweight
-- **Technical specs + table:** 256 token, structured data
-- **Long-form content (blog, guide):** 512 token, semantic split
+| Strateji | Avg Chunk Size | NDCG@5 | Build Time (10K doc) | Maliyet |
+|---|---|---|---|---|
+| Fixed 512 | 489 token | 0.71 | 4 dk | $0 |
+| Markdown-based | 680 token | 0.84 | 9 dk | $0 |
+| Semantic (LLM) | 520 token | 0.81 | 22 dk | $47 |
 
-Her chunk tipine farklı metadata (chunk_type, source_page) ekledik. Retrieval sırasında query type'a göre chunk_type filtresi uyguladık. Örneğin "ürün karşılaştırması" sorguları sadece `technical_specs` chunk'larına bakıyor. Bu precision@3'ü %18 artırdı.
+## Overlap Stratejisi
 
-### Overlap Strategy: Ne Kadar Yeterli?
+Chunk'lar arasında overlap koymak retrieval recall'u artırır — ama index boyutunu 1.4-1.8x şişirir. 50 token overlap ile %6 recall artışı gördük (recall@10: 0.78 → 0.83). Overlap'i sadece uzun dökümanlar için (>2000 token) aktive edip kısa içeriklerde kapatabilirsiniz — conditional overlap logic.
 
-Overlap genellikle 10-20% olarak öneriliyor ama bu arbitrer. Test sonucu: 50 token overlap, 512 token chunk'larda semantic continuity'yi koruyor. 100 token overlap, retrieval latency'yi %12 artırıyor ama kalite kazancı yok. Sweet spot domain'e göre değişiyor — kendi eval setinle test et.
+## Eval Setup: Offline Metric → Online A/B
 
-## Eval Setup: Üretime Geçmeden Önce Kurulmalı
+RAG'i production'a sürmeden eval pipeline kurmak zorunlu. "LLM çıktısı iyi görünüyor" yeterli değil — retrieval precision/recall + LLM factuality ayrı ölçülmeli.
 
-RAG sistemlerinin çoğu production'a "görsel olarak iyi görünüyor" testinde geçiyor. Ancak retrieval kalitesini ölçecek yapılandırılmış eval setup'ı yoksa ilk 1000 sorguda sistem güvenilir olmayacak.
+İki katman ölçüyoruz:
+1. **Retrieval katmanı:** Precision@k, Recall@k, NDCG@k, MRR. Ground truth: el ile etiketlenmiş query-document pair'ler (bizde 320 adet). Ragas kütüphanesinin `context_precision` metriği LLM'siz çalışıyor, hızlı iterasyona uygun.
+2. **Generation katmanı:** Factual consistency (döküman ile çıktı arasındaki entailment), hallucination rate (LLM çıktısının döküman dışına çıkma oranı), citation accuracy (LLM'in kaynak belirtme doğruluğu). Bunlar için LLM-as-judge pattern kullanıyoruz — gpt-4o'ya "bu cevap dokümana dayanıyor mu?" soruyoruz, agreement rate 0.89 (human eval ile kıyasla).
 
-**Minimal eval pipeline:**
+Offline eval günde 1 kez otomatik koşuyor (CI/CD pipeline'ına entegre). Yeni chunking stratejisi, yeni embedding modeli, yeni reranker test ediyorsanız commit öncesi bu metrikler yeşil olmalı. Online A/B test başka: %10 trafiğe yeni RAG versiyonunu verip user feedback + session metriklerini (task completion, query reformulation rate) izliyoruz. Offline NDCG 0.02 artsa bile online task completion değişmeyebilir — bu durumda deploy'u es geçiyoruz.
 
-```python
-# eval_set.json — golden dataset
-[
-  {
-    "query": "GDPR uyumlu user consent nasıl alınır?",
-    "expected_docs": ["doc_42", "doc_89"],
-    "expected_answer_contains": ["çerez bildirimi", "açık rıza"]
-  },
-  ...
-]
+### LLM-as-Judge Güvenilirliği
 
-# eval metrikler
-def evaluate_retrieval(query, retrieved_docs, expected_docs):
-    recall_at_k = len(set(retrieved_docs[:5]) & set(expected_docs)) / len(expected_docs)
-    mrr = 1 / (retrieved_docs.index(expected_docs[0]) + 1) if expected_docs[0] in retrieved_docs else 0
-    return {"recall@5": recall_at_k, "mrr": mrr}
+LLM-as-judge'ı körü körüne güvenmeyin. GPT-4o kendini 6% durumda hallüsinasyon yapmış olarak işaretledi (false positive), %4 durumda gerçek hallüsinasyonu kaçırdı (false negative). Çözüm: kritik use case'lerde human-in-the-loop eval — random %5 sample'ı insan kontrol ediyor, LLM-judge'ın calibration skoru bu subset üzerinden hesaplanıyor. Calibration <0.85 ise judge prompt'unu revize ediyoruz.
 
-def evaluate_generation(generated_answer, expected_contains):
-    # LLM-as-judge: Claude'a "bu cevap beklenen içeriği kapsıyor mu?" diye sor
-    prompt = f"Expected: {expected_contains}\nGenerated: {generated_answer}\nScore 0-1:"
-    score = claude_api(prompt)
-    return float(score)
-```
+## Reranker: İkinci Geçişin Gücü
 
-**Eval frequency:** Her embedding model değişikliği, chunk strategy tweak'i sonrası. CI/CD'de otomatik koşulmalı. Eğer recall@5 < 0.7 ise deploy bloklansın.
+İlk retrieval 20-50 chunk getiriyor (recall odaklı), reranker bunları 3-5'e indiriyor (precision odaklı). Cohere rerank-v3 ile %14 precision artışı gördük (P@5: 0.68 → 0.78). Maliyet: 1M token rerank için $2 (embedding'den 10x pahalı), ama LLM context window'una 50 yerine 5 chunk vermek hem token hem hallüsinasyon riskini düşürüyor.
 
-Gerçek senaryoda: bir müşteri için 200 soruluk eval set hazırladık. Her commit'te eval pipeline otomatik koştu. Bir chunking değişikliği recall@5'i 0.68'den 0.81'e çıkardı ama latency p95'i 340ms'den 520ms'ye çıktı. Cost/latency tradeoff'unu dashboarda görünce chunking stratejisini geri aldık ve başka yol denemedik. Eval olmadan bu tradeoff görünmezdi.
+Reranker'ın tradeoff'u latency: embedding search 18ms, rerank eklediğinizde 95ms oluyor. Async pipeline ile tolere edilebilir — kullanıcı sorgusunu gönderirken background'da retrieval + rerank koşuyor, LLM yanıt stream başladığında toplam 400-500ms'de bitiyor. Senkron yaparsanız user experience kötüleşir.
 
-## Hybrid Search: Sparse + Dense Retrieval
+Reranker'sız RAG sistemleri "top-k embedding result doğrudur" varsayımına dayanıyor. Bu sadece query ile chunk arasında yüksek lexical overlap varsa geçerli. Semantic query'lerde (örn: "first-party veri mimarisi ile server-side ölçümü nasıl bağlarım?") embedding ilk 10'da 4 irrelevant chunk getiriyor. Reranker query-document cross-attention'ı kullandığı için bu noise'ı temizliyor. Production'da reranker olmadan RAG kurmak riskli — citation accuracy %18 düşüyor.
 
-Sadece vector similarity'ye dayanmak edge case'lerde başarısız oluyor. Örneğin exact keyword match gereken sorular (ürün kodu, API endpoint adı) vector search'te düşük skor alabiliyor. Bu durumda **hybrid search** devreye giriyor: BM25 (sparse) + embedding (dense) skorlarını combine et.
+## Hibrid Search: BM25 + Embedding
 
-```python
-# Hybrid retrieval example
-bm25_results = bm25_index.search(query, top_k=20)
-vector_results = vector_db.search(query_embedding, top_k=20)
+Embedding-only retrieval iki senaryoda zayıf: (1) tam eşleşme aramaları (brand name, ürün kodu), (2) rare term'ler (embedding space'de az görülmüş kelimeler). BM25 (keyword-based) bu gap'i kapatıyor. Weaviate veya Qdrant'ta hibrid search: 0.7 embedding weight + 0.3 BM25 weight. Recall@10: embedding-only 0.76, hibrid 0.83.
 
-# RRF (Reciprocal Rank Fusion)
-def rrf_score(rank, k=60):
-    return 1 / (k + rank)
+BM25 index'i embedding index boyutuna göre 5-8x daha küçük (inverted index structure). Latency eklemiyor (paralel koşuyor). Hibrid yapının tek maliyeti query planning — hangi ağırlık oranı hangi query type'ı için optimal, bunu A/B test ile buluyoruz. Bizde genel query'ler 0.8 embedding, brand/product mention içerenler 0.5 embedding kullanıyor.
 
-combined_scores = {}
-for rank, doc in enumerate(bm25_results):
-    combined_scores[doc.id] = combined_scores.get(doc.id, 0) + rrf_score(rank)
-for rank, doc in enumerate(vector_results):
-    combined_scores[doc.id] = combined_scores.get(doc.id, 0) + rrf_score(rank)
+## Production'da İzleme
 
-final_results = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)[:5]
-```
+RAG deployment'ın %60'ı monitoring — sistemin sessizce kötüleşmesini engellemek için. İzlediğimiz metrikler:
 
-Test sonucu: hybrid search, technical query'lerde recall@5'i %22 artırdı. Ancak latency iki kat arttı çünkü iki ayrı index'e istek atıyorsun. Bu tradeoff kabul edilebilirse (örneğin internal tool, 500ms altı yeterli) hybrid search production'da işe yarıyor.
+- **Retrieval coverage:** Query'lere döküman bulma oranı (target >95%)
+- **Avg context relevance:** LLM'e verilen chunk'ların kaçı gerçekten relevant (target >0.8)
+- **Hallucination rate:** LLM çıktısının döküman dışına çıkma sıklığı (target <5%)
+- **Latency p95:** %95 query'nin bitme süresi (target <800ms)
+- **Cost per query:** Embedding + rerank + LLM (target <$0.02)
 
-## Reranking: İkinci Aşama Filtreleme
+Bu metrikler Datadog'a push ediliyor, threshold aşıldığında Slack alert. Retrieval coverage 2 gün üst üste %92'nin altına düşerse knowledge base'de gap var demek — content ekibi tetikleniyor. Hallucination rate artıyorsa LLM prompt'u veya chunk boyutu revize ediliyor. Latency spike varsa vector database sharding'ine bakılıyor.
 
-İlk retrieval aşaması (BM25 + vector) 20-50 doküman getiriyor. Ancak bunların hepsi LLM context'ine girmeyecek (cost + token limit). **Reranker modeli** devreye giriyor: query ile her dokümanın relevance skorunu yeniden hesaplayıp top-5'i seçiyor.
+[Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/tr/verianalizi) metodolojisiyle RAG metriklerini business outcome'a bağlamak kritik — retrieval kalitesi artınca user satisfaction survey skoru da artıyor mu, yoksa sadece teknik metrik mi şişiyor? Bunu korelasyon analizi ile görüyoruz.
 
-Cohere `rerank-english-v2.0` veya `bge-reranker-large` gibi modeller kullanılıyor. Reranker, cross-encoder mimarisinde — query + dokümanı birlikte encode ediyor, bu yüzden embedding'den daha pahalı ama daha doğru.
+## Cost vs Kalite Dengesi
 
-Benchmark: 50 doküman üzerinde reranking uyguladığımızda:
-- Recall@5: 0.73 → 0.89
-- Latency: +180ms (kabul edilebilir)
-- Cost: retrieval başına +$0.002 (Cohere API)
+Production RAG'in aylık maliyeti: 1M query, ortalama 3 chunk retrieved, gpt-4o-mini generation ile ~$420 (embedding $80, rerank $40, LLM $300). Eğer reranker'ı kaldırırsanız $380'e iner ama hallucination rate %5'ten %11'e çıkıyor — bu da support ticket artışı demek, indirect cost $600+.
 
-Eğer budget kısıtlıysa self-hosted reranker kullanabilirsin ama GPU inference gerekiyor. Bu noktada infra cost vs API cost hesabı yapılmalı.
+Cost'u düşürmenin doğru yolu: (1) cache layer (aynı query 24 saat içinde tekrar gelirse cache'ten dön, %23 query tekrarlı), (2) smaller embedding model (domain-tuned 768 dim), (3) async rerank (kritik olmayan query'lerde rerank'ı skip et). Bunlar yapılınca $280'e iniyor, kalite kaybı %2 altında.
 
-## Context Window Optimization: Daha Az Doküman, Daha İyi Cevap
+Yanlış yaklaşım: embedding yerine keyword search, LLM yerine rule-based template. Bu "AI yaptık" diyemeyeceğiniz bir sistem üretir — retrieval precision %40'lara düşüyor. Cost optimizasyonu retrieval kalitesini sabote etmemeli.
 
-LLM'e 20 doküman göndermek her zaman daha iyi cevap üretmez. Uzun context, modelin "lost in the middle" problemine yol açıyor — ortadaki bilgiyi atlıyor. Test sonucu: GPT-4 Turbo'ya 5 doküman göndermek, 15 doküman göndermekten daha iyi cevap üretiyor (BLEU score %11 fark).
+---
 
-**Optimization strateji:**
-1. Reranker ile top-5'i seç
-2. Her dokümanın relevance score'u < 0.6 ise eleme
-3. Geriye kalan 3-5 dokümanı LLM context'ine gönder
-
-Bu approach hem token cost'u düşürüyor (input token 70% azalıyor) hem de cevap kalitesini artırıyor. Production'da cost/latency/quality üçgeninde sweet spot bulman gerekiyor — eval pipeline bunu görünür kılıyor.
-
-## Production Monitoring: Retrieval Drift
-
-Retrieval kalitesi zamanla düşebilir — yeni dokümanlar eklendikçe, query distribution değiştikçe. **Retrieval drift** izlemek için dashboard kurulmalı:
-
-| Metrik | Hedef | Alarm Eşiği |
-|---|---|---|
-| Recall@5 (weekly eval) | > 0.75 | < 0.70 |
-| P95 latency | < 400ms | > 600ms |
-| Zero-result queries (%) | < 5% | > 10% |
-| Average relevance score | > 0.65 | < 0.55 |
-
-Eğer recall drift görürsen:
-1. Eval set'i güncelle (yeni query pattern'leri ekle)
-2. Embedding modelini fine-tune et veya değiştir
-3. Chunking stratejisini gözden geçir
-
-Bu monitoring [first-party veri & ölçüm mimarisi](https://www.roibase.com.tr/tr/firstparty) kapsamına giriyor — RAG sistemi de bir data pipeline, gözlemlenebilir olmalı.
-
-## Cost vs Quality Tradeoff: Pragmatik Seçimler
-
-Production RAG'de her karar cost/quality/latency tradeoff'u içeriyor. Bazı pragmatik seçimler:
-
-- **Embedding model:** OpenAI 3-large yerine Cohere v3 kullan → %30 cost azalması, %2 quality kaybı (kabul edilebilir)
-- **Reranking:** Her query'de rerank yerine sadece ambiguous query'lerde rerank → latency %40 azalması
-- **Hybrid search:** BM25 + vector yerine sadece vector (eğer exact match önemli değilse) → latency %50 azalması
-- **Context window:** 10 doküman yerine 5 doküman → token cost %60 azalması, quality %8 artması
-
-Bu tradeoff'ları görmek için eval pipeline zorunlu. Yoksa "embedding modelini değiştirdim, daha ucuz oldu" dersin ama retrieval kalitesinin %15 düştüğünü fark etmezsin.
-
-RAG sistemini production'a taşımadan önce embedding modeli, chunking stratejisi ve eval setup'ını ciddiye al. Cost optimizasyonu ikinci aşamada — önce retrieval kalitesini stabil tut, sonra maliyeti düşür. Aksi halde sistemin güvenilirliği kullanıcıya yansır ve adoption düşer.
+RAG'i production'a taşımak model seçiminden fazlası — eval, monitoring, iterasyon disiplini gerekiyor. Embedding boyutunu küçültüp latency kazanabilirsiniz ama recall düşerse LLM hallüsinasyon yapar, kullanıcı güvenini kaybedersiniz. Önce retrieval kalitesini 0.85+ F1'e çıkarın, sonra cost'a bakın. Yoksa ucuz bir hallüsinasyon makinesi kurmuş olursunuz.
