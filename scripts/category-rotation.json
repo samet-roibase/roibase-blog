@@ -9,15 +9,9 @@
     "travel",
     "lifestyle"
   ],
-  "lastIndex": 2,
-  "lastRunAt": "2026-06-02T14:02:03.489Z",
+  "lastIndex": 3,
+  "lastRunAt": "2026-06-02T22:03:17.822Z",
   "history": [
-    {
-      "at": "2026-05-14T14:02:26.533Z",
-      "category": "tech",
-      "topicId": "tech-004",
-      "i18nKey": "tech-004-2026-05"
-    },
     {
       "at": "2026-05-14T22:02:51.319Z",
       "category": "data",
@@ -311,6 +305,12 @@
       "category": "tech",
       "topicId": "tech-003",
       "i18nKey": "tech-003-2026-06"
+    },
+    {
+      "at": "2026-06-02T22:03:17.822Z",
+      "category": "data",
+      "topicId": "data-004",
+      "i18nKey": "data-004-2026-06"
     }
   ]
 }
