@@ -1,78 +1,116 @@
 ---
 title: "iOS 17 Sonrası Ad Attribution Stack'i"
-description: "ATT, SKAdNetwork 4 ve modeled conversions ile birlikte iOS reklam ölçümü tamamen yeniden kuruldu. İşte 2026'da çalışan stack."
-publishedAt: 2026-05-11
-modifiedAt: 2026-05-11
+description: "ATT, SKAdNetwork 4 ve modeled conversions ile iOS'ta attribution'ı yeniden kurmak: post-lookback maturity dönemi için pratik strateji rehberi."
+publishedAt: 2026-06-02
+modifiedAt: 2026-06-02
 category: marketing
-i18nKey: marketing-003-2026-05
+i18nKey: marketing-003-2026-06
 tags: [ios-attribution, skadnetwork, att, modeled-conversions, mobile-measurement]
 readingTime: 8
 author: Roibase
 ---
 
-iOS 14 ile başlayan attribution kırılganlığı 2026'da olgunluk noktasına ulaştı. ATT (App Tracking Transparency) opt-in oranları %25'in altında kaldı, SKAdNetwork 4 ile conversion value artık 128 bit'e çıktı, Meta ve Google modeled conversions'ı default hale getirdi. Oyun eskisi gibi değil: deterministic attribution öldü, probabilistic + post-lookback maturity dönemi başladı. iOS'ta reklam yatırımı yapan herkes yeni stack'i doğru kurmazsa bütçe karadeliğe gidiyor.
+Apple'ın iOS 14.5'te App Tracking Transparency'yi devreye almasının üzerinden beş yıl geçti. O günden bu yana mobil performance marketing'in temel varsayımları değişti. Deterministik user-level attribution öldü, probabilistik ve aggregated modeller zorunlu hale geldi. iOS 17 ve SKAdNetwork 4'ün getirdiği yeni conversion value şeması, post-lookback maturity penceresi ve modeled conversions sayesinde oyun yeniden kurgulanıyor. Bu yazıda iOS'ta attribution'ı 2026'da nasıl kurman gerektiğini, hangi sinyalleri hangi sırayla kullanacağını ve MMP + incrementality testlerini nasıl birleştireceğini anlatıyoruz.
 
-## ATT Sonrası Gerçeklik: %25 Opt-In ile Yaşamak
+## ATT Sonrası Attribution Anatomisi
 
-iOS 17 kullanıcı tabanında ATT opt-in oranı global ortalaması %23-27 arasında sabitleşti (Singular, Q1 2026 verisi). Bu demek oluyor ki kullanıcıların %75'i IDFA paylaşmıyor. Eski IDFA-based attribution'a bağımlı kampanyalar artık sadece azınlık segmenti görüyor, geri kalanı "modeled" olarak işaretleniyor.
+iOS 14.5'ten önce MMP'ler (Adjust, AppsFlyer, Kochava) cihaz düzeyinde IDFA okuyarak her dönüşümü doğrudan bir kampanyaya bağlayabiliyordu. ATT ile bu mekanizma %95'ten fazla kullanıcı için kapandı (2025 Statista verisi, opt-in oranı %7 seviyesinde). Şu an elimizde üç katman var:
 
-Modeled conversions ne demek? Meta ve Google, ATT'den reddedenler için machine learning ile kullanıcı davranışını regress edip dönüşüm olasılığı atıyor. Bu yöntem aggregate — kişi bazlı değil, cohort bazlı. ROAS hesabı artık %70-80 modeled'dan geliyor. Eğer kampanya optimizasyonunu hâlâ "deterministic ROAS" üzerinden yapıyorsan verinin çoğunu es geçiyorsun.
+**1. Deterministic (IDFA opt-in kullanıcıları):** İzin veren %7'lik dilim için klasik MMP akışı hâlâ çalışıyor. Click/impression timestamp, install, in-app event — hepsi user-level. Ancak bu segment artık temsil gücü olmayan bir sample.
 
-Yeni gerçeklik basit: iOS'ta zaten %100 hassasiyet yok. Kabul edip stack'i buna göre kur. Deterministic sinyal azınlığı karar için yeterli değil — modeled'ın nasıl üretildiğini anlamak, güvenilirliğini kontrol etmek ve incrementality testleriyle doğrulamak zorundasın.
+**2. SKAdNetwork (aggregated postback):** Apple'ın kendi privacy-first çerçevesi. Attribution window 0-72 saat arası; conversion value 6-bit (0-63) encoding ile sınırlı. SKAdNetwork 4'te ikinci ve üçüncü postback eklenmiş durumda (8-35 gün arası lockWindow), bu sayede D7-D30 retention artık ölçülebiliyor.
 
-## SKAdNetwork 4: 128-Bit Conversion Value ve Hierarchical Source ID
+**3. Modeled conversions:** MMP'lerin makine öğrenmesiyle tahmin ettiği dönüşümler. Aggregate click/impression data + install count + SKAN sinyali birleştirilerek oluşturuluyor. Güvenilirliği deterministic'ten düşük, ama ölçek sağlıyor.
 
-SKAdNetwork 4 (iOS 16.1+ default, iOS 17'de mature) Apple'ın sunduğu tek "official" aggregate attribution yöntemi. Temel mekanizma: kullanıcı reklama tıklıyor, uygulama yüklenip ilk açılıştan sonra conversion value kaydediliyor, 24-72 saat postback window'u kapandığında Apple aggregated sinyal gönderiyor. Hiçbir IDFA, hiçbir device identifier yok.
+Bu üç katmanı birlikte kullanmak zorundayız. Hiçbiri tek başına yeterli değil: IDFA çok dar, SKAN aggregated ve gecikmeli, modeled ise tahmine dayalı. Stack'i bu üçünü dengeleyen bir mimaride kurmak core competency haline geldi.
 
-Yenilik ne? Conversion value artık 128 bit — daha fazla detay kodlayabiliyorsun. Örnek encoding stratejisi: ilk 6 bit install source (Meta, Google, TikTok, organic), sonraki 7 bit olay tipi (first purchase, tutorial complete, level 3), son 115 bit revenue bucketing + cohort segment. Bu encoding'i sen kuruyorsun, her uygulama kendi ihtiyacına göre tasarlıyor.
+## SKAdNetwork 4'ün Getirdikleri
 
-Hierarchical Source ID de geldi: tek campaign ID yerine artık 4 katmanlı hiyerarşi kullanabiliyorsun (campaign → ad set → creative → keyword). Bu multi-touch modelleme için kritik — önceki SKAdNetwork'te sadece campaign-level data vardı, şimdi creative-level performans ayrıştırılabiliyor. Ancak detay arttıkça noise da artıyor: Apple privacy threshold nedeniyle düşük volümlü segmentlerde postback atmıyor. Stratejik trade-off: çok granüler olmak mı yoksa daha fazla postback almak mı?
+SKAdNetwork 4 (iOS 16.1 ile geldi, iOS 17'de matured) üç büyük yenilik getirdi:
 
-### Conversion Value Tasarımı
+### Conversion Value Hierarchy ve Postback Zinciri
 
-| Bit Aralığı | Kullanım | Örnek Encoding |
-|---|---|---|
-| 0-5 (6 bit) | Install source | 0=organic, 1=Meta, 2=Google, 3=TikTok |
-| 6-12 (7 bit) | Event type | 0=install, 1=registration, 2=first_purchase, 3=D7_retention |
-| 13-127 (115 bit) | Revenue bucket + segment | LTV prediction + geo + device tier |
+Artık tek bir 6-bit yerine üç postback var: ilk 0-2 gün, ikinci 3-7 gün, üçüncü 8-35 gün. Her postback kendi 6-bit değerini taşıyor. Bu sayede erken IAP sinyalini (install-to-purchase <48h) ikinci postback'te retention sinyalinden (D3-D7 session count) ayırabiliyorsun. Önceden tüm sinyalleri 64 slot'a sıkıştırmak zorundaydık, şimdi 64×3=192 combinasyon var (pratikte 64+64+64 değil, sequential encoding).
 
-Bu encoding'i MMP'ler (Adjust, AppsFlyer) SDK'ya gömer. Ama encoding mantığını sen belirlemen gerekiyor — MMP default encoding'i sığ kalıyor.
+**Örnek mapping:**
+- **Postback 1 (0-2 gün):** D0 IAP durumu (0=no event, 1-10=revenue bracket, 11-20=specific SKU, 21-63=custom blend)
+- **Postback 2 (3-7 gün):** D3-D7 retention tier (0=churn, 1-20=session count band, 21-40=engagement depth)
+- **Postback 3 (8-35 gün):** D30 LTV proxy (0-63=cumulative revenue bracket)
 
-## Modeled Conversions: Meta CAPI + Google Enhanced ile Nasıl Artırılır
+Bu yapıyı doğru kurabilmek için conversion value mapping'i her hafta gözden geçirmek zorundasın. Çünkü kullanıcı davranışı değiştikçe en bilgi verici sinyalin hangi slot'a düştüğü değişiyor.
 
-Modeled conversions'ın kalitesi, platforma gönderilen first-party signal miktarıyla doğru orantılı. Meta CAPI (Conversions API) ve Google Enhanced Conversions burada devreye giriyor. iOS'ta IDFA yoksa bile sunucu tarafından gönderilen email hash, phone hash, user_data parametreleri platformun modelleme doğruluğunu artırıyor.
+### Source Identifier ve Hierarchical Source ID
 
-Meta CAPI ile iOS'ta %15-20 ROAS iyileşme rapor edildi (Meta Business Partner verileri, 2025 Q4). Neden? Çünkü pixel'e ulaşmayan dönüşümler sunucu tarafından tamamlanıyor ve Meta bu sinyali kullanıcı cohortlarıyla match edip modelleme yapıyor. Anahtar: CAPI'ye gönderilen event_id pixel ile aynı olmalı (deduplication), user_data parametreleri SHA-256 hash ile normalize edilmiş olmalı, event_time sunucu timestamp'i ile uyumlu olmalı.
+SKAdNetwork 4, publisher app'lerin ve alt yayıncı ağların ID'sini dört-tier bir hiyerarşide gösteriyor. Artık sadece "Meta'dan geldi" değil, "Meta → Audience Network → Publisher App X" şeklinde görüyorsun (eğer ad network bunu expose ediyorsa). Bu sayede sub-publisher performansını karşılaştırabiliyorsun.
 
-Google Enhanced Conversions da benzer — ama mekanizma farklı. Google Ads'te enhanced conversions açıksa, GTM server container'dan gönderilen dönüşümlere user_data eklenebiliyor. Google bu veriyi kendi logged-in user graph'ı ile cross-reference edip modelleme yapıyor. Dikkat: enhanced conversions sadece web'de değil, app'lerde de çalışıyor — ancak app'te server-side kurmak daha kompleks. Firebase SDK + Cloud Functions üzerinden [first-party veri mimarisi](https://www.roibase.com.tr/tr/ppc) gerekiyor.
+Pratikte Facebook, TikTok, Google gibi walled garden'lar bu field'ı tam expose etmiyor, ama programmatic ve rewarded video ağlarında kritik fark yaratıyor.
 
-## Post-Lookback Maturity: 7-Day Attribution Window Artık Yeterli Değil
+### Web-to-App Attribution Support
 
-iOS stack'inde lookback window genelde 1-7 gün. SKAdNetwork'te 24-72 saat, Meta'da iOS attribution 7 gün, Google Ads'te configurable ama default 7 gün. Problem şu: kullanıcı davranışı 7 günde bitmiyor — özellikle subscription, e-ticaret gibi yüksek consideration cycle'ı olan kategorilerde first purchase 14-30 gün arasında gerçekleşebiliyor.
+iOS 17.4 ile SKAdNetwork web click'lerini de desteklemeye başladı. Eğer bir Safari banner'ından App Store'a gidip install yapılırsa, bu da SKAN postback'ine giriyor. Web + app ortak UA stratejisi çalıştıran markalarda bu sinyali [Performans Pazarlaması (PPC)](https://www.roibase.com.tr/tr/ppc) kampanyalarıyla birleştirip cross-channel incrementality hesabı yapmak mümkün hale geldi.
 
-Post-lookback maturity ne demek? Kısa window'dan sonra gerçekleşen dönüşümleri retrospektif olarak hesaba katmak. Örnek: kullanıcı 3. günde reklama tıkladı, 12. günde satın aldı — bu conversion Meta'nın 7-day window'una yakalanmadı ama gerçek. Eğer cohort bazlı LTV analizi yapıyorsan bu conversion'ı manuel olarak campaign'e attribution etmen gerekiyor.
+## Modeled Conversions: Nasıl Çalışır, Ne Zaman Güvenilir
 
-Yöntem: install cohort'unu takip et, D7 → D14 → D30 revenue artışını ölç, delta'yı campaign'lere yeniden dağıt. Bu manuel süreç ama BI + data warehouse ile otomasyon kurulabilir. BigQuery'de `FIRST_VALUE()` window function ile install_date'e göre campaign match yapabilirsin, sonra LTV increment'i campaign'lere weighted attribution ile dağıtırsın. Roibase'in [performans pazarlaması](https://www.roibase.com.tr/tr/ppc) altyapısında bu pipeline default.
+Modeled conversions, MMP'lerin SKAN postback'lerini, aggregate impression/click sayılarını ve install count'u birleştirerek makine öğrenmesi ile probabilistik attribution yaptığı mekanizma. AppsFlyer buna "predictive analytics", Adjust "statistical modeling" diyor — teknik olarak aynı şey: regression + Bayesian inference.
 
-## Incrementality Testing: Modeled Data'ya Güvenebilir miyiz?
+**Güvenilir olma koşulları:**
+1. **Yeterli veri hacmi:** En az günde 500+ install, kampanya başına 50+ conversion (SKAN veya IDFA). Altında model overfit eder.
+2. **SKAN sinyalinin tutarlılığı:** Conversion value mapping'in stabil olması lazım. Mapping'i her gün değiştirirsen model tarihsel deseni yakalayamaz.
+3. **Incrementality testi ile kalibrasyon:** Her Q'da en az bir geo-holdout veya time-based holdout yapman gerekiyor. Modeled sayılar ile gerçek lift'i karşılaştırıp bias correction uyguluyorsun.
 
-Modeled conversions ne kadar doğru? Test etmeden bilemezsin. Incrementality testing — yani holdout/geo-based experiment — artık iOS kampanyalarında zorunlu. Meta Conversion Lift, Google Campaign Experiments, TikTok Split Testing aynı amaca hizmet ediyor: kampanyayı açık/kapalı tuttuğun gruplarda dönüşüm farkını ölçüyorsun, gerçek lift'i görüyorsun.
+**Kötü kullanım örneği:** Yeni bir kampanya başlattın, 3 günde 20 install geldi, MMP "modeled 15 IAP" dedi. Bu tamamen gürültü — sample size yetersiz. En az 2 hafta bekle.
 
-Örnek: %10 kullanıcıyı holdout grubuna alıyorsun (kampanya görmüyor), %90 treatment (kampanya görüyor). 30 gün sonra treatment grubunun conversion rate'i %5, holdout'un %3.5 — demek ki gerçek lift %1.5 (absolut). Eğer platform ROAS'ı 3.0 gösteriyorsa ama incrementality test 1.2 diyorsa, modeled data overestimate ediyor. Bu gap'i adjustment factor olarak kampanya ROAS'ına uygulaman gerekiyor.
+**İyi kullanım örneği:** 30 gün boyunca Meta + TikTok + Google UAC toplamda 50K install getirdi, SKAN'dan 3K conversion postback geldi. MMP bunu 8K'ya modelledi. Aynı dönemde geo-test holdout (Fransa vs Almanya) +12% lift gösterdi. Modeled sayıyı 8K × 1.12 = 8.96K'ya revize ettin. Bu güvenilir.
 
-Geo-based test daha robust ama daha yavaş. iOS kullanıcı yoğunluğuna göre ülkeleri/eyaletleri ikiye bölüyorsun, birinde kampanya açık birinde kapalı. 4-8 hafta sonra conversion farkına bakıyorsun. Meta'nın Conversion Lift tool'u bunu otomatize ediyor, Google Ads'te manuel kurman gerekiyor (campaign draft + experiment).
+## Post-Lookback Maturity: 35 Gün Sonrası Sinyal
 
-## iOS Stack'inin 2026 Mimarisi
+SKAdNetwork 4'ün üçüncü postback'i 8-35 gün arası olayları taşıyor. 35. günden sonra hiçbir SKAN postback gelmiyor. Ancak gerçek kullanıcı davranışı 35 günde bitmiyor: D60 retention, D90 LTV, yıllık abonelik yenilemesi gibi sinyaller var.
 
-Modern iOS attribution stack'i şöyle görünüyor:
+**Çözüm yaklaşımları:**
 
-1. **SKAdNetwork 4 integration** — MMP üzerinden conversion value encoding + hierarchical source ID
-2. **Meta CAPI + Google Enhanced** — sunucu tarafı event gönderimi, user_data enrichment
-3. **Modeled conversions okuma** — platform dashboard'larında "modeled" flag'ine dikkat et, aggregate ROAS hesapla
-4. **Cohort-based LTV tracking** — BigQuery/Snowflake'te install cohort → revenue match, post-lookback attribution
-5. **Incrementality testing** — her quarter en az 1 holdout experiment, lift factor hesapla
-6. **Creative testing velocity** — SKAdNetwork creative-level granularity ile hızlı iterasyon
+1. **Cohort-based LTV projection:** İlk 35 günlük SKAN + modeled conversion data ile cohort LTV curve'ü fit ediyorsun (genelde power law veya exponential decay). 90-180 günlük LTV'yi extrapolate ediyorsun. Bu tahmin, ama eğer cohort büyüklüğü yeterliyse variance düşük oluyor.
 
-Bu stack'i kurmak 6-8 hafta alıyor: MMP onboarding, server-side CAPI/Enhanced setup, data warehouse pipeline, BI dashboard. Ancak kurulduktan sonra iOS ROAS'ı %20-30 daha güvenilir hale geliyor — çünkü artık modeled data'yı doğru okuyorsun, incrementality ile doğruluyorsun, post-lookback ile tam LTV'yi görüyorsun.
+2. **Cross-channel holdout ve incrementality:** Bir kanalı 2 hafta pause et, organic install ve in-app revenue değişimini ölç. Net incrementality'yi hesapla, post-35-gün sinyalini bu testle backfill et. Bunu quarterly yap.
 
-iOS 17 sonrası attribution karanlık değil — sadece farklı. Deterministic sinyal azaldı ama probabilistic + aggregate yöntemler olgunlaştı. Stack'i doğru kurduğunda hâlâ ölçülebilir, optimize edilebilir kampanyalar yapabilirsin. Anahtar: modeled data'yı kabullenmek, incrementality'ye yatırım yapmak ve cohort-based analizi disipline etmek. 2026'da iOS'ta büyümek isteyen herkes bu üçlüye hakim olmalı.
+3. **Server-side event enrichment:** SKAN postback'inde olmayan late-stage olayları (subscription renewal, high-ticket IAP) MMP'ye server-to-server gönder. Bu deterministic değil ama aggregate'te pattern yaratıyor. MMP bu sinyali modele input olarak kullanır.
+
+**Dikkat:** Apple, SKAN dışında server-side user-level sinyal göndermeyi açıkça yasaklamıyor, ama MMP'nin bunu user-level attribution claim'i olarak sunması policy ihlali. Aggregate modeling input olarak kullanmak sorun değil.
+
+## Pratik Stack Kurulum Senaryosu
+
+Diyelim ki bir subscription-based fitness app'iniz var. iOS install base'iniz %60, aylık 100K yeni install hedefliyorsunuz. İşte attribution stack'iniz:
+
+| Katman | Tool | Rolü | Güven aralığı |
+|--------|------|------|---------------|
+| SKAN Postback | AppsFlyer | İlk 35 gün conversion value + source ID | %95 (Apple verify ediyor) |
+| Modeled Conversions | AppsFlyer Predictive | SKAN + aggregate ile probabilistic attribution | %70-80 (geo-test kalibrasyonunda) |
+| IDFA Opt-in | AppsFlyer raw data | %7'lik deterministic segment | %100 (ama temsil gücü düşük) |
+| Incrementality | GeoLift (Meta) + Custom holdout | Kanal-level lift ölçümü | %90 (istatistiksel, ama expensive) |
+| LTV Projection | Internal dbt + BigQuery | Cohort curve fit, 90-180 gün tahmini | %60-70 (model accuracy) |
+
+**Akış:**
+1. Her kampanya için SKAdNetwork postback'lerini günlük çek.
+2. AppsFlyer'ın modeled conversion'larını al, ama campaign-level CPA hesaplarken %20 güven aralığı bırak.
+3. Ayda bir geo-holdout test çalıştır (örneğin İspanya'da Meta pause, Portekiz'de devam et). Net lift'i hesapla.
+4. Quarterly, cohort LTV curve'ünü güncelle. İlk 35 günlük SKAN sinyali ile 90 günlük revenue correlation'ını regress et.
+5. Budget allocation'ı SKAN + modeled + incrementality'nin weighted average'ı ile yap.
+
+Bu multi-layer yaklaşım pahalı mı? Evet. Ama iOS traffic'in %60'ını temsil ediyorsa ve CAC $30+/user ise, attribution hatasının maliyeti çok daha yüksek.
+
+## Tradeoff'lar ve Karşı Argüman
+
+**"Modeled conversions güvenilmez, neden kullanıyoruz?"**
+
+Çünkü alternatif yok. SKAN aggregated, IDFA %7, hiç sinyal olmaması ise tamamen kör uçuş demek. Modeled conversion'lar imperfect ama calibrated. Holdout testleriyle bias'ı düzeltince %75-80 accuracy elde ediyorsun — bu hiç data'dan çok daha iyi.
+
+**"SKAdNetwork 4 yeterli mi, yoksa 5'i beklemeli miyiz?"**
+
+SKAdNetwork 5 (iOS 18 ile geldi, 2024 yazında announce edildi) daha granular source ID ve daha uzun lookback window vadediyor, ama henüz full adoption yok. Şu an iOS 17 user base'i %70+, iOS 18 %30 civarında. Stack'i SKAdNetwork 4 üzerine kurup 5'in özelliklerini incremental olarak eklemek pragmatik yaklaşım.
+
+**"Incrementality testi her kampanya için mi gerekiyor?"**
+
+Hayır. Incrementality expensive ve slow. Her kanal için quarterly bir test yeterli (Meta Q1, TikTok Q2, Google Q3). Küçük kampanyalar için modeled + SKAN blend'ine güven, büyük budget hareketlerinde test et.
+
+---
+
+iOS attribution artık deterministik değil, probabilistic + aggregated + test-driven bir disiplin. SKAdNetwork 4'ün üç postback yapısını doğru map etmek, modeled conversions'ı holdout testleriyle kalibre etmek ve post-35-gün LTV'yi cohort projection ile tahmin etmek 2026'nın yeni standart operasyonu. Stack'inizi bu üç katman üzerine kurarsanız — SKAN + modeled + incrementality — iOS'ta kör uçmaktan çıkıp data-informed budget allocation yapabilirsiniz.
