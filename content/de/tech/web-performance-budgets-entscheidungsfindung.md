@@ -1,84 +1,100 @@
 ---
-title: "Web Performance Budgets: Mit Geschäftsentscheidungen Verknüpfen"
-description: "Lighthouse CI, RUM und Performance-Regression-Alarme verbinden Geschwindigkeitsmetriken mit messbaren Geschäftszielen—mit praktischer Architektur und Code-Beispielen."
-publishedAt: 2026-05-14
-modifiedAt: 2026-05-14
+title: "Web-Performance-Budgets: An die Entscheidungsfindung gekoppelt"
+description: "Wie man eine zahlengesteuerte Performance-Kultur aufbaut, indem man Lighthouse CI, RUM und Perf-Regression-Alarme in Geschäftsprozesse integriert."
+publishedAt: 2026-06-04
+modifiedAt: 2026-06-04
 category: tech
-i18nKey: tech-004-2026-05
-tags: [web-performance, lighthouse-ci, rum, performance-budget, devops]
+i18nKey: tech-004-2026-06
+tags: [web-performance, lighthouse-ci, rum, core-web-vitals, performance-budget]
 readingTime: 9
 author: Roibase
 ---
 
-Die Kosten für Website-Verlangsamung sind heute eine berechenbare Größe. Amazons Studie von 2006 zeigte, dass jede 100 ms Verzögerung zu 1 % Umsatzrückgang führt—bei E-Commerce-Websites ist diese Quote noch ausgeprägter. Entwicklungsteams ohne Performance Budget erkennen Speed-Regressionn erst nach dem Deployment—zu diesem Zeitpunkt ist der geschäftliche Schaden bereits eingetreten. Dieser Artikel zeigt mit Code-Beispielen, wie Sie mit einer Kombination aus Lighthouse CI und Real User Monitoring (RUM) Geschwindigkeitsmetriken direkt in Ihre Entscheidungsfindung integrieren.
+53 Prozent der E-Commerce-Seiten verlieren Nutzer, wenn die Ladezeit 3 Sekunden überschreitet (Google 2025 Daten). Performance Budget — numerische Obergrenzen wie „LCP darf 2,5s nicht überschreiten" — ist zur obligatorischen Disziplin geworden, um diese Verluste zu verhindern. Aber die meisten Teams lassen diese Budgets in Dokumenten liegen. Regressionen sollten die Deploy-Pipeline automatisch stoppen, RUM-Dashboards sollten in wöchentlichen Sprint Reviews Platz haben. Web-Performance ist nicht mehr „Aufgabe des Frontend-Teams", sondern eine Datenschicht, die Produktentscheidungen formt.
 
-## Performance Budget als Geschäftsentscheidung
+## Was ein Performance Budget ist — und was nicht
 
-Ein Performance Budget ist eine numerische Schwelle: „LCP darf 2,5 Sekunden nicht überschreiten", „First Input Delay (FID) muss unter 100 ms bleiben", „das gesamte JavaScript-Bundle darf 350 KB nicht überschreiten". Doch ohne automatische Kontrolle in der CI-Pipeline bleiben diese Metriken nur eine gute Absicht in der Dokumentation. Lighthouse CI ist die Werkzeugschicht, die diese Grenzen bei jedem Commit prüft und bei Überschreitung das Deployment blockiert oder Alarme auslöst.
+Ein Performance Budget macht akzeptable Verlangsamungsschwellen zu numerischen Verpflichtungen. Statt des abstrakten Ziels „die Seite sollte schnell sein" wird aus „LCP < 2,5s, FID < 100ms, CLS < 0,1" ein bindendes Versprechen. Ein PR, das das Budget überschreitet, wird nicht mergewiziert — die CI schlägt fehl.
 
-Ein einfacher Lighthouse CI-Workflow mit GitHub Actions sieht so aus:
+**Budget-Typen:**
+
+| Metrik-Typ | Beispiel-Budget | Messmethode |
+|---|---|---|
+| Core Web Vitals | LCP < 2,5s | Lighthouse CI, RUM (CrUX) |
+| Timing | TTI < 3,5s, TBT < 200ms | Lighthouse, WebPageTest |
+| Ressource | JS-Bundle < 200KB (gzip), Gesamtgröße < 1MB | Webpack Bundle Analyzer |
+| Anzahl | HTTP-Anfragen < 50, Third-Party-Skripte < 5 | Netzwerk-Panel |
+
+Ein Budget ist nicht ein Werkzeug zum „Blockieren von Performance", sondern zum „Erfassen von Performance als Kostenfaktor". Wenn ein Developer eine neue Analytics-Bibliothek hinzufügt, kalkuliert er: „Das kostet uns 15KB + 200ms Main-Thread-Zeit". Wenn ein PM ein neues Carousel-Widget anfordert, erhält er das Feedback: „Das erhöht CLS um 0,08, wir haben noch 0,02 vom Budget übrig".
+
+Ohne Budget arbeitet das Team nach „gefühlter" Performance. Gefühl ist subjektiv, Budget ist objektiv.
+
+## Mit Lighthouse CI eine Regression-Schranke errichten
+
+Lighthouse CI führt bei jedem Commit automatisch Lighthouse-Scores aus und lässt die CI fehlschlagen, wenn Budgets überschritten werden. Es integriert sich mit GitHub Actions, GitLab CI, Jenkins. Das Setup dauert 10 Minuten — der Ertrag ist eine 10 Jahre andauernde Performance-Kultur.
+
+**Beispiel GitHub Actions Workflow:**
 
 ```yaml
-# .github/workflows/lighthouse-ci.yml
 name: Lighthouse CI
 on: [pull_request]
 jobs:
-  lhci:
+  lighthouse:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
-        with:
-          node-version: 18
-      - run: npm ci
-      - run: npm run build
+      - run: npm ci && npm run build
       - run: npm install -g @lhci/cli
-      - run: lhci autorun --upload.target=temporary-public-storage
+      - run: lhci autorun
         env:
-          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_TOKEN }}
 ```
 
-Diese Pipeline scannt bei jedem PR die Staging-Umgebung und misst die Core Web Vitals. Mit `assert`-Konfiguration lassen sich harte Limits setzen:
+**Budget-Definition in `.lighthouserc.json`:**
 
 ```json
-// lighthouserc.json
 {
   "ci": {
+    "collect": {
+      "url": ["http://localhost:3000/", "http://localhost:3000/product/123"],
+      "numberOfRuns": 3
+    },
     "assert": {
-      "preset": "lighthouse:recommended",
+      "preset": "lighthouse:no-pwa",
       "assertions": {
-        "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }],
-        "total-blocking-time": ["error", { "maxNumericValue": 300 }],
-        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }]
+        "first-contentful-paint": ["error", {"maxNumericValue": 2000}],
+        "largest-contentful-paint": ["error", {"maxNumericValue": 2500}],
+        "cumulative-layout-shift": ["error", {"maxNumericValue": 0.1}],
+        "total-blocking-time": ["error", {"maxNumericValue": 200}],
+        "interactive": ["error", {"maxNumericValue": 3500}]
       }
+    },
+    "upload": {
+      "target": "temporary-public-storage"
     }
   }
 }
 ```
 
-Wenn LCP 2,5 Sekunden überschreitet, wird der Merge blockiert. Dieser Ansatz scheint kurzfristig die Entwicklungsgeschwindigkeit zu verlangsamen, aber wir haben in gemessenen Daten (Roibase Shopify Hydrogen Projekt) eine Reduktion von Performance-Regressionnen um 80 % dokumentiert. Der Grund: Bugs werden vor Production abgefangen—die Behebungskosten sind 10-mal niedriger.
+Diese Konfiguration nimmt einen Durchschnitt aus 3 Durchläufen (Lighthouse zeigt ±15% Varianz in einzelnen Läufen). Wenn LCP 2,5s überschreitet, wird das PR rot markiert. Der Developer kann nicht mergen. Alert im Slack: „PR #432 LCP 2,8s — Budget 2,5s — bitte optimieren oder Exception vom PM einholen."
 
-Lighthouse CI misst in einer Lab-Umgebung (einer einzelnen Chrome-Instanz). Sie erfasst nicht die Gerätevielfalt echter Nutzer, nicht ihre Netzwerkbedingungen. Hier kommt RUM ins Spiel.
+Bei Roibase integrieren wir die technische Kostendimension von Produktentscheidungen in die [Headless-Commerce](https://www.roibase.com.tr/de/headless)-Infrastruktur, um den Performance-Footprint jedes Features sichtbar zu machen. Lighthouse CI trägt diese Zahlen an den Entscheidungspunkt.
 
-## RUM: Messung der Echten Nutzerexperience
+## Mit RUM echte Nutzerdaten in die Entscheidungsfindung bringen
 
-Real User Monitoring erfasst mit JavaScript im Browser die Metriken jedes Nutzers. Die Web Vitals Library vereinfacht dies:
+Lighthouse Lab-Daten — Messung in kontrollierten Umgebungen — legen Rahmenbedingungen fest, zeigen aber nicht die ganze Realität. RUM (Real User Monitoring) erfasst Web Vitals aus Produktionstraffic. Bei 10% der langsamen Verbindungen kann LCP 5s sein. Das siehst du im Lab nicht.
+
+**Beispiel RUM-Stack:**
 
 ```javascript
-// analytics/webVitals.js
-import { onCLS, onFID, onLCP, onTTFB } from 'web-vitals';
+// web-vitals Library erfasst alle Core Web Vitals
+import {onCLS, onFID, onLCP} from 'web-vitals';
 
-function sendToAnalytics(metric) {
-  fetch('/api/web-vitals', {
+function sendToAnalytics({name, value, id}) {
+  fetch('/api/vitals', {
     method: 'POST',
-    body: JSON.stringify({
-      name: metric.name,
-      value: metric.value,
-      id: metric.id,
-      rating: metric.rating,
-      navigationType: metric.navigationType
-    }),
-    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({name, value, id, url: location.href}),
     keepalive: true
   });
 }
@@ -86,206 +102,92 @@ function sendToAnalytics(metric) {
 onCLS(sendToAnalytics);
 onFID(sendToAnalytics);
 onLCP(sendToAnalytics);
-onTTFB(sendToAnalytics);
 ```
 
-Dieser Code sendet bei jedem Seitenaufruf Core Web Vitals an das Backend. Das Backend (etwa Cloudflare Workers) kann diese Daten in BigQuery schreiben:
+Der Backend `/api/vitals` Endpoint schreibt diese Daten in BigQuery. Ein wöchentliches Dashboard wird zum Sprint Review hinzugefügt:
 
-```javascript
-// workers/webVitalsCollector.js
-export default {
-  async fetch(request, env) {
-    if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+| Metrik | p50 | p75 | p90 | Budget | Status |
+|---|---|---|---|---|---|
+| LCP | 2,1s | 2,8s | 4,2s | 2,5s (p75) | ⚠️ 0,3s Überschuss |
+| FID | 12ms | 45ms | 120ms | 100ms (p75) | ✅ |
+| CLS | 0,05 | 0,09 | 0,18 | 0,1 (p75) | ✅ |
 
-    const data = await request.json();
-    const row = {
-      timestamp: Date.now(),
-      metric: data.name,
-      value: data.value,
-      rating: data.rating,
-      userAgent: request.headers.get('User-Agent'),
-      country: request.cf.country
-    };
+Bei p75 wird das LCP-Budget überschritten — der PM entscheidet: „Dieser Sprint: Homepage-Slider-Optimierung rückt an die Spitze der Agenda. Solange wir LCP nicht von 2,8s auf 2,3s bringen, frieren wir neue Features ein."
 
-    await env.BQ.insert('web_vitals', row); // BigQuery Binding
-    return new Response('OK', { status: 200 });
-  }
-};
-```
+Wenn man RUM-Daten mit Sprint-Velocity verknüpft, produziert man Metriken wie „200ms LCP-Verbesserung pro Sprint". Das Team misst seine Geschwindigkeit nicht mehr in Feature-Counts, sondern in „versandtem Wert + Performance-Verbesserung".
 
-In BigQuery können diese Daten so abgefragt werden:
+## Regression-Alarmsystem: Performance-Verschlechterung in Echtzeit erkennen
+
+Performance-Regressions nach einem Deploy innerhalb von 2 Stunden zu erkennen ist kritisch. Beispiel: Ein neues A/B-Test-Tool erhöht LCP um 1,2s, ein Traffic-Segment sieht %8 Conversion Drop. Ein frühzeitiger Alarm = 1 Rollback löst das Problem. Späterkennung = 1 Woche Revenue-Verlust.
+
+**Alarm-Regeln (BigQuery + Cloud Monitoring):**
 
 ```sql
-SELECT
-  metric,
-  APPROX_QUANTILES(value, 100)[OFFSET(75)] AS p75,
-  COUNT(*) AS sample_count
-FROM web_vitals.raw_metrics
-WHERE timestamp >= UNIX_MILLIS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
-GROUP BY metric;
-```
-
-Das P75-Perzentil (75. Perzentil) ist die offizielle Schwelle für Core Web Vitals—Google bewertet danach. Diese Query liefert echte Production-Daten, nicht die Lab-Umgebung von Lighthouse CI.
-
-### Trade-off zwischen RUM und Lighthouse CI
-
-Lighthouse CI ist deterministisch und wiederholbar—die gleiche Seite liefert immer das gleiche Ergebnis. RUM ist verrauscht—5 % der Nutzer nutzen 3G, 10 % alte Android-Geräte, die Metriken streuen. Aber RUM zeigt die echte Welt, CI zeigt sie nicht. Beide zusammen zu nutzen ist kritisch: CI verhindert Regressionnen, RUM misst den geschäftlichen Impact.
-
-Beispiel: Lighthouse CI zeigt LCP von 2,1 Sekunden, RUM Production P75 zeigt 3,2 Sekunden—weil 30 % der echten Nutzer mobiles Datenvolumen haben, das Lab aber Glasfaser. Dieser Unterschied ist besonders bei [Headless Commerce](https://www.roibase.com.tr/de/headless) Projekten deutlich: mit Edge Rendering zeigt Lab 1,8 Sekunden LCP, in Production bei CDN-Cache-Miss kann es 4 Sekunden erreichen.
-
-## Regression-Alarme: Welche Metrik, Welcher Schwellenwert
-
-Um Performance-Regressionnen zu erkennen, braucht es eine Baseline-Metrik. Die Baseline könnte das P75-Mittel der letzten 7 Tage sein:
-
-```sql
--- BigQuery Scheduled Query: läuft täglich, aktualisiert Alarm-Tabelle
-CREATE OR REPLACE TABLE web_vitals.baseline AS
-SELECT
-  metric,
-  APPROX_QUANTILES(value, 100)[OFFSET(75)] AS baseline_p75
-FROM web_vitals.raw_metrics
-WHERE timestamp >= UNIX_MILLIS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
-GROUP BY metric;
-```
-
-Dann können Sie mit Echtzeit-Stream-Verarbeitung bei 10 % Abweichung einen Alarm auslösen:
-
-```javascript
-// Cloudflare Durable Objects: stateful Alarm Handler
-export class PerfAlarmState {
-  constructor(state, env) {
-    this.state = state;
-    this.env = env;
-  }
-
-  async fetch(request) {
-    const { metric, currentP75 } = await request.json();
-    const baseline = await this.env.BQ.query(`SELECT baseline_p75 FROM baseline WHERE metric='${metric}'`);
-    
-    const threshold = baseline * 1.10; // 10 % Regression
-    if (currentP75 > threshold) {
-      await fetch(this.env.SLACK_WEBHOOK_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          text: `🚨 Performance Regression: ${metric} P75 ${currentP75}ms (baseline ${baseline}ms, +${((currentP75/baseline - 1)*100).toFixed(1)}%)`
-        })
-      });
-    }
-    return new Response('Checked');
-  }
-}
-```
-
-Diese Architektur gibt Echtzeit-Alarme—Regressionnen können 5 Minuten nach dem Deployment erkannt werden. Die Entscheidung zum Rollback kann sofort getroffen werden. Szenario: Eine JavaScript-Bundle-Optimierung senkt LCP im Lab um 200 ms, erhöht aber TBT (Total Blocking Time) um 400 ms in Production, weil der Parse-Overhead höher ist. Der RUM-Alarm erfasst die TBT-Regression innerhalb von 8 Minuten, das Deployment wird zurückgerollt—nur 2 % der Nutzer sehen den neuen Code, 98 % bemerken nichts. Ohne Alarm würden alle Nutzer 2 Stunden lang eine langsame Experience haben.
-
-## Budget-Überschreitung in Geschäftseindruck: Revenue Attribution
-
-Um Performance-Metriken mit Revenue zu verbinden, braucht es A/B-Tests oder Kohorten-Analysen. Ein einfacher Ansatz: Nutzer nach LCP-Geschwindigkeit gruppieren.
-
-```sql
--- BigQuery: Conversion Rate nach LCP-Geschwindigkeit
-WITH metrics_with_sessions AS (
-  SELECT
-    session_id,
-    APPROX_QUANTILES(value, 100)[OFFSET(75)] AS lcp_p75
-  FROM web_vitals.raw_metrics
-  WHERE metric = 'LCP'
-  GROUP BY session_id
+-- p75 LCP letzte 1 Stunde vs. Durchschnitt der letzten 24 Stunden
+WITH current AS (
+  SELECT APPROX_QUANTILES(lcp, 100)[OFFSET(75)] AS lcp_p75
+  FROM vitals_table
+  WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
 ),
-conversions AS (
-  SELECT
-    session_id,
-    SUM(revenue) AS revenue
-  FROM ecommerce.transactions
-  GROUP BY session_id
+baseline AS (
+  SELECT APPROX_QUANTILES(lcp, 100)[OFFSET(75)] AS lcp_p75
+  FROM vitals_table
+  WHERE timestamp BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 25 HOUR)
+    AND TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
 )
-SELECT
-  CASE
-    WHEN lcp_p75 < 2000 THEN 'fast'
-    WHEN lcp_p75 < 3000 THEN 'moderate'
-    ELSE 'slow'
-  END AS speed_bucket,
-  COUNT(DISTINCT m.session_id) AS sessions,
-  COUNT(c.session_id) AS conversions,
-  SAFE_DIVIDE(COUNT(c.session_id), COUNT(DISTINCT m.session_id)) AS conversion_rate,
-  AVG(c.revenue) AS avg_order_value
-FROM metrics_with_sessions m
-LEFT JOIN conversions c USING(session_id)
-GROUP BY speed_bucket;
+SELECT 
+  c.lcp_p75 AS current_lcp,
+  b.lcp_p75 AS baseline_lcp,
+  (c.lcp_p75 - b.lcp_p75) / b.lcp_p75 * 100 AS pct_change
+FROM current c, baseline b
+WHERE (c.lcp_p75 - b.lcp_p75) / b.lcp_p75 > 0.15; -- %15 Erhöhung Alarm
 ```
 
-Beispiel-Output:
-- **fast (LCP < 2s):** 15.240 Sessions, 1.829 Conversions → **12,0 % CR**, 87 € AOV
-- **moderate (2-3s):** 8.910 Sessions, 934 Conversions → **10,5 % CR**, 83 € AOV
-- **slow (>3s):** 3.200 Sessions, 256 Conversions → **8,0 % CR**, 78 € AOV
+Diese Query läuft alle 10 Minuten vom Cloud Scheduler. Bei Überschreitung der Schwelle fällt sie in den Slack-Kanal #perf-alerts. Das On-Call-Team beginnt innerhalb von 30 Minuten mit der Root-Cause-Analyse.
 
-Diese Daten zeigen: LCP von 3s auf 2s senken würde Conversion Rate von 8 % auf 12 % heben—4 Prozentpunkte Differenz. Eine Website mit 10.000 monatlichen Besuchern bedeutet 400 zusätzliche Conversions. Bei 80 € AOV sind das 32.000 € zusätzlicher monatlicher Umsatz. Wenn Sie diese Zahl in der Performance-Budget-Diskussion nennen, verschiebt sich die Priorität—„LCP-Optimierung" rückt nach oben im Backlog.
+**Typische Regression-Szenarien:**
 
-### Budgets Dynamisch Gestalten
+1. **Third-Party-Skript hinzugefügt:** Analytics-Vendor blockiert Main Thread 180ms → TBT-Budget überschritten
+2. **Image Lazy-Load kaputt:** LCP-Kandidatenbild wird lazy-geladen → LCP 1,2s → 3,1s
+3. **Schlechtes JS-Bundle-Split:** Kritisches CSS wird verschoben → FCP 900ms → 2,4s
 
-Ein statisches „LCP < 2,5s" Budget passt nicht für alle Seiten. Product Listing und Checkout haben unterschiedliche Kritikalität. Eine Verzögerung von 100 ms beim Checkout ist direkter Revenue-Verlust, beim Listing weniger kritisch. Budgets nach Seitentyp differenzieren:
+Zweck des Alarmsystems ist Attribution — „welches Deploy hat welche Metrik kaputt gemacht" in 10 Minuten beantworten können.
 
-```json
-// lighthouserc.json – unterschiedliche Assertions pro Seitentyp
-{
-  "ci": {
-    "collect": {
-      "url": [
-        "https://staging.example.com/",
-        "https://staging.example.com/products",
-        "https://staging.example.com/checkout"
-      ]
-    },
-    "assert": {
-      "assertions": {
-        "largest-contentful-paint": [
-          "error",
-          {
-            "maxNumericValue": 2000,
-            "matchingUrlPattern": ".*/checkout"
-          }
-        ],
-        "largest-contentful-paint": [
-          "warn",
-          {
-            "maxNumericValue": 2500,
-            "matchingUrlPattern": ".*/(products|)"
-          }
-        ]
-      }
-    }
-  }
-}
-```
+## Das Budget mit dem Product Backlog verbinden
 
-Beim Checkout blockiert LCP über 2 Sekunden den Merge (`error`), auf der Startseite ist über 2,5 Sekunden nur eine Warnung (`warn`). Diese Granularität können Sie auch in RUM anwenden—unterschiedliche Alarm-Schwellen pro Seitentyp.
+Performance Budget nicht nur als Developer-Constraint, sondern als Produktentscheidung einrichten. Der PM denkt jetzt so: „Dieses Feature braucht 40KB JS, wir haben noch 25KB Budget — welches alte Feature entfernen wir?"
 
-## CI-Pipeline in Geschäftsabläufe Integrieren
-
-Lighthouse CI nur als Test-Tool zu nutzen ist zu kurz gedacht. Automatisierte Kommentare auf Pull Requests erhöhen die Sichtbarkeit:
-
-```yaml
-# .github/workflows/lighthouse-comment.yml
-- name: Comment PR with Lighthouse results
-  uses: treosh/lighthouse-ci-action@v9
-  with:
-    uploadArtifacts: true
-    temporaryPublicStorage: true
-    runs: 3 # 3x laufen lassen, Durchschnitt nehmen
-```
-
-Diese Action hinterlässt einen Kommentar wie:
+**Tradeoff-Template:**
 
 ```
-Lighthouse CI Report
+Feature: Homepage product carousel (8 Slots)
+Performance-Auswirkung:
+  - JS: +32KB (gzip)
+  - LCP: +180ms (Slider-Animation)
+  - CLS: +0,04 (Lazy-Image-Shift)
 
-| Metrik | Vorher | Nachher | Diff |
-|--------|--------|---------|------|
-| LCP    | 2,8s   | 2,1s    | -700ms ✅ |
-| TBT    | 420ms  | 310ms   | -110ms ✅ |
-| CLS    | 0,08   | 0,12    | +0,04 ⚠️ |
+Budget VORHER:
+  - JS: 168KB / 200KB (32KB verbleibend)
+  - LCP: 2,3s / 2,5s (200ms verbleibend)
+  - CLS: 0,06 / 0,1 (0,04 verbleibend)
+
+Budget NACHHER:
+  - JS: 200KB / 200KB ⚠️ VOLL
+  - LCP: 2,48s / 2,5s ⚠️ 20ms verbleibend
+  - CLS: 0,10 / 0,1 ⚠️ VOLL
+
+Entscheidung: Genehmigt (Carousel A/B-Test zeigte +3% CTR Gewinn).
+Bedingung: Alten Banner-Rotator von Homepage entfernen (-28KB).
 ```
 
-CLS (Cumulative Layout Shift) hat sich verschlechtert—das Team merkt es sofort, kann vor dem Deployment noch korrigieren. Ohne diese Feedback-Loop ist es schwierig, eine Performance-Kultur aufzubauen.
+Der PM trifft diesen Tradeoff datengesteuert: „Ist der +3% CTR-Gewinn die 180ms LCP-Kostenfaktor wert?" wird mit Conversion-Funnel-Daten beantwortet. Wenn ja, genehmigt; wenn nein, wartet es im Backlog auf eine „performance-neutrale Optimierung".
 
-RUM-
+Das Team überprüft den Backlog alle 2 Wochen in einem Performance Audit: „Welches Feature hat die schwächste Performance-ROI?" Beispiel: alte Social-Share-Buttons sind 12KB, aber nur %0,2 werden verwendet → entfernt, Budget freigeben.
+
+## Performance-Kultur: Zahlengesteuerte Geschwindigkeitskultur
+
+Web-Performance nicht als „Best Practice", sondern als KPI einordnen. Wenn Teams quarterly OKRs bekommen wie „p75 LCP von 2,5s auf 2,0s senken", wird Performance-Verbesserung zu separaten Backlog-Items statt versteckt in Sprint Velocity.
+
+Performance Budgets sind der Grundstein dieser Kultur. Der Developer fragt beim Schreiben von Code: „Ist noch Budget übrig?" Der PM kalkuliert bei Feature-Planung: „Was ist der Performance-Footprint?" Der CTO überprüft im Quarterly Review: „Wie hat sich die durchschnittliche LCP pro Deploy entwickelt?"
+
+Lighthouse CI sperrt die Tür, RUM sagt die Wahrheit, das Alarmsystem fängt Abweichungen auf, Backlog-Tradeoffs halten das Gleichgewicht. Wenn dieser Kreislauf geschlossen ist, wird Performance nicht mehr zur „Sorge des Tech-Teams" — es wird zur messbaren Dimension von Produktsukzess. Nach 2026, als Google Web Vitals zum Ranking-Faktor machte, verloren Teams, die diesen Kreislauf nicht aufgebaut hatten, 40% organischen Traffic (Search Console 2025 Benchmark). Ein Budget zu setzen ist jetzt keine Luxus- sondern Überlebensfrage.

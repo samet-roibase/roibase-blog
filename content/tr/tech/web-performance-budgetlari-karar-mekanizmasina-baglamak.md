@@ -1,84 +1,100 @@
 ---
 title: "Web Performance Budget'ları: Karar Mekanizmasına Bağlamak"
-description: "Lighthouse CI, RUM ve perf regression alarmlarıyla hız metriklerini ölçülebilir iş hedeflerine çevirmek—pratik mimari ve kod örnekleriyle."
-publishedAt: 2026-05-14
-modifiedAt: 2026-05-14
+description: "Lighthouse CI, RUM ve perf regression alarmlarını iş süreçlerine entegre ederek sayılarla yönetilen performans kültürü nasıl kurulur?"
+publishedAt: 2026-06-04
+modifiedAt: 2026-06-04
 category: tech
-i18nKey: tech-004-2026-05
-tags: [web-performance, lighthouse-ci, rum, performance-budget, devops]
+i18nKey: tech-004-2026-06
+tags: [web-performance, lighthouse-ci, rum, core-web-vitals, performance-budget]
 readingTime: 8
 author: Roibase
 ---
 
-Web sitelerinin yavaşlamasının maliyeti artık hesaplanabilir bir büyüklük. Amazon'un 2006'daki çalışması her 100ms gecikmenin satışta %1 düşüş yarattığını gösterdi—bu oran e-ticaret sitelerinde daha da keskin. Performance budget olmadan çalışan geliştirme ekipleri hız regresyonunu deployment'tan sonra fark ediyor, o zaman da iş etkisi zaten gerçekleşmiş oluyor. Bu yazı, Lighthouse CI ve Real User Monitoring (RUM) kombinasyonuyla hız metriklerini karar mekanizmasına nasıl bağlayabileceğinizi—kod örnekleriyle—gösteriyor.
+E-ticaret sitelerinin %53'ü 3 saniyeden uzun yüklendiğinde kullanıcıyı kaybediyor (Google 2025 verisi). Performance budget — "LCP 2.5s'yi geçemez" gibi sayısal tavan kararları — bu kayıpları önlemek için zorunlu disiplin haline geldi. Ama çoğu ekip bu budget'ları önerge kağıdında bırakıyor. Regression'lar deploy pipeline'ını otomatik kesmeli, RUM dashboard'ları haftalık sprint review'a dahil olmalı. Web performance artık "frontend ekibinin işi" değil, ürün kararlarını şekillendiren veri katmanı.
 
-## Performance Budget'ın İş Kararına Dönüşmesi
+## Performance Budget Nedir, Ne Değildir
 
-Performance budget bir sayısal sınırdır: "LCP 2.5 saniyeyi geçemez", "First Input Delay (FID) 100ms altında kalmalı", "toplam JavaScript bundle 350KB'ı aşmamalı". Ancak bu metrikler CI pipeline'ında otomatik olarak kontrol edilmediği sürece sadece dökümanda kalan dilekten ibaret. Lighthouse CI her commit'te bu sınırları test eden, aşıldığında deployment'ı blokleyen veya alarm üreten araç katmanı.
+Performance budget, kabul edilebilir yavaşlama eşiklerini sayısal taahhüt haline getirir. "Sayfa hızlı olmalı" soyut hedefi yerine "LCP < 2.5s, FID < 100ms, CLS < 0.1" bağlayıcı sözleşme olur. Budget'ı aşan PR merge edilemez — CI'da build fail verir.
 
-GitHub Actions ile basit bir Lighthouse CI workflow'u şöyle:
+**Budget türleri:**
+
+| Metrik Tipi | Örnek Budget | Ölçüm Yöntemi |
+|---|---|---|
+| Core Web Vitals | LCP < 2.5s | Lighthouse CI, RUM (CrUX) |
+| Timing | TTI < 3.5s, TBT < 200ms | Lighthouse, WebPageTest |
+| Resource | JS bundle < 200KB (gzip), Total size < 1MB | Webpack Bundle Analyzer |
+| Count | HTTP request < 50, Third-party script < 5 | Network panel |
+
+Bir budget "performansı bloke et" araç değil, "performansı maliyet hanesine koy" araçtır. Developer yeni bir analytics kütüphanesi eklerken "bu bize 15KB + 200ms main thread maliyeti" diye hesap yapar. PM yeni bir carousel widget isterken "CLS'i 0.08 artırır, budget'tan kalan 0.02" diye geri bildirim alır.
+
+Budget olmazsa ekip "hissettiği" performans üzerine çalışır. Hissiyat subjektif, budget objektif.
+
+## Lighthouse CI ile Regression Kapısı Kurmak
+
+Lighthouse CI, her commit'te Lighthouse skorlarını otomatik çalıştırıp budget aşımlarında CI'ı fail eder. GitHub Actions, GitLab CI, Jenkins ile entegre olur. Kurulumu 10 dakika — dönen değer 10 yıllık performans kültürü.
+
+**Örnek GitHub Actions workflow:**
 
 ```yaml
-# .github/workflows/lighthouse-ci.yml
 name: Lighthouse CI
 on: [pull_request]
 jobs:
-  lhci:
+  lighthouse:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
-        with:
-          node-version: 18
-      - run: npm ci
-      - run: npm run build
+      - run: npm ci && npm run build
       - run: npm install -g @lhci/cli
-      - run: lhci autorun --upload.target=temporary-public-storage
+      - run: lhci autorun
         env:
-          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_TOKEN }}
 ```
 
-Bu pipeline her PR'da staging ortamını tarayıp Core Web Vitals'ı ölçüyor. Örneğin `assert` yapılandırması ile hard limit konabilir:
+**`.lighthouserc.json` budget tanımı:**
 
 ```json
-// lighthouserc.json
 {
   "ci": {
+    "collect": {
+      "url": ["http://localhost:3000/", "http://localhost:3000/product/123"],
+      "numberOfRuns": 3
+    },
     "assert": {
-      "preset": "lighthouse:recommended",
+      "preset": "lighthouse:no-pwa",
       "assertions": {
-        "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }],
-        "total-blocking-time": ["error", { "maxNumericValue": 300 }],
-        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }]
+        "first-contentful-paint": ["error", {"maxNumericValue": 2000}],
+        "largest-contentful-paint": ["error", {"maxNumericValue": 2500}],
+        "cumulative-layout-shift": ["error", {"maxNumericValue": 0.1}],
+        "total-blocking-time": ["error", {"maxNumericValue": 200}],
+        "interactive": ["error", {"maxNumericValue": 3500}]
       }
+    },
+    "upload": {
+      "target": "temporary-public-storage"
     }
   }
 }
 ```
 
-Burada LCP 2.5 saniyeyi aşarsa merge bloklanır. Bu yaklaşım geliştirme hızını kısa vadede yavaşlatır gibi görünse de production'da performans regresyonlarını %80 azalttığını gördük (Roibase'in Shopify Hydrogen projesinde ölçümlü veri). Çünkü bug production'a çıkmadan yakalanıyor—düzeltme maliyeti 10 kat düşük oluyor.
+Bu config 3 run ortalama alır (Lighthouse tek run'da +%15 varyans gösterir), LCP 2.5s'yi aşarsa PR'yi kırmızıya boyar. Developer merge edemez. Slack'e düşen alert: "PR #432 LCP 2.8s — budget 2.5s — optimize edin veya PM'den budget exception alın."
 
-Lighthouse CI lab ortamında (tek bir Chrome instance) ölçüyor. Gerçek kullanıcıların cihaz çeşitliliğini, ağ koşullarını yakalamıyor. Burası RUM'ın devreye girdiği nokta.
+Roibase'de ürün kararlarının teknik maliyet boyutunu [Headless Commerce](https://www.roibase.com.tr/tr/headless) altyapısına entegre ederek, her feature'ın performans footprint'ini görünür kılıyoruz. Lighthouse CI bu sayıları karar noktasına taşır.
 
-## RUM ile Gerçek Kullanıcı Deneyimini Ölçmek
+## RUM ile Gerçek Kullanıcı Datasını Karar Hattına Almak
 
-Real User Monitoring tarayıcıda çalışan JavaScript ile her kullanıcının metriklerini toplar. Web Vitals kütüphanesi bunu basitleştirir:
+Lighthouse lab verisi — kontrollü ortamda ölçüm — koşul koyar ama gerçek dünyayı tam göstermez. RUM (Real User Monitoring) prodüksiyon trafiğinden Web Vitals toplar. %10'luk yavaş bağlantılı segment'in LCP'si 5s olabilir. Lab'da bunu göremezsin.
+
+**RUM stack örneği:**
 
 ```javascript
-// analytics/webVitals.js
-import { onCLS, onFID, onLCP, onTTFB } from 'web-vitals';
+// web-vitals library ile tüm Core Web Vitals toplanır
+import {onCLS, onFID, onLCP} from 'web-vitals';
 
-function sendToAnalytics(metric) {
-  fetch('/api/web-vitals', {
+function sendToAnalytics({name, value, id}) {
+  fetch('/api/vitals', {
     method: 'POST',
-    body: JSON.stringify({
-      name: metric.name,
-      value: metric.value,
-      id: metric.id,
-      rating: metric.rating,
-      navigationType: metric.navigationType
-    }),
-    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({name, value, id, url: location.href}),
     keepalive: true
   });
 }
@@ -86,226 +102,92 @@ function sendToAnalytics(metric) {
 onCLS(sendToAnalytics);
 onFID(sendToAnalytics);
 onLCP(sendToAnalytics);
-onTTFB(sendToAnalytics);
 ```
 
-Bu kod her sayfa yüklendiğinde Core Web Vitals'ı backend'e gönderiyor. Backend (örneğin Cloudflare Workers) bu veriyi BigQuery'ye yazabilir:
+Backend `/api/vitals` endpoint'i bu dataları BigQuery'ye yazar. Haftalık dashboard Sprint Review'a dahil olur:
 
-```javascript
-// workers/webVitalsCollector.js
-export default {
-  async fetch(request, env) {
-    if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+| Metrik | p50 | p75 | p90 | Budget | Durum |
+|---|---|---|---|---|---|
+| LCP | 2.1s | 2.8s | 4.2s | 2.5s (p75) | ⚠️ 0.3s aşım |
+| FID | 12ms | 45ms | 120ms | 100ms (p75) | ✅ |
+| CLS | 0.05 | 0.09 | 0.18 | 0.1 (p75) | ✅ |
 
-    const data = await request.json();
-    const row = {
-      timestamp: Date.now(),
-      metric: data.name,
-      value: data.value,
-      rating: data.rating,
-      userAgent: request.headers.get('User-Agent'),
-      country: request.cf.country
-    };
+p75'te LCP budget aşımı var — PM şöyle karar verir: "Bu sprint homepage slider optimizasyonu stack'in tepesine çıkıyor. LCP'yi 2.8s → 2.3s'ye çekmeden yeni feature freeze."
 
-    await env.BQ.insert('web_vitals', row); // BigQuery binding
-    return new Response('OK', { status: 200 });
-  }
-};
-```
+RUM datasını sprint velocity ile birleştirdiğinde "1 sprint'te 200ms LCP iyileşmesi" gibi performans throughput metrikleri üretirsin. Ekip velocity'sini feature count yerine "shipped value + performance improvement" ile ölçer.
 
-BigQuery'de bu veri şu gibi sorgulanabilir:
+## Regression Alarm Sistemi: Performans Bozulmasını Anında Yakalamak
+
+Deploy sonrası performance regression'ı 2 saat içinde yakalamak kritik. Örnek: yeni A/B test aracı LCP'yi 1.2s artırmış, trafik segmentinde %8 conversion drop var. Erken alarm 1 rollback ile sorunu çözer. Geç fark ederseniz 1 hafta revenue kaybı.
+
+**Alarm kuralları (BigQuery + Cloud Monitoring):**
 
 ```sql
-SELECT
-  metric,
-  APPROX_QUANTILES(value, 100)[OFFSET(75)] AS p75,
-  COUNT(*) AS sample_count
-FROM web_vitals.raw_metrics
-WHERE timestamp >= UNIX_MILLIS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
-GROUP BY metric;
-```
-
-P75 (75. percentile) Core Web Vitals'ın resmi eşiği—Google bu percentile'a göre skor veriyor. Bu sorgu canlı production verisini döndürüyor, Lighthouse CI'daki lab ortamı değil.
-
-### RUM ile Lighthouse CI Arasındaki Tradeoff
-
-Lighthouse CI deterministik, tekrar edilebilir—aynı kodu taradığında aynı sonucu alıyorsun. RUM gürültülü—kullanıcıların %5'i 3G bağlantıda, %10'u eski Android cihazda, bu metrikler saçılım gösteriyor. Ancak RUM gerçek dünyayı gösteriyor, CI göstermiyor. İkisini birlikte kullanmak kritik: CI regression'ı engelliyor, RUM business impact'i ölçüyor.
-
-Örneğin Lighthouse CI'da LCP 2.1 saniye, production RUM'da P75 3.2 saniye olabilir—çünkü gerçek kullanıcıların %30'u mobil veri ile geliyor, lab ortamında fiber bağlantı var. Bu fark [Headless Commerce](https://www.roibase.com.tr/tr/headless) projelerinde özellikle belirgin: edge render ile lab ortamında 1.8 saniyelik LCP, production'da CDN cache miss durumunda 4 saniyeye çıkabiliyor.
-
-## Regression Alarmı: Hangi Metriğin Hangi Eşikte Tetikleneceği
-
-Performance regression'ı tespit etmek için baseline metrik gerekiyor. Baseline son 7 günün P75 ortalaması olabilir:
-
-```sql
--- BigQuery scheduled query: her gün çalışıp alarm tablosunu güncelliyor
-CREATE OR REPLACE TABLE web_vitals.baseline AS
-SELECT
-  metric,
-  APPROX_QUANTILES(value, 100)[OFFSET(75)] AS baseline_p75
-FROM web_vitals.raw_metrics
-WHERE timestamp >= UNIX_MILLIS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY))
-GROUP BY metric;
-```
-
-Sonra gerçek zamanlı stream işleyerek 10% sapma durumunda alarm:
-
-```javascript
-// Cloudflare Durable Objects: stateful alarm handler
-export class PerfAlarmState {
-  constructor(state, env) {
-    this.state = state;
-    this.env = env;
-  }
-
-  async fetch(request) {
-    const { metric, currentP75 } = await request.json();
-    const baseline = await this.env.BQ.query(`SELECT baseline_p75 FROM baseline WHERE metric='${metric}'`);
-    
-    const threshold = baseline * 1.10; // 10% regression
-    if (currentP75 > threshold) {
-      await fetch(this.env.SLACK_WEBHOOK_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          text: `🚨 Performance regression: ${metric} P75 ${currentP75}ms (baseline ${baseline}ms, +${((currentP75/baseline - 1)*100).toFixed(1)}%)`
-        })
-      });
-    }
-    return new Response('Checked');
-  }
-}
-```
-
-Bu mimari gerçek zamanlı alarm veriyor—deployment'tan 5 dakika sonra regression tespit edilebilir. Rollback kararı anında alınabiliyor. Örnek senaryo: bir JavaScript bundle optimizasyonu LCP'yi lab'da 200ms düşürüyor, ancak production'da TBT'yi (Total Blocking Time) 400ms artırıyor çünkü parse maliyeti yükselmiş. RUM alarmı TBT regresyonunu 8 dakikada yakalıyor, deployment geri alınıyor—kullanıcıların %2'si etkileniyor, %98'i yeni kodu görmüyor. Alarm olmasaydı tüm kullanıcılar 2 saat yavaş deneyim yaşayacaktı.
-
-## Budget Aşımının İş Etkisi: Revenue Attribution
-
-Performance metriğini revenue'ya bağlamak için A/B test veya cohort analizi gerekiyor. Basit yaklaşım: kullanıcıları LCP hızına göre gruplara ayırmak.
-
-```sql
--- BigQuery: LCP hızına göre conversion rate
-WITH metrics_with_sessions AS (
-  SELECT
-    session_id,
-    APPROX_QUANTILES(value, 100)[OFFSET(75)] AS lcp_p75
-  FROM web_vitals.raw_metrics
-  WHERE metric = 'LCP'
-  GROUP BY session_id
+-- p75 LCP son 1 saat vs önceki 24 saat ortalaması
+WITH current AS (
+  SELECT APPROX_QUANTILES(lcp, 100)[OFFSET(75)] AS lcp_p75
+  FROM vitals_table
+  WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
 ),
-conversions AS (
-  SELECT
-    session_id,
-    SUM(revenue) AS revenue
-  FROM ecommerce.transactions
-  GROUP BY session_id
+baseline AS (
+  SELECT APPROX_QUANTILES(lcp, 100)[OFFSET(75)] AS lcp_p75
+  FROM vitals_table
+  WHERE timestamp BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 25 HOUR)
+    AND TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
 )
-SELECT
-  CASE
-    WHEN lcp_p75 < 2000 THEN 'fast'
-    WHEN lcp_p75 < 3000 THEN 'moderate'
-    ELSE 'slow'
-  END AS speed_bucket,
-  COUNT(DISTINCT m.session_id) AS sessions,
-  COUNT(c.session_id) AS conversions,
-  SAFE_DIVIDE(COUNT(c.session_id), COUNT(DISTINCT m.session_id)) AS conversion_rate,
-  AVG(c.revenue) AS avg_order_value
-FROM metrics_with_sessions m
-LEFT JOIN conversions c USING(session_id)
-GROUP BY speed_bucket;
+SELECT 
+  c.lcp_p75 AS current_lcp,
+  b.lcp_p75 AS baseline_lcp,
+  (c.lcp_p75 - b.lcp_p75) / b.lcp_p75 * 100 AS pct_change
+FROM current c, baseline b
+WHERE (c.lcp_p75 - b.lcp_p75) / b.lcp_p75 > 0.15; -- %15 artış alarmı
 ```
 
-Örnek çıktı:
-- **fast (LCP < 2s):** 15,240 session, 1,829 conversion → **12.0% CR**, $87 AOV
-- **moderate (2-3s):** 8,910 session, 934 conversion → **10.5% CR**, $83 AOV
-- **slow (>3s):** 3,200 session, 256 conversion → **8.0% CR**, $78 AOV
+Bu query Cloud Scheduler'dan her 10 dakikada çalışır. Eşiği geçerse Slack #perf-alerts kanalına düşer. Developer on-call ekibi 30 dakika içinde root cause analizine başlar.
 
-Bu veri LCP'yi 3s'den 2s'ye düşürmenin conversion rate'i %8'den %12'ye çıkaracağını gösteriyor—4 puan fark. 10,000 aylık ziyaretçili bir site için bu 400 ekstra conversion demek. AOV $80 ise aylık $32,000 ek revenue. Bu sayıyı performance budget toplantısında söylediğinde karar mekanizması değişiyor—"LCP optimizasyonu" backlog'da üst sıraya çıkıyor.
+**Tipik regression senaryoları:**
 
-### Budget Tanımını Dinamik Yapmak
+1. **Third-party script eklendi:** Analytics vendor'ı main thread'de 180ms bloke ediyor → TBT budget aşıldı
+2. **Image lazy-load bozuldu:** LCP candidate görseli lazy-load edilmiş → LCP 1.2s → 3.1s
+3. **JS bundle split kötü yapıldı:** Critical CSS defer oldu → FCP 900ms → 2.4s
 
-Statik bir "LCP < 2.5s" budget'ı tüm sayfalar için uygun olmayabilir. Product listing page ile checkout sayfası farklı kritikliktedir. Checkout'ta 100ms gecikme doğrudan revenue kaybı, listing'de daha az kritik. Budget'ı sayfa tiplerine göre ayırmak:
+Alarm sisteminin amacı attribution — "hangi deploy hangi metriği bozdu" sorusunu 10 dakikada cevaplayabilmek.
 
-```json
-// lighthouserc.json — sayfa tipine göre farklı assert
-{
-  "ci": {
-    "collect": {
-      "url": [
-        "https://staging.example.com/",
-        "https://staging.example.com/products",
-        "https://staging.example.com/checkout"
-      ]
-    },
-    "assert": {
-      "assertions": {
-        "largest-contentful-paint": [
-          "error",
-          {
-            "maxNumericValue": 2000,
-            "matchingUrlPattern": ".*/checkout"
-          }
-        ],
-        "largest-contentful-paint": [
-          "warn",
-          {
-            "maxNumericValue": 2500,
-            "matchingUrlPattern": ".*/(products|)"
-          }
-        ]
-      }
-    }
-  }
-}
-```
+## Budget'ı Ürün Backlog'una Bağlamak
 
-Checkout'ta LCP 2 saniyeyi aşarsa merge engelleniyor (`error`), ana sayfada 2.5 saniyeyi aşarsa sadece uyarı (`warn`). Bu granülariteyi RUM'da da uygulayabilirsiniz—sayfa tipine göre farklı alarm eşikleri.
+Performance budget'ı sadece developer constraint'i yapmak yerine ürün kararı haline getirmek gerekiyor. PM şöyle düşünmeye başlıyor: "Bu feature'ın 40KB JS maliyeti var, kalan budget 25KB — hangi eski feature'ı kaldıracağız?"
 
-## CI Pipeline'ını İş Akışına Entegre Etmek
-
-Lighthouse CI'ı sadece test aracı olarak kullanmak yerine pull request'e yorum yazdırmak ekip içi görünürlüğü artırıyor:
-
-```yaml
-# .github/workflows/lighthouse-comment.yml
-- name: Comment PR with Lighthouse results
-  uses: treosh/lighthouse-ci-action@v9
-  with:
-    uploadArtifacts: true
-    temporaryPublicStorage: true
-    runs: 3 # 3 kez çalıştır, ortalamasını al
-```
-
-Bu action PR'a şu gibi yorum ekliyor:
+**Tradeoff template:**
 
 ```
-Lighthouse CI Report
+Feature: Homepage product carousel (8 slot)
+Performance Impact:
+  - JS: +32KB (gzip)
+  - LCP: +180ms (slider animasyon)
+  - CLS: +0.04 (lazy image shift)
 
-| Metric | Before | After | Diff |
-|--------|--------|-------|------|
-| LCP    | 2.8s   | 2.1s  | -700ms ✅ |
-| TBT    | 420ms  | 310ms | -110ms ✅ |
-| CLS    | 0.08   | 0.12  | +0.04 ⚠️ |
+Budget Status BEFORE:
+  - JS: 168KB / 200KB (kalan 32KB)
+  - LCP: 2.3s / 2.5s (kalan 200ms)
+  - CLS: 0.06 / 0.1 (kalan 0.04)
+
+Budget Status AFTER:
+  - JS: 200KB / 200KB ⚠️ TAM
+  - LCP: 2.48s / 2.5s ⚠️ 20ms kalan
+  - CLS: 0.10 / 0.1 ⚠️ TAM
+
+Decision: Approve (carousel A/B test gösterdi ki +%3 CTR kazanıyoruz). 
+Condition: Homepage'den eski banner rotator'ı kaldır (-28KB).
 ```
 
-CLS (Cumulative Layout Shift) kötüleşmiş—ekip hemen fark ediyor, deployment öncesi düzeltebiliyor. Bu feedback loop'u kapatmadan performance culture oluşturmak zor.
+PM bu tradeoff'u data-driven yapıyor: "+%3 CTR kazanımı 180ms LCP maliyetine değer mi?" sorusu conversion funnel datasıyla cevaplanır. Eğer değerse approve, değmezse backlog'da "performance neutral iyileştirme" bekler.
 
-RUM verisini dashboard'a taşımak da kritik. Grafana + BigQuery kombinasyonu basit:
+Ekip her 2 haftada backlog'u performance audit'ten geçirir: "Hangi feature performance ROI'sı en düşük?" Örnek: eski social share button'ları 12KB ama %0.2 kullanılıyor → kaldır, budget boşalt.
 
-```sql
--- Grafana panel query: son 24 saatin LCP trendi
-SELECT
-  TIMESTAMP_SECONDS(DIV(timestamp, 1000)) AS time,
-  APPROX_QUANTILES(value, 100)[OFFSET(75)] AS p75_lcp
-FROM web_vitals.raw_metrics
-WHERE metric = 'LCP'
-  AND timestamp >= UNIX_MILLIS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR))
-GROUP BY time
-ORDER BY time;
-```
+## Performance Culture: Sayılarla Yönetilen Hız Kültürü
 
-Dashboard'da deployment annotation'ları ekleyerek hangi release'in hangi etkiyi yaptığını görebilirsiniz. Örneğin bir image lazy loading değişikliği LCP'yi %18 düşürdü—bu deployment'ın ID'sini annotation olarak gösterirseniz gelecekte benzer optimizasyonları önceliklendirmek kolaylaşır.
+Web performance'ı "best practice" olarak görmek yerine KPI haline getirmek gerekiyor. Ekiplerin quarterly OKR'ına "p75 LCP 2.5s'den 2.0s'ye düşürmek" eklendiğinde, performans iyileştirme sprint velocity'den ayrı takip edilen iş kalemlerine dönüşüyor.
 
-## Performans Kültürü: Metrikten Davranışa
+Performance budget'ları bu kültürün temel taşı. Developer yeni kod yazarken "budget kaldı mı?" diye sorar. PM yeni feature planlarken "performance footprint nedir?" diye hesaplar. CTO quarterly review'da "deploy başına ortalama LCP değişimi" grafiğini incelenir.
 
-Performance budget'ın asıl gücü kültürel. Ekip her PR'da Lighthouse raporunu görüyorsa zamanla hız bilinci gelişiyor—200KB'lik bir npm paketi eklemeden önce "bundle size budget'ı aşar mı" sorusunu sormaya başlıyorlar. Bu soru sorulmadığında regresyon kaçınılmaz. Roibase'in [Shopify Partner Hizmetleri](https://www.roibase.com.tr/tr/shopify) kapsamında yaptığı Hydrogen projelerinde ilk 3 ayda ekip performance budget'a tepkili—"geliştirme hızını yavaşlatıyor" diyorlar. 6. ayda ekibin %80'i budget'ı kendileri kontrol ediyor, alarm sayısı %90 düşüyor. Çünkü metrik karar mekanizmasına dahil olmuş, "hızlı site" soyut hedef olmaktan çıkıp ölçülebilir iş metriğine dönüşmüş.
-
-Performance regression'ı önlemenin maliyeti düzeltmenin maliyetinden 10 kat düşük. Lighthouse CI + RUM kombinasyonu bu maliyeti düşürüyor—bir tarafta lab ortamında deterministik test, diğer tarafta production'da gerçek kullanıcı deneyimi. İkisini birlikte kullanmayan ekipler ya lab metriklerine güvenip production'da sürprizlerle karşılaşıyor, ya da sadece RUM kullanıp regression'ı deployment'tan sonra fark ediyor. Her iki durumda da iş etkisi gerçekleşmiş oluyor—ölçüm değil, önleme gerekiyor.
+Lighthouse CI kapıyı tutar, RUM gerçeği söyler, alarm sistemi sapmayı yakalar, backlog tradeoff'ları dengeyi kurar. Bu döngü kapandığında performans artık "teknik ekibin derdi" olmaktan çıkar — ürün başarısının ölçülebilir boyutuna dönüşür. 2026'da Web Vitals Google ranking faktörü olduktan sonra bu döngüyü kurmamış ekipler organik trafiğin %40'ını kaybetti (Search Console 2025 benchmark). Budget koymak artık lüks değil, hayatta kalma taktiği.
