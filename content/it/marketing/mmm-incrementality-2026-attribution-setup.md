@@ -1,144 +1,157 @@
 ---
 title: "MMM + Incrementality: L'Attribution Setup del 2026"
-description: "Robyn, Meta Lift, geo experiments — quale usare e quando? Come costruire l'architettura di misurazione corretta nell'era post-cookie?"
-publishedAt: 2026-05-14
-modifiedAt: 2026-05-14
+description: "Robyn, Meta Lift, geo experiments — quando usare cosa? Decision tree pratico per l'attribution post-cookie."
+publishedAt: 2026-06-04
+modifiedAt: 2026-06-04
 category: marketing
-i18nKey: marketing-004-2026-05
-tags: [mmm, incrementality, attribution, robyn, meta-lift]
-readingTime: 8
+i18nKey: marketing-004-2026-06
+tags: [mmm, incrementality, attribution, robyn, geo-test]
+readingTime: 9
 author: Roibase
 ---
 
-L'attribution su ultimo clic è morta, il segnale del browser non è affidabile, la Conversion API stessa è rumorosa — nel 2026 la misurazione del [performance marketing](https://www.roibase.com.tr/it/ppc) si è trasferita su un terreno completamente diverso. Il Marketing Mix Modeling (MMM) non è più solo uno strumento pesante usato dai brand CPG per la pianificazione annuale del budget; è diventato un sistema dinamico integrato nel meccanismo decisionale settimanale e costantemente calibrato dai test di incrementalità. Robyn di Meta è diventato open source, Google ha trasferito il suo stack MMM in BigQuery ML, Snapchat ha portato in production la sua API di geo-experiment. La domanda non è più "MMM o incrementalità?" — è "a quale livello uso quale metodo, e come li integro insieme?"
+Il tracking cookie è scomparso per l'80%, l'Multi-Touch Attribution (MTA) non è più affidabile, i dashboard delle piattaforme si contraddicono. Nel 2026 i marketer misurano la "contribuzione" combinando due metodi: Marketing Mix Modeling (MMM) e test di incrementalità. Il problema: pochi sanno quando usare quale. Questo articolo ti mostra dove posizionare Robyn (la libreria MMM open source di Meta), Meta Lift API e i test di holdout geografici nello stesso setup.
 
-## Perché MMM Arriva al Tavolo Adesso
+## Last-touch attribution è morto — ma cosa lo sostituisce?
 
-Niente cookie, opt-in ATT al 25%, Privacy Sandbox ancora incerto — i report delle piattaforme funzionano dal 2024 con un margine di errore del 40-60% (Forrester 2025). In questo contesto, basare le decisioni sul modello di ultimo clic o sull'attribution basata sui dati da Google Analytics è come andare veloce su un punto cieco. MMM è l'unico framework di misurazione macro: valuta tutti i canali sulla base della spesa totale e del risultato tramite regressione, non ha bisogno di cookie, estrae relazioni di causa-effetto dalle serie temporali.
+Google Analytics 4 dice "data-driven attribution", Meta dice "modeled conversions", TikTok fornisce i suoi numeri. Tutti e tre riportano cifre diverse. Nel 2025 un e-commerce che spende 100 euro può vedere 8 conversioni in GA4, 12 in Meta e 6 in TikTok. Quale canale davvero funziona? Il modello last-touch non risponde perché l'utente passa per più touchpoint e ogni piattaforma si attribuisce il merito.
 
-La novità di MMM nel 2026 è questa: non è più aggiornato annualmente, ma settimananalmente, si integra in pipeline automatiche e può usare segnali first-party da sGTM e CDP. La libreria Robyn di Meta rende possibile tutto questo: open source, R/Python, refresh settimanale, regressione ridge bayesiana, curve di adstock e saturazione adattate automaticamente con tuning degli iperparametri. In altre parole, l'era "la configurazione del modello richiede 6 mesi" è finita — si arriva in production in 2 settimane di sprint.
+Il Marketing Mix Modeling risolve il problema da un'angolazione diversa: prende i canali come variabili indipendenti, le vendite o il revenue come variabile dipendente, e usa la regressione per calcolare il contributo marginale di ogni canale. I test di incrementalità sono più diretti: esponi un gruppo a un canale, l'altro gruppo non lo esponi, misuri la differenza. Entrambi sfondano l'illusione del last-touch, ma i loro scenari d'uso non si sovrappongono.
 
-Scenario di esempio: un brand DTC con 15 canali ha collegato Robyn a BigQuery. Ha caricato dati settimanali di spesa, impression e ricavi tramite `bq load`. Il modello, osservando 3 settimane di dati storici, ha stimato per ogni canale la curva ROAS, l'adstock (il ritardo dell'effetto pubblicitario) e la saturazione (il rendimento decrescente della spesa crescente). Risultato: il ROAS di TikTok è uscito del 18% inferiore alle aspettative — perché l'attribution su ultimo clic attribuiva troppo credito a TikTok. Google Search, invece, era il contrario: il suo vero contributo era del 22% più alto.
+La differenza sta qui: MMM è macro (lungo termine, tutti i canali), incrementalità è micro (breve termine, canale o campagna specifica). Nel 2026 uno setup che combina entrambi è diventato standard.
 
-## Dove Entrano in Gioco i Test di Incrementalità
+## MMM: setup di regressione settimanale con Robyn
 
-MMM guarda da lontano — estrae l'effetto totale di tutti i canali tramite regressione su serie temporali. Ma non può rispondere a questa domanda: "Se spendessi $10.000 in più su Meta questa settimana, cosa accadrebbe?" È qui che entra il test di incrementalità: costruisce un vero esperimento, mantiene un gruppo di controllo, misura il lift.
+La libreria Robyn di Meta è il framework MMM open source del team di Facebook Marketing Science. Funziona con R, usa la regressione Bayesiana ridge, e adatta automaticamente curve di adstock (effetto ritardato) e saturazione (rendimento decrescente). Fornisce la contribuzione settimanale di ogni canale — TV, display, paid social, SEO, email — al totale vendite in percentuale.
 
-Il test Conversion Lift di Meta lo integra nella piattaforma: divide gli utenti in modo casuale in un gruppo holdout, non mostra annunci al gruppo holdout, e alla fine misura la differenza di conversione tra i due gruppi. Nel 2026 questo metodo non si trova solo su Meta — Google Ads ha Geo Experiments (gruppo di controllo basato sulla geografia), TikTok ha Brand Lift API, Snapchat ha Snap Lift Studio. Tutti usano lo stesso principio: randomizzazione e assegnazione controllata.
+**I 4 componenti del setup Robyn:**
 
-La differenza è questa: MMM risponde a "cosa è successo in passato", l'incrementalità risponde a "cosa accadrà in futuro". MMM estrae correlazione da dati osservazionali, l'incrementalità testa relazioni causali. La configurazione ideale combina le due: prendi il macro trend e il benchmark ROI con MMM, convalida le tattiche specifiche del canale con l'incrementalità.
+1. **Raccolta dati:** Minimo 1,5 anni di dati settimanali. Ogni riga = una settimana. Colonne: spesa per ogni canale, impressioni o click; variabili indipendenti (prezzo, scorte, stagionalità); variabile dipendente (revenue, ordini, conversioni). Se mancano dati il modello fallisce.
+2. **Hyperparameter tuning:** Robyn cerca per ogni canale il parametro adstock decay (α) e la forma di saturazione (γ). Esegue 2000+ combinazioni di modelli e suggerisce i migliori 5-10 dalla frontiera di Pareto. Questa fase impiega 10-30 minuti (su 64 core).
+3. **Selezione del modello:** Prendi il modello con NRMSE più basso (Normalized Root Mean Squared Error) + decomp.rssd più alto (stabilità della decomposizione). L'output: contribuzione percentuale di ogni canale al totale vendite, stima ROI, allocazione ottimale budget.
+4. **Allocazione budget:** La funzione "budget allocator" di Robyn ridistribuisce il budget totale per equalizzare il ROI marginale di ogni canale. Usi questo output per pianificare il prossimo trimestre.
 
-### Quale Test Usare e Quando
+**Quando usare Robyn:**
+- Decisioni di allocazione budget tra canali (es. piano Q3)
+- Simulazione aggiunta/rimozione canale
+- Analisi trend lungo termine (6 mesi+)
 
-| Metodo | Quando | Durata | Costo | Precisione |
-|--------|--------|--------|-------|-----------|
-| **MMM (Robyn)** | Pianificazione annuale/trimestrale, ottimizzazione del mix di canali | Setup 2-4 settimane, refresh settimanale | Basso (open source) | Media (correlazione) |
-| **Meta Conversion Lift** | Decisioni tattiche a livello di campagna, test di creative | Test 2-4 settimane | Media (spesa holdout) | Alta (RCT) |
-| **Google Geo Experiments** | Cambiamenti di spesa basati sulla geografia | 3-6 settimane | Media | Alta (quasi-RCT) |
-| **Ghost Ads (Snapchat/TikTok)** | Convalida ROI della piattaforma | 2-3 settimane | Basso | Media-alta |
+**Quando NON usare Robyn:**
+- Ottimizzazione all'interno di una campagna (periodi < 2 settimane)
+- Decisioni su creative specifiche (MMM non vede le differenze creative)
+- Feedback real-time per bidding (lag settimanale)
 
-**Esempio reale:** Un'app fintech vede una crescita organica del 15% sull'App Store. Spegne completamente Apple Search Ads e configura un geo-experiment per misurare l'effetto organico: divide gli Stati Uniti in 10 DMA, spegne completamente ASA in 5 di loro. Dopo 21 giorni, il gruppo di controllo ha il 12% di install in più, ma il gruppo holdout ha solo il 2% di crescita organica in più — quindi ASA ha il 10% di incrementalità. Con questi dati, aumenta il budget ASA del 30% e sale il ROAS da 2,1 a 2,8.
+Roibase integra Robyn nel suo servizio [Dijital Pazarlama](https://www.roibase.com.tr/it/dijitalpazarlama): colleghi GA4, GTM server-side, Meta CAPI e BigQuery, costruisce la pipeline ETL settimanale, visualizza l'output in Data Studio.
 
-## Costruire un Pipeline MMM Pratico con Robyn
+## Test di incrementalità: Meta Lift e holdout geografico
 
-Robyn è open source, licenza MIT, derivato dall'infrastruttura MMM interna di Meta. La versione 2026 (v3.11) supporta ora in modo nativo Python (non è solo un wrapper R), ha il connettore BigQuery integrato, e il tuning degli iperparametri è automatico con Optuna.
+MMM risponde "quanto?", l'incrementalità risponde "davvero funziona?". Due domande diverse. Se spendi 100mila euro in Meta e ottieni 120 conversioni è "buono"? MMM dice "Meta ottiene il 15% del tuo budget e produce il 12% delle vendite totali". Ma quante conversioni avrebbero comunque avuto luogo (organic)? Per questo serve il test di incrementalità.
 
-Passaggi di configurazione semplici:
+### Meta Conversion Lift
 
-1. **Preparazione dei dati:** Tabella con granularità settimanale — `date`, `channel`, `spend`, `impressions`, `revenue`. Su BigQuery, una tabella `marketing_data.weekly_agg`.
-2. **Installazione di Robyn:** `pip install pyrobyn` (Python 3.10+)
-3. **Scrittura della configurazione:** File YAML — tipo di adstock (geometrico vs. Weibull), curva di saturazione (Hill), range di iperparametri.
-4. **Training del modello:** `robyn.train()` — ottimizzatore Nevergrad con 2000 iterazioni, scegli il migliore adattamento dalla frontiera di Pareto.
-5. **Output:** Per ogni canale, curva ROAS, grafico di decomposizione (contributo per settimana), allocatore di budget (spesa ottimale).
+Meta Lift API misura l'**impatto reale** degli annunci Facebook e Instagram. Come? Crea un piccolo gruppo di holdout che non vede la campagna, un altro che la vede, misura la differenza dopo 7-14 giorni. La differenza = conversioni incrementali.
 
-```python
-from pyrobyn import Robyn
+**Setup:**
+- Apri il Lift study prima che la campagna parta (Ads Manager > Measure & Report > Conversion Lift)
+- L'holdout è il 5-10% (troppo piccolo = rumore, troppo grande = impressioni perse)
+- Durata minima 7 giorni (meno = potenza statistica insufficiente)
+- Risultato: conversioni incrementali, CPA incrementale, intervallo di confidenza
 
-# Estrai i dati da BigQuery
-data = client.query("""
-  SELECT date, channel, spend, revenue
-  FROM `project.marketing_data.weekly_agg`
-  WHERE date BETWEEN '2025-01-01' AND '2026-05-14'
-""").to_dataframe()
+**Esempio di interpretazione:**
+Gruppo di controllo: 1000 persone, 40 conversioni
+Gruppo test: 9000 persone, 450 conversioni
+Conversione incrementale = (450/9000 - 40/1000) × 9000 = 90 conversioni
+Lift = 90 / (450 - 90) = 25%
 
-# Configura il modello
-model = Robyn(
-    data=data,
-    dep_var='revenue',
-    paid_media_spends=['spend'],
-    adstock='geometric',
-    saturation='hill',
-    hyperparameters='auto'  # Tuning Optuna
-)
+Quindi delle 450 conversioni che la campagna ha ottenuto, solo 90 vengono davvero dall'annuncio. Le altre le avrebbero fatte comunque. CPA incrementale = (spesa) / 90. Questo numero è tipicamente il 30-60% più alto dell'MTA — perché è reale.
 
-# Training (2 ore, 8 core)
-model.train(iterations=2000, trials=5)
+**Quando usare Meta Lift:**
+- A/B test di nuove campagne o creative
+- Decisione di canale (Meta vs. Google vs. TikTok, chi è più incrementale?)
+- Misurare il vero impatto del retargeting (problema frequente: retargeting mostra sempre CPA basso ma il 80% avrebbe convertito comunque)
 
-# Scegli il miglior modello (Pareto NRMSE + convergenza)
-best = model.select_model('pareto_front', rank=1)
+**Svantaggio:**
+- Funziona solo in Meta (Google ha Google Display & Video 360 ma limitato)
+- Creare il gruppo di holdout significa impressioni perse (revenue cala nel breve)
+- Minimo 1 settimana di test — non adatto a decisioni giornaliere
 
-# Riallocazione del budget
-allocator = best.budget_allocator(
-    total_budget=500000,  # Totale mensile
-    scenario='max_response'
-)
-print(allocator.optimal_allocation)
-```
+### Test geografici (holdout geografico)
 
-Output: riduci la spesa Meta del 12%, aumenta Google Search del 18%, mantieni TikTok stabile — con questa distribuzione il ricavo previsto aumenterà del 9%. Per convalidare questa previsione, configura un test di incrementalità di 4 settimane.
+Per canali oltre Meta — Google, TikTok, TV — fai test geografici: campagna attiva in alcune città, disattiva in altre, confronti vendite. È il metodo più pulito accademicamente perché non c'è manipolazione a livello utente.
 
-## Un Ciclo Decisionale che Unisce i Due Metodi
+**Esempio di setup:**
+- Seleziona 30 città (popolazione, livello economico simili)
+- Attiva la campagna Google Ads in 15, la mantieni spenta in 15 (randomizzato)
+- Aspetta 4 settimane
+- Confronta conversioni per città in Google Analytics 4
 
-MMM e il test di incrementalità sono due livelli che si alimentano a vicenda. MMM risponde a "cosa devo testare", il test risponde a "la previsione di MMM era corretta o sbagliata". Nel 2026, le organizzazioni di successo gestiscono questo ciclo:
+**Analisi:**
+- Città trattate: media 120 conversioni/città
+- Città di controllo: media 95 conversioni/città
+- Lift incrementale: (120 - 95) / 95 = 26,3%
 
-**1. Pianificazione macro (Trimestrale):** Esegui Robyn MMM, estrai curva ROAS e punto di saturazione per ogni canale. In quale canale c'è margine?
+Generalizzi questo lift al resto del paese. Se la spesa Google Ads è stata 200mila euro calcoli revenue incrementale e ROAS incrementale.
 
-**2. Generazione di ipotesi (Mensile):** Se MMM dice "Google Display ROAS 1.2, saturazione 70%", formula l'ipotesi di aumentare il budget.
+**Quando usare il test geografico:**
+- Misurare il contributo netto di ogni canale in setup multi-channel
+- Vedere l'impatto di canali non digitali — TV, OOH, podcast
+- Quando non ti fidi dei numeri del dashboard della piattaforma
 
-**3. Progettazione del test (Sprint 2 settimane):** Geo-experiment su Google Ads o test Conversion Lift su Meta. Holdout 20%, gruppo di controllo spesa 0%, gruppo di test +50%.
+**Svantaggio:**
+- Poche città = potenza statistica bassa (minimo 20 città)
+- Se c'è eterogeneità geografica il risultato è fuorviante (Istanbul e Şanlıurfa non sono comparabili)
+- Lungo (4-8 settimane)
 
-**4. Risultato del test (3-4 settimane):** L'incrementalità reale è 1.8 — più alta della previsione di MMM. Calibra il modello.
+## Decision tree: quale metodo usare quando?
 
-**5. Aggiornamento del modello:** Aggiungi il nuovo risultato del test a MMM come prior bayesiano. Nella prossima iterazione, il modello farà previsioni più accurate.
+Organizzi i tre metodi nello stesso setup così:
 
-Questo ciclo dovrebbe essere al centro della strategia di [performance marketing](https://www.roibase.com.tr/it/ppc) — il flusso dei dati non dovrebbe interrompersi da nessuna parte, dalla pianificazione all'esecuzione.
+| Scenario | Metodo | Frequenza | Output |
+|----------|--------|-----------|--------|
+| Allocazione budget trimestrale | Robyn MMM | 1 volta ogni 3 mesi | ROI per canale, spend ottimale |
+| Test nuova campagna (Meta/Instagram) | Meta Lift | Ogni grande campagna | CPA incrementale |
+| Incrementalità cross-channel | Holdout geografico | 2 volte l'anno | Lift reale per canale |
+| Decisione creative refresh | Meta Lift + analisi CRO | 1 volta al mese | Quale creative è incrementale |
+| Real-time bidding | API piattaforma (feedback ROAS) | Giornaliero | Ottimizzazione tattica |
 
-**Caso reale:** Una piattaforma di viaggi nel Q4 2025 ha previsto con Robyn che il ROAS di TikTok fosse 0,9. Il report della piattaforma mostrava 1,3. Ha configurato un test Conversion Lift di 6 settimane: l'incrementalità reale è risultata 0,85. La piattaforma stava commettendo un errore del 53% (bias dell'ultimo clic). Hanno ridotto il budget di TikTok del 40% e l'hanno trasferito a Google Search — il ROAS totale è salito da 1,8 a 2,3.
+**Flusso pratico:**
+1. **Settimanale:** Monitora i dashboard delle piattaforme (simile a MTA ma senza fiducia cieca)
+2. **Mensile:** Testa le grandi campagne con Meta Lift
+3. **Trimestrale:** Usa Robyn per modellare il contributo lungo termine di tutti i canali e ridistribuisci il budget
+4. **2 volte l'anno:** Conferma il lift reale di ogni canale con un test geografico
 
-## La Base dell'Architettura di Attribution nel Mondo Post-Cookie
+Con questo setup a 3 livelli prendi decisioni tattiche (quale creative funziona) e strategiche (quale canale merita quanto budget) basate su dati.
 
-Nel 2026, l'attribution non è più la domanda "a quale canale assegno il credito" — è "quali segnali combino e come". Quando il cookie muore, non rimane una singola fonte, ma piuttosto punti dati frammentari: evento first-party da sGTM, segnale server-side dalla Conversion API della piattaforma, conversione offline da CRM. Lo strato che li unisce è CDP + data warehouse — BigQuery, Snowflake, Redshift.
+## Errori comuni e trade-off
 
-Lo stack moderno assomiglia a:
+**Errore 1:** "Se faccio MMM non serve il test di incrementalità"
+Sbagliato. MMM mostra correlazione, assume causalità. Il test di incrementalità misura causalità. Si completano. Esempio: MMM dice "Instagram contribuisce il 15%", il test Lift mostra che il 40% sarebbe organic. Allora il vero contributo è il 9%.
 
-```
-Web/App → sGTM → BigQuery
-              ↓
-           dbt transform
-              ↓
-      Robyn MMM + Lift Test
-              ↓
-       Looker Dashboard
-```
+**Errore 2:** "Faccio il test di incrementalità per ogni campagna"
+Sbagliato. Creare un holdout significa impressioni perse. Fai test solo per decisioni grandi (nuovo canale, nuova direzione creativa, strategia retargeting). Per piccole ottimizzazioni basta A/B test.
 
-In questa pipeline, Robyn è solo un nodo. Ma è un nodo critico — perché mostra il macro trend e determina la direzione dei test. I risultati dei test vengono riscritti in BigQuery e usati come prior nella prossima iterazione di MMM.
+**Errore 3:** "Robyn si configura una volta e poi gira da solo"
+Sbagliato. Il modello si rieducava ogni trimestre. Se aggiungi un canale, cambia il prezzo, la stagionalità varia — il modello va aggiornato. Robyn richiede manutenzione continua.
 
-**Nota tecnica:** L'integrazione di Robyn con BigQuery funziona tramite SDK Python `google-cloud-bigquery`. Carica i dati settimanali in `marketing_data.robyn_input` con `bq load`, scrivi l'output del modello in `robyn_output`. Lascia che Looker Studio legga direttamente queste tabelle — così il dashboard del CMO visualizza la curva ROAS in tempo reale e le raccomandazioni di allocazione del budget.
+**Trade-off 1: Velocità vs. precisione**
+MMM chiede 1,5 anni di dati, il risultato ha lag 1 settimana. Il test geografico impiega 4-8 settimane. Se devi decidere velocemente devi fidarti del dashboard della piattaforma (con 30-50% margine di errore).
 
-## Errori Comuni e Controbattute
+**Trade-off 2: Granularità vs. dimensione campione**
+Se il test geografico è per città il campione è piccolo, intervallo di confidenza ampio. Se per provincia aumenta l'eterogeneità. MMM settimanale non risponde a domande giornaliere. Ogni metodo ha limiti di risoluzione.
 
-**"MMM richiede un data scientist, noi non possiamo farlo."**
-Robyn è open source, la documentazione è chiara, ci sono notebook Colab pronti. Un growth analyst di medio livello che conosce un po' di Python la impara leggendo la documentazione per 2 settimane e la mette in production. Nel 2026, "data science" non è più una scusa valida.
+## Come costruire l'attribution stack nel 2026
 
-**"Il test di incrementalità è caro, c'è la perdita dell'holdout."**
-Se mantieni l'holdout al 10-20%, 3 settimane di test significano una perdita di ricavi dell'1,5-3%. Ma se continui su un canale sbagliato, la perdita annuale è del 20-30%. Il ROI del test è 10 volte superiore.
+Il setup tecnico si compone di:
 
-**"Il reporting della piattaforma è sufficiente."**
-La dashboard di Meta attribuisce ultimo clic + view-through in 1 giorno. Non vede l'effetto organico, la sinergia cross-canale, le conversioni ritardate. Il report della piattaforma è il segnale tattico, MMM è la verità strategica.
+1. **GTM server-side + first-party cookie:** Invia segnali puliti a GA4 e Meta CAPI (non bypass ATT, ma arricchimento dati basato su consenso)
+2. **Data warehouse BigQuery:** Centralizza tutti i dati (GA4, Meta Ads API, Google Ads API, TikTok Ads API, CRM)
+3. **Trasformazione dbt:** Crea tabelle aggregate settimanali (ogni riga = 1 settimana, ogni colonna = spesa canale + outcome)
+4. **Pipeline Robyn:** Esegui lo script R su Cloud Run una volta a settimana, scrivi output in BigQuery
+5. **Dashboard Looker Studio:** Output MMM + numeri MTA piattaforme + risultati test di incrementalità fianco a fianco
+6. **Alert Slack:** Se NRMSE del modello supera il 10% avviso di anomalia dati
 
-**"Non è necessario allenare il modello ogni settimana."**
-Stagionalità, promozioni, shock economici — tutti influenzano il ROAS. Con il refresh settimanale, catturi il cambio di trend in 2 settimane. Il refresh mensile significa decisioni ritardate di 6-8 settimane.
+Questo stack richiede 4-6 settimane per essere costruito. Poi 2-3 ore di manutenzione settimanale. ROI: l'allocazione budget diventa il 15-25% più efficiente (Robyn stesso riporta il 18% di miglioramento nei benchmark).
 
----
+## Cosa fare adesso
 
-Nel 2026, il problema dell'attribution è risolto? No — ma il set di strumenti è completamente cambiato. Il cookie è sparito, al suo posto c'è lo stack MMM + incrementalità + first-party data. Strumenti open source come Robyn hanno messo i grandi brand e le piccole startup allo stesso livello. I test di geo-experiment e Conversion Lift sono integrati nelle piattaforme, non serve più costituire un team di data scientist separato. La domanda non è "quale metodo" — è "a quale livello uso quale metodo, e come lo integro nel ciclo?" Chi risponde vince.
+Se ancora decidi con l'attribution last-touch nel 2026 non sarai competitivo. Primo passo: fai fluire i dati delle piattaforme in BigQuery, crea la tabella settimanale storica da 1,5 anni. Secondo passo: configura Robyn, addestra il primo modello. Terzo passo: quando lanci la prossima grande campagna apri uno studio Meta Lift. Quarto passo: tra 6 mesi conferma il lift cross-channel con un test geografico. Questi 4 step portano il tuo attribution stack dalla fallacia MTA a una base di incrementalità reale.

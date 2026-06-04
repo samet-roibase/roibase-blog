@@ -1,144 +1,157 @@
 ---
 title: "MMM + Incrementality: 2026'nın Attribution Setup'ı"
-description: "Robyn, Meta Lift, geo experiments — hangisini ne zaman kullanmalı? Post-cookie dönemde doğru ölçüm mimarisi nasıl kurulur?"
-publishedAt: 2026-05-14
-modifiedAt: 2026-05-14
+description: "Robyn, Meta Lift, geo experiments — hangisini ne zaman kullanacaksın? Cookie sonrası attribution için pratik decision tree."
+publishedAt: 2026-06-04
+modifiedAt: 2026-06-04
 category: marketing
-i18nKey: marketing-004-2026-05
-tags: [mmm, incrementality, attribution, robyn, meta-lift]
+i18nKey: marketing-004-2026-06
+tags: [mmm, incrementality, attribution, robyn, geo-test]
 readingTime: 8
 author: Roibase
 ---
 
-Last-click attribution öldü, browser signali güvenilmez, conversion API bile gürültülü — 2026'da performans pazarlaması ölçümü tamamen farklı bir zemine oturdu. Marketing Mix Modeling (MMM) artık sadece CPG markalarının yıllık bütçe planlamasında kullandığı ağır bir araç değil; haftalık karar mekanizmasına entegre edilen, incrementality testleriyle sürekli kalibre edilen dinamik bir sistem. Meta'nın Robyn'i açık kaynak oldu, Google kendi MMM stack'ini BigQuery ML'e taşıdı, Snapchat geo-experiment API'sini production'a aldı. Soru artık "MMM mi, incrementality mi?" değil — "hangi katmanda hangisini, nasıl birlikte kullanıyorum?"
+Cookie tracking %80 silindi, Multi-Touch Attribution (MTA) artık güvenilir değil, platform dashboardları birbirini tutmuyor. 2026'da pazarlamacılar "katkı" ölçümünü iki farklı yöntemle birleştiriyor: Marketing Mix Modeling (MMM) ile incrementality testleri. Sorun şu: hangisini ne zaman kullanacağını bilen az. Bu yazı Robyn (Meta'nın açık kaynak MMM kütüphanesi), Meta Lift API ve geo-based holdout testlerini aynı setup içinde nereye koyacağını gösteriyor.
 
-## MMM Neden Şimdi Masaya Geldi
+## Last-touch attribution öldü — ama yerine ne koyacağız?
 
-Cookie yok, ATT opt-in %25'te, Privacy Sandbox hâlâ belirsiz — platform raporlaması 2024'ten bu yana %40-60 arasında hata payıyla çalışıyor (Forrester 2025). Bu ortamda son tıklama modeli veya data-driven attribution Google Analytics'ten alınan sayılarla karar vermek, kör nokta üzerinde hız yapmak gibi. MMM bu senaryoda tek makro ölçüm çerçevesi: tüm kanalları toplam spend ve sonuç üzerinden regresyon modeliyle değerlendirir, cookie'ye ihtiyaç duymaz, zaman serisi üzerinden sebep-sonuç ilişkisini çıkarır.
+Google Analytics 4 "data-driven attribution" diyor, Meta "modeled conversions" diyor, TikTok kendi sayısını veriyor. Üçü de farklı rakam. 2025'te 100 dolar harcayan bir e-ticaret markası GA4'te 8 conversion görürken Meta'da 12, TikTok'ta 6 görebiliyor. Hangi kanal gerçekten işe yarıyor? Last-touch modeli cevap veremiyor çünkü kullanıcı birden fazla touchpoint'ten geçiyor ve her platform kendi kendine kredi veriyor.
 
-2026'da MMM'in yeniliği şu: artık yıllık değil haftalık güncellenen, otomatik pipeline'a oturan, sGTM ve CDP'den gelen first-party sinyali kullanabilen bir yapı. Meta'nın Robyn kütüphanesi bunu mümkün kılıyor: açık kaynak, R/Python, haftalık refresh, Bayesian ridge regression, adstock ve saturation curve'leri otomatik hyperparameter tuning ile fit ediyor. Yani artık "model kurulumu 6 ay" dönemi bitti — 2 haftalık sprint'te production'a giriyor.
+Marketing Mix Modeling bu sorunu farklı açıdan çözer: kanalları bağımsız değişken olarak alır, satış veya revenue'yu bağımlı değişken yapar, regresyon ile her kanalın marginal katkısını hesaplar. Incrementality testleri ise daha direkt: bir grubu bir kanala maruz bırakırsın, diğer grubu bırakmazsın, farkı ölçersin. İkisi de son dokunuş illüzyonunu kırar ama kullanım senaryoları çakışmıyor.
 
-Örnek senaryo: 15 kanallı bir DTC markası Robyn'i BigQuery'ye bağladı. Haftalık spend, impression, revenue verisini `bq load` ile pipe etti. Model 3 haftalık geçmiş veriye bakıp her kanal için ROAS curve, adstock (reklam etkisinin gecikmesi) ve saturation (artan spend'in azalan getirisi) tahmin etti. Sonuç: TikTok'un ROAS'ı tahmin edilenden %18 düşük çıktı — çünkü son tıklama attribution TikTok'u fazla kredilendiriyordu. Google Search ise tam tersi: gerçek katkısı %22 daha yüksekti.
+Fark şurada: MMM makro (uzun dönem, tüm kanallar), incrementality mikro (kısa dönem, spesifik kanal veya kampanya). İkisini birleştiren setup 2026'da standart hale geldi.
 
-## Incrementality Test Nerede Devreye Giriyor
+## MMM: Robyn ile haftalık regresyon setup'ı
 
-MMM makro bakar — tüm kanalların toplam etkisini zaman serisi regresyonuyla çıkarır. Ama şu soruya cevap veremez: "Bu hafta Meta'ya 10.000$ daha fazla verseydim ne olurdu?" İşte burada incrementality test devreye girer: gerçek bir deney kurar, kontrol grubu tutar, kaldırımı (lift) ölçer.
+Meta'nın Robyn kütüphanesi Facebook Marketing Science ekibinin açık kaynaklı MMM framework'ü. R ile çalışır, Bayesian ridge regression kullanır, adstock (gecikmeli etki) ve saturation (azalan verim) eğrilerini otomatik fit eder. Haftalık granülaritede TV, display, paid social, SEO, email gibi kanalların her birinin satışa katkısını yüzde olarak verir.
 
-Meta'nın Conversion Lift testi bunu platforma entegre etti: kullanıcıları rastgele holdout grubuna ayır, holdout'a reklam gösterme, sonunda iki grubun dönüşüm farkını ölç. 2026'da bu yöntem artık sadece Meta'da değil — Google Ads'te Geo Experiments (coğrafya bazlı kontrol grubu), TikTok'ta Brand Lift API, Snapchat'te Snap Lift Studio var. Hepsi aynı prensibi kullanıyor: rastgeleştirme ve kontrollü maruz bırakma.
+**Robyn setup'ının 4 bileşeni:**
 
-Fark şu: MMM "geçmişte ne oldu" sorusuna cevap verir, incrementality "gelecekte ne olur" sorusuna. MMM gözlemsel veri üzerinden korelasyon çıkarır, incrementality nedensel ilişkiyi test eder. İdeal setup ikisini birleştirmek: MMM ile makro trend + ROI benchmark'ını al, incrementality ile kanal-spesifik taktikleri doğrula.
+1. **Veri toplama:** En az 1,5 yıl haftalık veri. Her satır bir hafta. Sütunlar: her kanal için harcama, impression veya click; bağımsız değişkenler (fiyat, stok, sezonalite); bağımlı değişken (revenue, order, conversion). Boşluk olursa model çalışmaz.
+2. **Hyperparameter tuning:** Robyn her kanal için adstock decay (α) ve saturation shape (γ) parametrelerini arar. 2000+ model kombinasyonu çalıştırıp Pareto frontier'dan en iyi 5-10 modeli önerir. Bu aşama 10-30 dakika sürer (64 core'da).
+3. **Model seçimi:** En düşük NRMSE (Normalized Root Mean Squared Error) + en yüksek decomp.rssd (çözümleme kararlılığı) kombinasyonuna sahip modeli alırsın. Bu modelin output'u: her kanalın toplam satışa katkı yüzdesi, ROI tahmini, optimal spend dağılımı.
+4. **Budget allocation:** Robyn "budget allocator" fonksiyonu ile toplam bütçeyi yeniden dağıtır — her kanalın marjinal ROI'sini eşitleyecek şekilde. Bu output'u kullanarak next quarter planını yaparsın.
 
-### Hangi Testi Ne Zaman Kullanmalı
+**Robyn ne zaman kullanılır:**
+- Kanallararası bütçe dağıtımı kararları (örn. Q3 planı)
+- Yeni kanal ekleme/çıkarma simülasyonu
+- Uzun dönem trend analizi (6 ay+)
 
-| Yöntem | Ne Zaman | Süre | Maliyet | Kesinlik |
-|--------|----------|------|---------|----------|
-| **MMM (Robyn)** | Yıllık/çeyreklik planlama, kanal mix optimizasyonu | 2-4 hafta setup, haftalık refresh | Düşük (açık kaynak) | Orta (korelasyon) |
-| **Meta Conversion Lift** | Kampanya-seviye taktik karar, yeni kreatif A/B | 2-4 hafta test | Orta (spend holdout) | Yüksek (RCT) |
-| **Google Geo Experiments** | Coğrafya-bazlı spend değişikliği | 3-6 hafta | Orta | Yüksek (quasi-RCT) |
-| **Ghost Ads (Snapchat/TikTok)** | Platform ROI doğrulama | 2-3 hafta | Düşük | Orta-yüksek |
+**Robyn ne zaman KULLANILMAZ:**
+- Kampanya içi optimize etmek için (2 haftadan kısa dönemler)
+- Platform-spesifik creative test kararı (çünkü MMM creative farkını göremez)
+- Real-time bidding feedback (çünkü haftalık gecikme var)
 
-**Gerçek örnek:** Bir fintech uygulaması App Store'da %15 organik büyüme görüyor. Apple Search Ads'i kapatıp organik etkiyi ölçmek için geo-experiment kuruyor: ABD'yi 10 DMA'ya böl, 5'inde ASA'yı tamamen kes. 21 gün sonra kontrol grubunda install 12% daha fazla ama holdout grubunda organik install sadece %2 artmış — yani ASA'nın %10 incrementality'si var. Bu veriyle ASA bütçesini %30 artırıp ROAS'ı 2.1'den 2.8'e çıkarıyorlar.
+Roibase'in [Dijital Pazarlama](https://www.roibase.com.tr/tr/dijitalpazarlama) hizmeti içinde Robyn modelini kuruyoruz: GA4, server-side GTM, Meta CAPI ve BigQuery'yi birbirine bağlayıp haftalık ETL pipeline kuruyoruz, model çıktısını Data Studio'da görselleştiriyoruz.
 
-## Robyn ile Pratik MMM Pipeline Kurmak
+## Incrementality testleri: Meta Lift ve geo-based holdout
 
-Robyn açık kaynak, MIT lisanslı, Meta'nın kendi MMM altyapısından türetilmiş. 2026 sürümü (v3.11) artık Python native destekli (R wrapper değil), BigQuery connector built-in, hyperparameter tuning Optuna ile otomatik.
+MMM "ne kadar" sorusunu yanıtlar, incrementality "gerçekten işe yarıyor mu" sorusunu yanıtlar. İki farklı soru. Meta'da 100 bin TL harcayıp 120 conversion alıyorsan bu "iyi" mi? MMM sana "Meta bütçenin %15'ini alıyor, toplam satışın %12'sini getiriyor" der. Ama bu conversion'ların kaçı zaten alışveriş yapacaktı (organic)? Bunun için incrementality testi gerekir.
 
-Basit setup adımları:
+### Meta Conversion Lift
 
-1. **Veri hazırlama:** Haftalık granülaritede tablo — `date`, `channel`, `spend`, `impressions`, `revenue`. BigQuery'de `marketing_data.weekly_agg` tablosu.
-2. **Robyn install:** `pip install pyrobyn` (Python 3.10+)
-3. **Config yazma:** YAML dosyası — adstock tipi (geometric vs. Weibull), saturation curve (Hill), hyperparameter range.
-4. **Model train:** `robyn.train()` — Nevergrad optimizer 2000 iterasyon, en iyi fit Pareto frontier'dan seç.
-5. **Output:** Her kanal için ROAS curve, decomposition chart (haftaya göre katkı payı), budget allocator (optimal spend dağıtımı).
+Meta Lift API, Facebook ve Instagram reklamlarının **gerçek etkisini** ölçer. Nasıl? Kampanyayı küçük bir holdout grubuna göstermez, diğer gruba gösterir, 7-14 gün sonra farkı ölçer. Fark = incremental conversions.
 
-```python
-from pyrobyn import Robyn
+**Setup:**
+- Kampanya başlamadan önce Lift study açılır (Ads Manager > Measure & Report > Conversion Lift)
+- Holdout oranı %5-10 olur (çok küçük = gürültü, çok büyük = impression kaybı)
+- Test süresi en az 7 gün (kısa = istatistiksel güç düşük)
+- Sonuç: incremental conversions, incremental CPA, confidence interval
 
-# BigQuery'den veri çek
-data = client.query("""
-  SELECT date, channel, spend, revenue
-  FROM `project.marketing_data.weekly_agg`
-  WHERE date BETWEEN '2025-01-01' AND '2026-05-14'
-""").to_dataframe()
+**Örnek sonuç yorumu:**
+Control group: 1000 kişi, 40 conversion
+Test group: 9000 kişi, 450 conversion
+Incremental conversion = (450/9000 - 40/1000) × 9000 = 90 conversion
+Lift = 90 / (450 - 90) = %25
 
-# Model kur
-model = Robyn(
-    data=data,
-    dep_var='revenue',
-    paid_media_spends=['spend'],
-    adstock='geometric',
-    saturation='hill',
-    hyperparameters='auto'  # Optuna tuning
-)
+Yani kampanyanın gördüğü 450 conversion'ın sadece 90'ı gerçekten reklamdan gelmiş. Diğerleri zaten alacaktı. Incremental CPA = (harcama) / 90. Bu sayı MTA'dan %30-60 daha yüksek çıkar — çünkü gerçek.
 
-# Train (2 saat, 8 core)
-model.train(iterations=2000, trials=5)
+**Meta Lift ne zaman kullanılır:**
+- Yeni kampanya veya kreatiflerin A/B testi
+- Platform kararı (Meta vs. Google vs. TikTok hangisi daha incremental?)
+- Retargeting'in gerçek katkısını ölçmek (sık sorun: retargeting her zaman düşük CPA verir ama %80'i zaten alırdı)
 
-# En iyi modeli seç (Pareto NRMSE + convergence)
-best = model.select_model('pareto_front', rank=1)
+**Dezavantajı:**
+- Sadece Meta'da çalışır (Google'da benzeri Display & Video 360'ta var ama sınırlı)
+- Holdout grubu yaratınca impression kaybedersin (kısa vadede revenue düşer)
+- Test süresi en az 1 hafta — günlük karar vermeye uygun değil
 
-# Budget reallocation
-allocator = best.budget_allocator(
-    total_budget=500000,  # Aylık toplam
-    scenario='max_response'
-)
-print(allocator.optimal_allocation)
-```
+### Geo-based experiments (coğrafi holdout)
 
-Çıktı: Meta spend'i %12 azalt, Google Search %18 artır, TikTok sabit tut — bu dağıtımla predicted revenue %9 artacak. Bu tahmini doğrulamak için 4 haftalık incrementality testi kur.
+Google, TikTok, TV gibi Meta dışı kanallar için geo-based test yaparsın: bazı şehirlerde kampanya açarsın, bazı şehirlerde açmazsın, satış farkına bakarsın. Bu yöntem akademik olarak en temiz incrementality ölçümü çünkü kullanıcı seviyesinde manipülasyon yok.
 
-## İki Yöntemi Birleştiren Karar Döngüsü
+**Setup örneği:**
+- 30 şehir seç (nüfus, ekonomik seviye benzer)
+- 15'inde Google Ads kampanyasını aç, 15'inde kapalı tut (randomize et)
+- 4 hafta bekle
+- Google Analytics 4'te şehir bazlı conversion'ları karşılaştır
 
-MMM ve incrementality test birbirini besleyen iki katman. MMM "neyi test etmeli" sorusunu yanıtlar, test "MMM tahminini doğrular veya yalanlı". 2026'da başarılı kurumlar şu döngüyü işletiyor:
+**Analiz:**
+- Treated cities: ortalama 120 conversion/şehir
+- Control cities: ortalama 95 conversion/şehir
+- Incremental lift: (120 - 95) / 95 = %26.3
 
-**1. Makro planlama (Çeyreklik):** Robyn MMM'i çalıştır, her kanal için ROAS curve + saturation noktasını çıkar. Hangi kanalda margin var?
+Bu %26.3 lift'i tüm ülkeye genellersin. Google Ads harcaması 200 bin TL ise incremental revenue'yu hesaplayıp incremental ROAS'ı bulursun.
 
-**2. Hipotez üretme (Aylık):** MMM "Google Display ROAS 1.2, saturation %70" diyorsa, bütçe artırma hipotezi kur.
+**Geo test ne zaman kullanılır:**
+- Multi-channel setup'ında her kanalın net katkısını ölçmek
+- TV, OOH, podcast gibi dijital olmayan kanalların etkisini görmek
+- Platform dashboard'larının sayılarına güvenmiyorsan
 
-**3. Test tasarımı (2 haftalık sprint):** Google Ads'te geo-experiment veya Meta Lift testi. Holdout %20, kontrol grubunda spend %0, test grubunda +%50.
+**Dezavantajı:**
+- Şehir sayısı az olursa istatistiksel güç düşük (minimum 20 şehir)
+- Coğrafi heterojenite varsa sonuç yanıltıcı (örn. İstanbul vs. Şanlıurfa aynı sepete konmaz)
+- Uzun sürer (4-8 hafta)
 
-**4. Test sonucu (3-4 hafta):** Gerçek incrementality 1.8 çıktı — MMM tahmininden yüksek. Model kalibre et.
+## Decision tree: hangi yöntemi ne zaman kullanacaksın?
 
-**5. Model güncelleme:** Yeni test sonucunu MMM'e prior olarak ekle (Bayesian update). Sonraki iterasyonda model daha doğru tahmin yapacak.
+Üç yöntemi aynı setup'ta şöyle organize ediyoruz:
 
-Bu döngü [dijital pazarlama](https://www.roibase.com.tr/tr/dijitalpazarlama) stratejisinin merkezine oturmalı — planlamadan execution'a kadar her katmanda veri akışı kopmamalı.
+| Senaryo | Yöntem | Frekans | Çıktı |
+|---------|--------|---------|-------|
+| Quarterly budget allocation | Robyn MMM | 3 ayda 1 | Kanal bazlı ROI, optimal spend |
+| Yeni kampanya testi (Meta/Instagram) | Meta Lift | Her büyük kampanya | Incremental CPA |
+| Cross-channel incrementality | Geo-based holdout | 6 ayda 1 | Kanal bazlı gerçek lift |
+| Creative refresh kararı | Meta Lift + CRO analizi | Ayda 1 | Hangi creative incremental |
+| Real-time bidding | Platform API (ROAS feedback) | Günlük | Tactic seviyesi optimizasyon |
 
-**Gerçek vaka:** Bir seyahat platformu 2025 Q4'te Robyn ile TikTok'un ROAS'ını 0.9 olarak tahmin etti. Platform raporu 1.3 gösteriyordu. 6 haftalık Conversion Lift testi kurdular: gerçek incrementality 0.85 çıktı. Platform 53% hata yapıyordu (last-click bias). TikTok bütçesini %40 kestiler, Google Search'e kaydırdılar — toplam ROAS 1.8'den 2.3'e çıktı.
+**Pratik akış:**
+1. **Haftalık:** Platform dashboard'larını izle (MTA benzeri ama güvenme)
+2. **Aylık:** Meta Lift ile büyük kampanyaları test et
+3. **Quarterly:** Robyn ile tüm kanalların uzun dönem katkısını modelleyip bütçeyi yeniden dağıt
+4. **Yılda 2 kez:** Geo-based test ile her kanalın gerçek lift'ini doğrula
 
-## Post-Cookie Dünyada Attribution Mimarisinin Temeli
+Bu 3 katmanlı setup sayesinde hem kısa dönem taktiği (hangi creative çalışıyor) hem uzun dönem strateji (hangi kanala ne kadar bütçe) kararlarını data ile verirsin.
 
-2026'da attribution artık "hangi kanala kredi ver" sorusu değil — "hangi sinyali nasıl birleştir" sorusu. Cookie ölünce tek kaynak kalmadı, onun yerine parçalı veri noktaları var: sGTM'den gelen first-party event, platform Conversion API'den gelen server-side sinyal, CRM'den gelen offline dönüşüm. Bunları birleştiren katman CDP + data warehouse — BigQuery, Snowflake, Redshift.
+## Yaygın yanılgılar ve tradeoff'lar
 
-Modern stack şöyle:
+**Yanılgı 1:** "MMM yaparsan incrementality testi gereksiz"
+Hayır. MMM korelasyonu gösterir, nedenselliği varsayar. Incrementality testi nedenselliği ölçer. İkisi birbirini tamamlar. Örnek: MMM diyor ki "Instagram %15 katkı veriyor", ama Lift testi gösteriyor ki bunun %40'ı organik olurdu. O zaman gerçek katkı %9.
 
-```
-Web/App → sGTM → BigQuery
-              ↓
-           dbt transform
-              ↓
-      Robyn MMM + Lift Test
-              ↓
-       Looker Dashboard
-```
+**Yanılgı 2:** "Incrementality testi her kampanyada yapılır"
+Hayır. Holdout grubu yaratmak impression kaybıdır. Sadece büyük kararlar için test açarsın (yeni kanal, yeni creative direction, retargeting stratejisi). Küçük optimizasyonlar için A/B test yeterli.
 
-Bu pipeline'da Robyn sadece bir node. Ama kritik node — çünkü makro trendi gösteriyor, test yönünü belirliyor. Test sonuçları tekrar BigQuery'ye yazılıyor, bir sonraki MMM iterasyonunda prior olarak kullanılıyor.
+**Yanılgı 3:** "Robyn bir kere kurulur, sonra otomatik çalışır"
+Hayır. Model her çeyrekte yeniden eğitilir. Yeni kanal eklersen, fiyat değişirse, sezonalite farklılaşırsa model güncellenmeli. Robyn setup'ı sürekli bakım gerektirir.
 
-**Teknik not:** Robyn'in BigQuery entegrasyonu `google-cloud-bigquery` Python SDK üzerinden çalışıyor. `bq load` komutuyla haftalık veriyi `marketing_data.robyn_input` tablosuna yükle, model çıktısını `robyn_output` tablosuna yaz. Looker Studio doğrudan bu tabloyu okusun — böylece CMO dashboard'unda gerçek zamanlı ROAS curve ve budget allocation önerisi görünsün.
+**Tradeoff 1: Hız vs. kesinlik**
+MMM 1,5 yıl veri ister, sonuç 1 hafta gecikmeli. Geo test 4-8 hafta sürer. Hızlı karar vermek istiyorsan platform dashboard'una güvenmek zorundasın ama %30-50 hata payı kabul edersin.
 
-## Sık Yapılan Hatalar ve Karşı Argümanlar
+**Tradeoff 2: Granularite vs. sample size**
+Geo test şehir bazlı yapılırsa sample size küçük, güven aralığı geniş. İlçe bazlı yapılırsa heterojenite artar. Haftalık MMM günlük kararlara cevap veremez. Her yöntemin çözünürlük sınırı var.
 
-**"MMM veri bilimci gerektirir, biz yapamayız."**
-Robyn açık kaynak, dokümantasyonu net, Colab notebook'ları hazır. Orta seviye Python bilen bir growth analyst 2 hafta dokümantasyona bakıp production'a alır. 2026'da "data science" bahanesi geçmiyor.
+## 2026'da attribution stack nasıl kurulur?
 
-**"Incrementality testi pahalı, holdout kaybı var."**
-Holdout %10-20 tutarsan, 3 haftalık test %1.5-3 revenue kaybı demek. Ama yanlış kanala devam edersen yıllık %20-30 kayıp. Test ROI'si 10x üstü.
+Teknik setup şu bileşenlerden oluşur:
 
-**"Platform raporlaması yeterli."**
-Meta dashboard'u last-click + view-through 1-day atfediyor. Organik etkiyi, cross-channel sinerjisini, gecikmeli dönüşümü görmüyor. Platform raporu taktiksel sinyal, MMM stratejik gerçek.
+1. **Server-side GTM + first-party cookie:** GA4 ve Meta CAPI'ye temiz sinyal gönder (iOS ATT bypass değil, consent-based veri zenginleştirme)
+2. **BigQuery data warehouse:** Tüm platform verilerini tek yerde topla (GA4, Meta Ads API, Google Ads API, TikTok Ads API, CRM)
+3. **dbt transformation:** Haftalık agrega tabloları oluştur (her satır = 1 hafta, her sütun = 1 kanal harcama + 1 outcome)
+4. **Robyn pipeline:** R script'i Cloud Run'da haftada bir çalıştır, model çıktısını BigQuery'ye yaz
+5. **Looker Studio dashboard:** MMM çıktısı + platform MTA sayıları + incrementality test sonuçları yan yana
+6. **Slack alert:** Model NRMSE %10'un üstüne çıkarsa veri anomalisi uyarısı
 
-**"Her hafta model train etmek gereksiz."**
-Sezonalite, promosyon, ekonomik şok — hepsi ROAS'ı etkiliyor. Haftalık refresh ile 2 hafta içinde trend değişikliğini yakalarsın. Aylık refresh 6-8 hafta gecikmeli karar demek.
+Bu stack'i kurmak 4-6 hafta sürer. Sonrasında haftalık bakım 2-3 saat. ROI: bütçe dağıtımı %15-25 daha verimli olur (Robyn kendi benchmark'ında %18 iyileşme rapor ediyor).
 
----
+## Şimdi ne yapmalısın?
 
-2026'da attribution sorunu çözüldü mü? Hayır — ama araç kutusu tamamen değişti. Cookie gitti, onun yerine MMM + incrementality + first-party data stack geldi. Robyn gibi açık kaynak araçlar büyük markayla küçük startup'ı aynı seviyeye getirdi. Geo-experiment ve Conversion Lift testleri platform içine gömüldü, artık ayrı bir veri bilimci ekibi kurmaya gerek yok. Soru "hangi yöntem" değil — "hangi katmanda hangi yöntemi, nasıl entegre edip döngüye sokuyorum?" Cevap veren kazanıyor.
+Eğer hala last-touch attribution ile karar veriyorsan 2026'da yarışamazsın. İlk adım: BigQuery'ye platform verilerini akıt, 1,5 yıllık haftalık tablo oluştur. İkinci adım: Robyn'i kur, ilk modeli eğit. Üçüncü adım: bir sonraki büyük kampanyada Meta Lift study aç. Dördüncü adım: 6 ay sonra geo-based test ile cross-channel lift'i doğrula. Bu 4 adım senin attribution stack'ini MTA yanılsamasından incrementality temeline taşır.
