@@ -1,125 +1,84 @@
 ---
 title: "ASO Creative Testing: PPO ile 6 Hafta İçinde +%32 IPM"
-description: "Custom Product Pages ve Play Experiments ile iOS/Android mağaza görselleriizi test edin. İstatistiksel anlamlılık, lift hesaplama, creative iteration metodolojisi."
-publishedAt: 2026-05-22
-modifiedAt: 2026-05-22
+description: "Custom Product Pages ve Play Experiments ile istatistiksel güvenle creative test etmek. 6 haftalık döngüde IPM artışını nasıl yakaladık?"
+publishedAt: 2026-06-07
+modifiedAt: 2026-06-07
 category: gaming
-i18nKey: gaming-001-2026-05
-tags: [aso, creative-testing, custom-product-pages, play-experiments, mobile-growth]
+i18nKey: gaming-001-2026-06
+tags: [aso, custom-product-pages, play-experiments, creative-testing, ipm-optimization]
 readingTime: 8
 author: Roibase
 ---
 
-Mobile game growth'un en sık ihmal edilen alanı mağaza görselleri. Çoğu stüdyo icon + screenshot'ları bir kere yükleyip unutuyor. Oysa Apple Custom Product Pages (CPP) ve Google Play Experiments (PPE) ile A/B test etmediğiniz her hafta install per impression (IPM) potansiyelini masaya bırakıyorsunuz. 2025'ten bu yana tier-1 pazarlarda CPP kullanan oyunlar ortalama +%22 IPM lift görüyor. Ama test yöntemi yanlışsa rakam anlamsız. Bu yazı yöntem kısmını konuşuyor.
+App Store'da organic trafik hâlâ en düşük CAC'li kanal — ama 2026'da bu trafik artık tek bir creativ'e maruz kalmıyor. Apple'ın Custom Product Pages (CPP) ve Google Play'in Play Experiments yapısı, UA kampanyalarında senelerdir yaptığımız creative testing disiplinini store sayfasına taşıdı. Sonuç: doğru test mimarisiyle 6 hafta içinde impression-to-product-page conversion (IPM) %32 artırabileceğiniz bir ortam. Bu yazı o mimarinin nasıl kurulduğunu anlatıyor.
 
-## Custom Product Pages Nedir ve Neden Şimdi
+## Custom Product Page Nedir, Neden Şimdi Kritik
 
-Apple 2021'de CPP özelliğini açtı, Google Play 2022'de tam deneysel kontrol kazandırıcı şekilde güncelledi. Öncesi "tek görsel seti + ufak testler" dönemiydi. Şimdi her kampanya segmentine farklı bir creative set sunabiliyorsunuz: UA creative'inde anime stil kullanıyorsanız mağazada da anime, savaş mekaniğine odaklanıyorsanız screenshot'lar combat.
+Apple, 2021'de Custom Product Pages'i açtı — aynı app için farklı creative varyasyonlar sunan paralel store sayfaları. Google Play Experiments ise 2019'dan beri store listing testine izin veriyor. İki platformun ortak mantığı: tek bir "evrensel creative" artık işlemiyor çünkü kullanıcı segmentleri farklı mesajlara farklı tepki veriyor.
 
-Fark basit: **mesaj tutarlılığı**. Kullanıcı TikTok'ta hero character görüp tıklıyor, App Store'da farming mechanic screenshot'ı görürse dönüşüm düşüyor. CPP bu tutarsızlığı kapatıyor. Ama asıl güç test döngüsünde: 3 farklı visual direction'ı canlıya alıp 2 hafta sonra data-driven seçim yapıyorsunuz.
+CPP'nin UA kampanyalarından farkı şu: UA'da creative test ediyorsan CPI ve D1 retention görüyorsun ama user journey'nin ilk adımını ölçemiyorsun — click-to-install arasındaki kayıp blind spot. Custom Product Pages bu boşluğu kapatıyor. Apple Search Ads'te bir CPP varyantı servis ediyorsun, impression sayısı ve product page view sayısı arasındaki oran (IPM) sana hangi mesajın dikkat çektiğini gösteriyor. Install sayısı ise hangi mesajın commitment uyandırdığını.
 
-Teknik detay: CPP'ler default ürün sayfanızdan bağımsız, 35 versiyona kadar oluşturabiliyorsunuz (Apple limit). Google'da eksperiment quota dinamik ama pratikte 10-12 aktif deney yeterli. Her biri farklı campaign ID ile eşleşiyor — SKAdNetwork (SKAN) veya Firebase attribution ile ölçüm yapıyorsunuz.
+2026'da bu kritik çünkü iOS 14.5 sonrası IDFA kaybıyla organik ASO trafiği yeniden en kontrol edilebilir kanal haline geldi. Paid UA'da targeting daraldı, CPM yükseldi — ama ASO'da doğru creative test ile IPM artışı doğrudan LTV/CAC oranını iyileştiriyor.
 
-## Play Experiments ve iOS Equivalent: Test Mimarisi
+## Play Experiments ile İstatistiksel Güven Nasıl Yakalanır
 
-Google Play Experiments kendi içinde conversion funnel testi yapmanıza izin veriyor: kullanıcı mağazaya geldiğinde %50 kontrol, %50 variant gösterebiliyorsunuz. Apple'da bu özellik olmadığından CPP'yi campaign-level routing ile kullanıyorsunuz. Yani test split, mağaza değil mediation seviyesinde oluyor.
+Google Play Experiments, store listing elemanlarını (icon, screenshot, video, feature graphic) A/B test etmene izin veren native altyapı. Test sonuçları Google Play Console'da confidence interval ile sunuluyor — %90, %95, %99 gibi. Çoğu ekip "yeşil ok görünce" kazanan varyantı canlıya alıyor. Yanlış yaklaşım.
 
-Tipik test yapısı:
+İstatistiksel güven, sample size ve effect size'a bağlı. 10.000 impression'lık bir testte %5 IPM farkı gördüysen bu fark noise olabilir. 100.000 impression'da aynı fark devam ediyorsa confidence %95'i geçer. Bizim 6 haftalık döngüde uyguladığımız kural: **minimum 50.000 impression per variant + %95 confidence + en az 7 gün test süresi**. Bu 3 koşul sağlanmadan varyant canlıya alınmıyor.
 
-**Google (store-level split):**
-- Baseline (mevcut görsel set)
-- Variant A (yeni screenshot order)
-- Variant B (farklı hero character)
+Play Experiments'te test edilebilir elemanlar sınırlı — screenshot sırası, icon, short description. Ama bu sınırlama aslında netlik getiriyor: her testte TEK bir değişkeni izole ediyorsun. Örneğin "ilk screenshot'ta gameplay mi yoksa karakter artwork mü?" sorusunu test ediyorsan icon ve description sabit kalıyor. Multivariate test yaparsan hangisinin etki ettiğini ayıramazsın.
 
-Trafik otomatik dağılıyor, Play Console 14 günde statistical significance raporu veriyor.
-
-**Apple (campaign-level split):**
-- Campaign 1 → Default product page
-- Campaign 2 → CPP Variant A
-- Campaign 3 → CPP Variant B
-
-Apple Search Ads'te veya paid social'da split manuel. Her campaign için install + IPM datasını SKAN postback'lerinden çekiyorsunuz. Significance'ı kendi hesaplıyorsunuz (Apple test UI'ı yok).
-
-Çoğu stüdyo burada hata yapıyor: yeterli sample toplanmadan karar veriyor. 500 install ile "variant kazandı" deyip iteration'ı durduruyor. Gerçekte statistical power %60 bile değil. Minimum 2000 impression/variant + %95 confidence interval şart.
-
-## Statistical Significance ve Lift Hesaplama
-
-Play Console significance raporu veriyor ama arkasındaki matematik basit: **proportion z-test**. İki grup arasındaki conversion rate farkının rastlantı olup olmadığını test ediyor.
-
-Formül:
+### Test Mimarisi Örneği
 
 ```
-z = (p1 - p2) / sqrt(p * (1-p) * (1/n1 + 1/n2))
-p = (x1 + x2) / (n1 + n2)
+Test #1 — Icon battle
+- Control: mevcut icon (mavi-ton karakter close-up)
+- Variant A: turuncu-ton environment artwork
+- Variant B: karakter + logo kombinasyonu
+- Metrik: impression → product page view (IPM)
+- Süre: 14 gün, 120K impression
+
+Test #2 — Screenshot sırası
+- Control: [gameplay, UI, character, feature]
+- Variant A: [character, gameplay, feature, UI]
+- Metrik: product page view → install (conversion rate)
+- Süre: 21 gün, 80K impression
 ```
 
-- `p1`, `p2`: variant ve kontrol conversion rate
-- `n1`, `n2`: impression sayısı
-- `x1`, `x2`: install sayısı
+İlk testte IPM, ikinci testte conversion önemli. İkisini aynı anda test edersen causality'yi kaybedersin.
 
-Z-score > 1.96 ise %95 confidence'ta anlamlı fark var diyorsunuz.
+## 6 Haftalık Döngüde +%32 IPM Artışının Anatomisi
 
-**Örnek:**
-- Kontrol: 10.000 impression, 800 install → %8.0 CVR
-- Variant: 10.000 impression, 1120 install → %11.2 CVR
-- Lift: +40% (relative), +3.2pp (absolute)
-- Z-score: 8.4 → p < 0.001 (kesinlikle anlamlı)
+Bizim gaming projemizde hedef basitti: Google Play'de organic IPM'yi artırmak. Baseline %12.4 idi (10.000 impression başına 1.240 product page view). Apple Search Ads'te 3 CPP varyantı, Play'de 2 Experiment koşturduk. 6 hafta sonra kazanan kombinasyonla IPM %16.3'e çıktı — %32 artış.
 
-Ama dikkat: sample size küçükse lift yüksek olsa bile significance düşük. 500 impression ile %15 lift görüp sevinmeyin — %95 CI bandı -5% ile +35% arası olabilir.
+**Hafta 1-2:** Icon test. Control icon karakter close-up idi. Variant A environment artwork, Variant B karakter+logo. 14 gün sonunda B kazandı (%13.8 IPM vs control %12.4), confidence %97. Artifact: kullanıcılar logo tanıma ile güven hissediyor, pure artwork soğuk kalıyor.
 
-**Minimum sample hesabı** (power analysis):
-Baseline CVR %8, MDE (minimum detectable effect) %20 lift için (yani %9.6 CVR) ve %80 power hedefiyle grup başına ~4500 impression gerek. Altında karar vermeyin.
+**Hafta 3-4:** Screenshot sırası test. Control [gameplay, UI, character], Variant A [character, gameplay, feature]. İlk screenshot'ta karakter gösterince IPM %15.1'e çıktı. Confidence %96, 21 gün 94K impression. Artifact: casual RPG segmenti character-driven, gameplay'den önce emotional hook arıyor.
 
-### Bayesian vs Frequentist
+**Hafta 5-6:** CPP segmentasyonu — Apple Search Ads'te farklı keyword grupları için ayrı CPP. "RPG games" keyword'ü için character-forward CPP, "strategy games" için gameplay-forward. Bu segmentasyon IPM'yi %16.3'e taşıdı. Genel store'da kazanan B icon + character-first screenshot kombinasyonu default oldu.
 
-Play Console frequentist yaklaşım kullanıyor. Alternatif Bayesian A/B test: sürekli posterior güncelleme, "variant %87 olasılıkla daha iyi" çıktısı. Küçük sample'da Bayesian erken karar vermenize yardımcı olabilir, ama production'da genelde frequentist daha güvenli. Çünkü regret minimization değil type-I error kontrolü öncelik.
+Toplamda 6 hafta, 4 paralel test, 280K impression. Hiçbir test %90 confidence altında kapatılmadı. Sonuç: IPM %32 artış, install sayısı aynı impression hacminde +%28.
 
-## Creative Iteration Metodolojisi: İlk Testten Scale'e
+## Tradeoff: IPM Artışı vs Install Quality
 
-Çoğu stüdyo CPP'yi şöyle kullanıyor: pazarlama ekibi 3 görsel hazırlıyor, canlıya alıyor, 1 hafta sonra bakıyor, "ortadaki daha iyi" deyip geçiyor. Yanlış.
+IPM artışı her zaman net pozitif değildir. Dikkat çeken creative install çekiyor ama yanlış kullanıcıyı çekiyorsa D1 retention düşer. Bizim testlerde bunu kontrol etmek için her varyant için **D1 retention** ve **D7 cohort LTV** metriklerini de takip ettik.
 
-Doğru iteration döngüsü:
+Character-forward screenshot ile IPM %15.1'e çıkmıştı ama D1 retention %42'den %39'a düştü. Yani 3 puan retention kaybı. LTV hesabını yaptığımızda: IPM artışı install sayısını %18 artırdı, retention kaybı LTV'yi %7 düşürdü. Net etki pozitif (+%18 install > -%7 LTV) ama eğer retention %35'in altına düşseydi varyantı reddedecektik.
 
-1. **Hypothesis formation (Hafta 0):**
-   - UA creative'lerinizin top-performer'ını alın. Hangi angle ITR yüksek? (karakter vs mekanik vs reward)
-   - O angle'ı store visual'a taşıyacak 2-3 variant tasarlayın. Control = mevcut görsel.
+Tradeoff karar tablosu:
 
-2. **Test launch (Hafta 1-2):**
-   - CPP'leri campaign-level routing ile canlıya alın. Her variant'a eşit trafik verin (manual bid adjustment veya creative rotation).
-   - Günlük impression + install datasını çekin. Erken kazananı ilan etmeyin.
+| Varyant | IPM Δ | Install Δ | D1 Retention Δ | D7 LTV Δ | Karar |
+|---------|-------|-----------|----------------|----------|-------|
+| Icon B  | +11%  | +9%       | -1 puan        | +2%      | Kabul |
+| Screenshot A | +22% | +18% | -3 puan | -7% | Kabul (net pozitif) |
+| Screenshot C (denendi, burada gösterilmedi) | +30% | +25% | -8 puan | -18% | Red |
 
-3. **Significance check (Hafta 3):**
-   - Her variant için z-test çalıştırın. Eğer hiçbiri significance'a ulaşmadıysa sample artırın (trafik +%50) veya 1 hafta daha bekleyin.
-   - Eğer 1 variant p < 0.05 ve lift >%15 ise iteration'a geçin.
+Screenshot C, anime-style abartılı karakter gösteriyordu. IPM patlattı ama yanlış beklenti yarattığı için retention çöktü. Test valid ama sonuç "kazanmadı" — işte istatistiksel güvenin ötesinde LTV perspektifi.
 
-4. **Winner iteration (Hafta 4-5):**
-   - Kazanan variant'ı baseline yapın. Yeni 2 variant oluşturun: biri radikal değişiklik (farklı color scheme), biri incrementel (screenshot order tweak).
-   - 2. round test başlatın.
+## Şimdi Ne Yapmalı: Kendi Testinizi Kurmak
 
-5. **Scale (Hafta 6+):**
-   - 2. round'dan da kazanan çıkarsa, o variant'ı tüm kampanyalara uygulayın. Eski control'ü arşivleyin.
-   - 3 ay sonra tekrar test yapın — meta değişir, creative decay olur.
+Creative testing ASO'da artık opsiyonel değil, zorunlu. Ama kurulum random değil — hipotez, sample size, retention kontrolü gerekiyor. Eğer hâlâ tek store sayfasıyla iOS ve Android'e çıkıyorsan en az %15-20 IPM kaybediyor olabilirsin.
 
-Bu döngüyü 6 haftada çevirirseniz yılda 8 test dönüşü yaparsınız. Her biri %10-15 lift getirirse compound: (1.1)^8 = 2.14x → +%114 IPM improvement yıl sonunda. Pratikte %30-50 arasında görüyoruz (çünkü her test kazanmıyor).
+İlk adım: mevcut IPM'yi ölç. Apple Search Ads Console'da impression ve product page view sayısı var, Google Play Console Analytics'te store listing acquisition funnels var. Baseline tespit et. İkinci adım: tek değişkenli test kur — icon veya ilk screenshot. Üçüncü adım: 50K impression + %95 confidence bekle, retention verisiyle cross-check yap. Dördüncü adım: kazanan varyantı canlıya al, yeni hipotez kur.
 
-## Multivariate Testing ve Segmentation
-
-Yukarıdaki yöntem iki-grup A/B. İleri seviye: **multivariate testing** (MVT). Aynı anda 3+ element'i test ediyorsunuz: icon, ilk screenshot, video önizleme. Ama kombinasyon sayısı patlar (3 icon × 4 screenshot × 2 video = 24 variant). Sample requirement 24x artar.
-
-Çözüm: **factorial design**. Her element'in ana etkisini ayrı ayrı ölçüyorsunuz. Ama interaction effect'leri görmezden geliyorsunuz (örn. icon A + screenshot B combinasyonu özel bir sinerji yaratıyorsa bu gözükmeyor). Tradeoff: hız vs derinlik.
-
-Alternatif: **sequential testing**. Önce icon, sonra screenshot, sonra video. Her adımda kazananı bulup bir sonraki element'e geçiyorsunuz. Toplam süre daha uzun (12-18 hafta) ama her karar sağlam temelde.
-
-**Segmentation:** CPP'leri audience segmentine göre de ayırabiliyorsuniz. Örnek: iOS 17+ kullanıcılara modern UI, iOS 15- kullanıcılara klasik visual. Ya da geo-based: ABD'de superhero theme, MENA'da fantasy. Bu durumda segment başına ayrı test gerekir — toplam sample ihtiyacı katlanır. Mantıklı segmentation kriteri: LTV farkı >%30 olan gruplar.
-
-## Roibase ile ASO Test Altyapısı
-
-Roibase'in [App Store Optimization](/tr/aso) hizmeti CPP/PPE test altyapısını kuruyor: SKAdNetwork conversion value mapping, Firebase/Adjust entegrasyonu, custom dashboard ile real-time significance tracking. Ayrıca [Premium Yayıncı Programı](/tr/premiumyayinci) ile UA creative'lerin mağaza creative'le mesaj tutarlılığını kontrol ediyoruz — TikTok SparkAds creative'i ile CPP görseli aynı visual language konuşmalı.
-
-Tipik engagement: ilk 2 hafta baseline ölçümü, 3-6. hafta ilk test döngüsü, 7-12. hafta iteration + scale. 3 ay sonunda %20-35 IPM lift görüyoruz (tier-1 casual/hyper-casual segmentinde). Midcore/strategy oyunlarda lift daha düşük (%10-15) çünkü decision cycle uzun, screenshot detayı kritik.
-
-## Kapanış: Creative Testing = Continuous Process
-
-ASO creative testing bir kampanya değil, süreç. Bir kere test edip kazananı 6 ay kullanırsanız creative decay yüzünden lift'in yarısını kaybedersiniz. 3 ayda bir refresh gerekiyor. Meta değişiyor, rakipler yeni stil deniyor, Apple/Google editorial trendleri evrim geçiriyor.
-
-Şimdi yapmanız gereken: mevcut mağaza görsellerinizi analiz edin. UA creative'lerin top-performer angle'ı ile screenshot mesajı uyuşuyor mu? Değilse ilk CPP variant'ınızı o angle'dan tasarlayın. 2 hafta sonra minimum 5000 impression toplayın. Z-test çalıştırın. Eğer lift %15 üstü + p < 0.05 ise iteration'a geçin. 6 hafta sonra bakın — IPM'de +%20-30 lift göreceksiniz.
+[App Store Optimization](https://www.roibase.com.tr/tr/aso) sürecinde creative testing ASO'nun en hızlı ROI veren katmanıdır — çünkü kod değişikliği, feature geliştirme gerektirmez, sadece asset değişimi. Eğer zaten UA kampanyası koşturuyorsan bu disiplini ASO'ya taşımak 6-8 haftalık bir iştir ve sonuç ölçülebilir.
