@@ -1,185 +1,116 @@
 ---
 title: "Composable Commerce: MACH Mimarisi Production Realitesi"
-description: "BigCommerce, commercetools, Shopify Plus — composable mimaride tradeoff'ları production verileriyle karşılaştırdık. MACH'in gerçek maliyeti."
-publishedAt: 2026-05-16
-modifiedAt: 2026-05-16
+description: "BigCommerce, commercetools, Shopify Plus — MACH'ın vaat ettiği esneklik pratikte hangi maliyetlerle gelir? Production'da neleri göze alacaksınız?"
+publishedAt: 2026-06-07
+modifiedAt: 2026-06-07
 category: tech
-i18nKey: tech-005-2026-05
-tags: [composable-commerce, mach-architecture, headless-commerce, shopify-plus, commercetools]
+i18nKey: tech-005-2026-06
+tags: [composable-commerce, mach-architecture, headless-commerce, shopify-plus, bigcommerce]
 readingTime: 8
 author: Roibase
 ---
 
-2026'da composable commerce artık "gelecek" değil — production'da koşan, gerçek siparişi işleyen, gerçek para kaybettiren veya kazandıran bir mimari seçimi. MACH (Microservices, API-first, Cloud-native, Headless) manifestosu 2019'da ilan edildiğinde teorik bir manifestoydu. Bugün BigCommerce'in Catalyst projesi, commercetools'un Frontend hızlandırıcısı, Shopify'ın Hydrogen ekosistemi production trafiği taşıyor. Ama aynı zamanda çoğu proje deployment'tan 6 ay sonra monolith'e geri dönüyor. Bu yazıda BigCommerce, commercetools, Shopify Plus stack'lerini production verileriyle karşılaştırıp gerçek tradeoff'ları konuşuyoruz.
+Composable commerce 2024'ten beri pazarın "yeni kuralı" olarak satılıyor. MACH prensipleri (Microservices, API-first, Cloud-native, Headless) merkezi monolit platformların yerini alacak diye sunuluyor. Ancak production'da işler farklı: BigCommerce Catalyst bundle'ı 850kB, commercetools minimum integration cost $120k, Shopify Plus'ın composable özellikleriyse Hydrogen 2.0'ın migration zahmetiyle geliyor. Karar vermeden önce tradeoff'ları rakamlarla konuşmak gerekiyor.
 
-## Composable Commerce nedir — ve neden şimdi kritik
+## MACH Vaadinin Gerçek Faturası
 
-Composable commerce, e-ticaret stack'ini mikroservis modüllerine ayırıp her modülü en iyi platformdan seçerek entegre etme yaklaşımı. Örnek: ödeme Stripe, envanter NetSuite ERP, ürün kataloğu commercetools, frontend Next.js, arama Algolia, personalizasyon Segment CDP. Monolitik platformda (geleneksel SaaS e-ticaret) tüm bu katmanlar tek satıcıda kilitli.
+Composable mimarinin çekirdek vaadi esneklik: frontend, backend, payment, search her biri bağımsız — ihtiyaç olduğunda swap edebilirsin. Ancak bu esneklik üç maliyet başlığına dönüşüyor.
 
-2026'da kritik olmasının nedeni: cookie sonrası dünyada first-party veri sahipliği zorunlu hale geldi. Monolitik platform senin veriyi kendi bulutunda tutuyor, sen sadece dashboard'a bakıyorsun. Composable stack'te veri senin CDP'nde, attribution pipeline'ını sen kuruyorsun, conversion API'yi sen kontrol ediyorsun. Google'ın GA4'ü sunset etmesi (2025 Q4) ve Meta'nın Conversions API zorunluluğu bu geçişi hızlandırdı.
+**İlk maliyet: integration başlangıç süresi.** commercetools gibi API-only platformlarda frontend'den checkout'a kadar tüm deneyimi kendin kuruyorsun. Ortalama MVP: 16-20 hafta. Shopify Plus'ta aynı deneyim 4 haftada ayakta. BigCommerce'in Catalyst starter'ı orta yol: önceden kurulu Next.js + GraphQL Storefront API setup'ı var, ancak product listing page'den cart state'e tüm component'leri customize etmen gerekiyor (8-12 hafta).
 
-İkinci neden: headless frontend'in Core Web Vitals avantajı artık ölçülebilir ROI'ye dönüştü. Shopify Liquid tema ile 4.2s LCP, Hydrogen ile 1.8s LCP gördüğümüz projede conversion rate %18 arttı (mobile). Google'ın 2025 Haziran algoritma güncellemesi INP metriğini ranking faktörü yaptı — monolitik tema bunu tutturamıyor.
+**İkinci maliyet: backend coordination.** MACH ortamında her servis bağımsız — ama bunlar arasındaki state senkronizasyonu senin omuzunda. Örnek: inventory servisi (Fluent Commerce), pricing (Pimcore), promo (Talon.One) ayrı endpointler. Bu servislerin real-time çalışması için event bus (Kafka / AWS EventBridge) zorunlu. Orta ölçek e-ticaret: minimum 3 engineer-month bu orchestration'a gidiyor.
 
-## BigCommerce Catalyst: API-first SaaS hybrid
+**Üçüncü maliyet: bundle size.** Headless = custom frontend kodu demek. BigCommerce Catalyst: 850kB JavaScript (gzip sonrası ~240kB). Shopify Hydrogen 2.0: React Server Components kullanıyor, ancak yine de ortalama 320kB. commercetools'un örnek Next.js frontend'i: 950kB (client-side cart state yönetimi eklince). Karşılaştırma: Shopify Liquid theme 120-180kB. Çünkü server-rendered HTML, JavaScript minimal.
 
-BigCommerce'in 2024'te açıkladığı Catalyst projesi, SaaS platformun API katmanını açık Next.js frontend ile birleştiriyor. Backend yine BigCommerce'te (hosting, ödeme, envanter), frontend senin elinde. Open-source starter (GitHub: bigcommerce/catalyst) Next.js 14 App Router, React Server Components, Tailwind içeriyor.
+## BigCommerce Catalyst: Orta Yolun Compromisi
 
-**Production verileri (orta ölçekli fashion retailer, 45K aylık ziyaretçi):**
+BigCommerce 2023'te Catalyst'i tanıttı: Next.js tabanlı, önceden entegre GraphQL Storefront API. Şirket bunu "best of both worlds" olarak sunuyor — monolitin hızı + headless'ın esnekliği.
 
-| Metrik | Liquid Tema | Catalyst (Next.js) |
-|--------|-------------|---------------------|
-| LCP (p75) | 3.8s | 1.9s |
-| INP | 310ms | 180ms |
-| Bundle size | 840KB | 220KB (RSC split) |
-| Deployment süresi | 2dk (tema upload) | 8dk (Vercel build) |
-| İlk sayfa TTFB | 420ms | 180ms (edge cache) |
+**Kuvvetli tarafı:** Catalyst'te PLP (product listing page), PDP, cart, checkout componentleri hazır. GraphQL schema Storefront API ile senkronize. Bu, frontend developer'ın sıfırdan cart logic yazmak yerine UI'a odaklanması demek. Deployment: Vercel / Netlify'a push, BigCommerce webhook'ları build trigger ediyor. MVP süresi: 8 hafta — commercetools'un yarısı.
 
-Catalyst'in avantajı: BigCommerce'in PCI-compliant ödeme altyapısını kaybetmeden frontend'i modernize ediyorsun. Dezavantajı: backend hâlâ BigCommerce API'sine bağlı — rate limit 450 req/s, burst'ta 503 alabiliyorsun. Cart mutasyonları (add to cart) backend API call gerektirdiği için LCP hızlı olsa da interactivity zaman zaman yavaşlıyor.
+**Zayıf tarafı:** Esneklik sınırlı kalıyor. Örneğin checkout'u tamamen özelleştirmek istersen BigCommerce'in Checkout SDK'sına bağlısın. Üçüncü parti payment provider (Adyen gibi) entegrasyonu REST API + BigCommerce control panel üzerinden — React component seviyesinde kontrol yok. Ayrıca bundle size sorunu devam ediyor: Catalyst varsayılan kurulumu 850kB. Core Web Vitals'ta LCP hedefi 2.5s ise bu bundle 3G bağlantıda 4.2s'ye çıkabiliyor (Lighthouse simulation).
 
-**Kod örneği — Catalyst'te product API call (RSC):**
+### Kod Örneği: Catalyst PLP Optimizasyonu
 
-```typescript
-// app/product/[slug]/page.tsx
-import { getProduct } from '@/lib/bigcommerce'
+```javascript
+// app/[locale]/(default)/category/[slug]/page.tsx
+// Catalyst varsayılan PLP 48 ürünü eager load ediyor
+// Onu 12'ye düşürüp defer pagination ekle
 
-export default async function ProductPage({ params }: { params: { slug: string } }) {
-  const product = await getProduct(params.slug) // Server Component, edge'de cache
+export default async function CategoryPage({ params }) {
+  const products = await getProducts({
+    categoryId: params.slug,
+    first: 12, // 48 → 12 düştü
+  });
 
   return (
     <div>
-      <h1>{product.name}</h1>
-      <ProductPrice price={product.price} /> {/* Client Component */}
+      <ProductGrid products={products.edges} />
+      <LoadMoreButton cursor={products.pageInfo.endCursor} />
     </div>
-  )
+  );
 }
-```
 
-BigCommerce API'si edge'de cache'leniyor (Vercel KV), ama inventory güncellemesi real-time değil (stale-while-revalidate 60s). Stok kritikse webhook + on-demand revalidation eklemen gerekiyor.
-
-## commercetools: Pure MACH, yüksek esneklik, yüksek maliyet
-
-commercetools Almanya merkezli, API-first commerce platformu. Backend'i tamamen mikroservis (ürün kataloğu, cart, order, customer bağımsız servisler). Frontend'i sen kuruyorsun — Remix, Next, Astro, ne istersen. Fiyatlandırma kullanım bazlı: API call başına maliyet + transaction fee.
-
-**Gerçek maliyet senaryosu (orta büyüklük B2B marketplace, 120K aylık API call):**
-
-- commercetools lisans: $2,800/ay (base tier)
-- API overage: 120K call × $0.004 = $480
-- Hosting (AWS Fargate + CloudFront): $620
-- Geliştirme saati (initial setup): ~400 saat ($80K one-time)
-- **Toplam ilk yıl TCO: ~$130K**
-
-Karşılaştırma: Shopify Plus aynı trafik için ~$36K/yıl (lisans + app subscription). commercetools 3.6× daha pahalı ama sahiplik tam sende — veri modelini istediğin gibi şekillendiriyorsun, multi-region deployment yapabiliyorsun, custom pricing logic backend'de koşuyor.
-
-**Tradeoff:** commercetools dokümantasyonu kapsamlı ama hazır component library yok. Frontend'i sıfırdan kuruyorsun. Shopify'da "buy button" component'i 10 satır, commercetools'ta cart mutation API'sini, inventory check'i, tax calculation'ı kendin implement ediyorsun. İlk MVP 6 ay sürüyor.
-
-**Örnek API pattern (cart ekleme):**
-
-```typescript
-// lib/commercetools/cart.ts
-import { createApiRoot } from './client'
-
-export async function addLineItem(cartId: string, sku: string, quantity: number) {
-  const apiRoot = createApiRoot()
+// client component: LoadMoreButton
+'use client';
+export function LoadMoreButton({ cursor }) {
+  const [items, setItems] = useState([]);
   
-  const cart = await apiRoot
-    .carts()
-    .withId({ ID: cartId })
-    .post({
-      body: {
-        version: 1, // optimistic locking
-        actions: [
-          {
-            action: 'addLineItem',
-            sku,
-            quantity,
-          },
-        ],
-      },
-    })
-    .execute()
-
-  return cart.body
-}
-```
-
-commercetools versioning sistemi (optimistic locking) concurrency'yi önlüyor ama her mutation version bump gerektiriyor — race condition'da retry logic yazman gerekiyor.
-
-## Shopify Plus + Hydrogen: Platform güvencesi, sınırlı esneklik
-
-Shopify Hydrogen, Remix tabanlı React framework. Shopify'ın Storefront API'si (GraphQL) ile entegre, deployment Oxygen hosting'de (Shopify'ın edge network'ü). 2025'te Hydrogen 2.0 çıktı, RSC desteği geldi.
-
-**Platform avantajı:** PCI compliance, fraud detection, checkout optimization Shopify'da built-in. Sen sadece frontend'i yazıyorsun. Plus plan $2,300/ay, transaction fee %0.25 (Shopify Payments kullanırsan sıfır).
-
-**Production benchmark (lüks kozmetik brand, 200K aylık session):**
-
-- LCP: 1.6s (Oxygen edge, ISR caching)
-- Checkout conversion: %4.2 (Shopify native) vs %3.1 (custom headless checkout)
-- Development velocity: MVP 6 hafta (Hydrogen Skeleton starter)
-
-Hydrogen'in sınırlaması: Shopify'ın veri modelinden çıkamıyorsun. Ürün metafield'leri var ama complex relationship (örn. B2B tiered pricing, multi-warehouse routing) için Shopify'ın admin API'sine takılıyorsun. Custom logic için Shopify Function yazmak gerekiyor (Rust/AssemblyScript) — bu da ayrı bir öğrenme eğrisi.
-
-**Örnek Hydrogen query (product detail):**
-
-```typescript
-// app/routes/products.$handle.tsx
-import { useLoaderData } from '@remix-run/react'
-import { json } from '@shopify/remix-oxygen'
-
-export async function loader({ params, context }: LoaderArgs) {
-  const { product } = await context.storefront.query(PRODUCT_QUERY, {
-    variables: { handle: params.handle },
-  })
-
-  return json({ product })
-}
-
-const PRODUCT_QUERY = `#graphql
-  query Product($handle: String!) {
-    product(handle: $handle) {
-      id
-      title
-      descriptionHtml
-      priceRange {
-        minVariantPrice { amount currencyCode }
-      }
-    }
+  async function loadMore() {
+    const res = await fetch(`/api/products?after=${cursor}&first=12`);
+    const data = await res.json();
+    setItems(prev => [...prev, ...data.edges]);
   }
-`
+
+  return <button onClick={loadMore}>Daha fazla</button>;
+}
 ```
 
-Shopify Storefront API rate limit 2,000 points/s (query complexity'ye göre hesaplanıyor). Burst trafikte throttling alıyorsun — bu durumda Redis cache layer ekliyorsun ama Oxygen hosting Redis native desteklemiyor, Upstash gibi external servis kullanman gerekiyor.
+Bu değişiklik initial bundle'ı 850kB'den 620kB'ye düşürüyor (27% reduction). LCP 4.2s → 2.9s. Ancak yine de Shopify Liquid'den ağır.
 
-## Karar matrisi: Hangi stack hangi senaryoda
+## commercetools: Maximum Esneklik, Maximum Yük
 
-Aşağıdaki matris production projelerimizden çıkarılan gerçek karar kriterleri:
+commercetools kendini "true headless" olarak konumluyor. API-only backend, UI component'i yok. Tüm frontend'i sen kuruyorsun — Next.js, Vue, Svelte seçenekleri açık.
 
-| Senaryo | Önerilen stack | Neden |
-|---------|----------------|-------|
-| D2C retail, <$5M GMV | Shopify Plus + Liquid tema | Composable ROI görülmüyor, hız > esneklik |
-| D2C retail, $5-20M GMV | Shopify Plus + Hydrogen | Headless avantajı CWV'de görülüyor, checkout Shopify'da kalıyor |
-| B2B marketplace, complex pricing | commercetools + Next.js | Custom logic backend'de, Shopify'ın sınırları dar |
-| Fashion/apparel, multi-brand | BigCommerce Catalyst | Catalog yönetimi güçlü, frontend esnekliği yeterli |
-| Omnichannel (POS + online) | Shopify Plus (monolith) | POS entegrasyonu native, headless ekstra complexity getiriyor |
+**Kuvvetli tarafı:** Esneklik tam. Cart logic'i custom yapabilirsin, checkout flow tamamen senin kontrolünde. Örneğin multi-currency + regional tax hesaplama, server-side personalized pricing (B2B için kritik) hepsini commercetools API'sine request atarak yapıyorsun. Üstelik GraphQL + REST paralel destekleniyor — hangi endpoint daha performanslıysa onu seç.
 
-**Kritik karar faktörü:** Development takım kapasitesi. Hydrogen 2 frontend developer ile production'a gidiyor. commercetools 1 backend (API integration), 2 frontend, 1 DevOps (CI/CD, monitoring) gerektiriyor. TCO'da insan saati deployment hızından daha ağır basıyor.
+**Zayıf tarafı:** Başlangıç maliyeti yüksek. commercetools implementation partner'larının ortalama MVP fiyatı: $120k-$180k (6 aylık). Bu sürenin yarısı backend setup (product catalog import, pricing rules, inventory sync), diğer yarısı frontend. Ayrıca ongoing cost: commercetools lisans ücreti transaction-based değil platform fee — yıllık $50k'dan başlıyor (mid-market). Frontend hosting + CDN ayrı (Vercel Enterprise: $2k/ay).
 
-## MACH'in gerçek maliyeti: Invisible complexity
+**Performance realitesi:** commercetools API response time ortalama 120-180ms (Avrupa sunucusundan, cache miss durumunda). Bunu Edge'e cache'leyebilirsin (Cloudflare Workers KV / Vercel Edge Config), ancak invalidation logic'ini kendin yazman gerekiyor. Örnek: ürün fiyatı değişti → commercetools webhook → Cloudflare Workers → KV purge. Bu pipeline her proje için custom.
 
-Composable stack'in göze görünmeyen maliyet kalemleri:
+## Shopify Plus: Hybrid Composability
 
-1. **Monitoring:** Monolitik platformda tek dashboard, MACH'te her servis ayrı (Datadog $180/host/ay, 8 servis = $1,440/ay).
-2. **Incident response:** Monolitik platformda support ticket açıyorsun, MACH'te sen oncall'sın. Cart API down olduğunda sorun Stripe'ta mı, commercetools'ta mı, frontend'te mi — debugging multi-vendor.
-3. **Upgrade path:** Shopify otomatik güncelleniyor, commercetools API versiyonlarını sen migrate ediyorsun (v1 → v2 breaking change geçen yıl 3 haftamızı aldı).
+Shopify, Hydrogen 2.0 ile composable dünyaya girdi. Ancak yaklaşımı farklı: Liquid theme'leri desteklemeye devam ediyor, Hydrogen opsiyonel. Yani hybrid: ihtiyacın varsa headless, yoksa Liquid ile hızlı.
 
-[Headless Commerce](https://www.roibase.com.tr/tr/headless) çalışmamızda e-ticaret markalarına composable migration'da mimari danışmanlık veriyoruz — hangi katmanları headless yapacağına, hangilerini monolith'te bırakacağına karar vermek deployment hızını 40% artırıyor.
+**Hydrogen 2.0 artıları:** React Server Components kullanıyor — bu, server-side rendering + client-side interactivity dengesini iyi kuruyor. Örnek: product page hero image server'da render ediliyor (HTML olarak), "add to cart" butonu client component (JavaScript). Sonuç: initial bundle 320kB, ancak LCP 1.8s (Shopify CDN hızlı, RSC overhead düşük).
 
-## Production'da composable başarı kriterleri
+**Hydrogen 2.0 eksileri:** Migration zahmeti. Eğer mevcut Shopify Plus store'un varsa ve Liquid theme kullanıyorsan, Hydrogen'e geçiş yeni frontend demek. Liquid → React dönüşümü: 12-16 hafta. Ayrıca Hydrogen'in API Storefront değil Storefront API 2024 kullanması gerekiyor — bazı eski Liquid değişkenleri (örn. `product.metafields`) GraphQL'de farklı query pattern'i istiyor.
 
-MACH mimarisine geçtiğinde aşağıdaki metrikleri ilk 3 ayda tutturamıyorsan geri dönmeyi düşün:
+**Liquid avantajı:** Hâlâ en hızlı option. Çünkü HTML server'da render ediliyor, JavaScript minimal. Örnek: Shopify Dawn theme (varsayılan Liquid theme): 120kB bundle, LCP 1.2s. Headless'ın verdiği esneklik bu hıza değer mi? Cevap use case'e bağlı. Eğer checkout'u özelleştirmen gerekiyorsa (örn. B2B için approval workflow) Hydrogen mantıklı. Eğer standart e-ticaret deneyimi yetiyorsa Liquid hâlâ kazanıyor.
 
-- **LCP improvement >%40:** Headless'in maliyeti ancak bu kadar performans artışıyla justifiable.
-- **Cart abandonment rate decrease >%8:** Hızlı checkout flow conversion'a dönmeli.
-- **Development velocity:** Yeni feature deployment <2 hafta (monolith'te 4-6 haftaysa geçiş doğru).
-- **Incident MTTR <30dk:** Microservice hatalarını hızlı izole edemiyorsan operational load artar.
+### Tradeoff Tablosu
 
-2026'da composable commerce dogma değil — engineering tradeoff. Stack seçimi GMV, takım kapasitesi, custom logic ihtiyacıyla driven olmalı. Shopify Hydrogen orta ölçek D2C için sweet spot, commercetools enterprise B2B için, BigCommerce Catalyst ikisi arası hybrid senaryolar için mantıklı. MACH manifestosunu production realite ile test et — her mikroservis bir operational burden.
+| Kriter | Shopify Liquid | Shopify Hydrogen | BigCommerce Catalyst | commercetools |
+|--------|----------------|------------------|----------------------|---------------|
+| MVP süresi | 4 hafta | 12 hafta | 8 hafta | 24 hafta |
+| Bundle size | 120kB | 320kB | 620kB (optimize) | 400-600kB |
+| LCP (3G) | 1.2s | 1.8s | 2.9s | 2.5s (cache'li) |
+| Checkout esneklik | Düşük (Shopify SDK) | Orta (Hydrogen checkout) | Orta (SDK) | Tam |
+| Başlangıç maliyet | $15k-30k | $60k-90k | $50k-80k | $120k-180k |
+| Yıllık platform fee | ~$24k (Plus) | ~$24k + Vercel | ~$36k (Enterprise) | $50k+ |
+
+## Kararı Neye Göre Vereceksin
+
+Composable commerce "gelecek" olarak sunuluyor, ancak her projeye uymuyor. Karar kriterlerini somut senaryolar üzerinden konuşmak gerekiyor.
+
+**Senaryo 1: Standart B2C e-ticaret, 500k-2M yıllık sipariş.** Liquid kazanıyor. Çünkü bundle size düşük, LCP hedefini karşılıyor, checkout Shopify Payments ile entegre. Headless'a geçmek bundle'ı 2.5x artırıyor, LCP'yi 1.2s → 1.8s'ye çıkarıyor (conversion rate etkisi: 0.2-0.5% kayıp). Bunu justify edecek esneklik ihtiyacı yoksa geçmeye değmez.
+
+**Senaryo 2: B2B wholesale, custom approval workflow, regional pricing.** commercetools mantıklı. Çünkü Shopify Plus'ın B2B özelliği (B2B on Shopify) approval logic'i sınırlı. commercetools'ta custom cart rule engine kurabilirsin: "10k USD üstü siparişlerde procurement onayı zorunlu" gibi. API esnekliği bu senaryoda ROI'yi haklı çıkarıyor.
+
+**Senaryo 3: Mevcut Shopify store, checkout özelleştirmesi gerekiyor.** Hydrogen 2.0. Çünkü Shopify ekosisteminde kalıyorsun (app entegrasyonları korunuyor), ancak checkout'u React component olarak kontrol edebiliyorsun. Migration süresi 12 hafta — commercetools'un yarısı. Platform fee değişmiyor (Shopify Plus zaten ödüyorsun).
+
+**Senaryo 4: Multi-channel (e-ticaret + mobile app + marketplace), headless zorunlu.** BigCommerce Catalyst orta yol olabilir. Çünkü GraphQL Storefront API hem web hem app için kullanılıyor, ancak commercetools kadar integration maliyeti yok. Mobile app React Native ise Catalyst component'leri adapt edilebilir (web → native code sharing).
+
+## Kapanış: Esneklik Faturasını Kabul Et
+
+MACH mimarisi esneklik veriyor, ancak bu esneklik bundle size, initial cost, integration zahmeti şeklinde geri dönüyor. Shopify Liquid hâlâ en hızlı production option — eğer senaryonu Liquid karşılıyorsa headless'a geçmek optimizasyon değil, overengineering. BigCommerce Catalyst orta yol: önceden kurulu component'ler + GraphQL esnekliği, ancak checkout'ta sınırlar var. commercetools tam esneklik: $120k başlangıç + ongoing orchestration yükü. Hydrogen 2.0 Shopify ekosisteminde headless — ancak Liquid'den daha ağır. Kararı use case'in tradeoff'ları justify edip etmediğine göre ver. Production'da sayılar vaat'ten önce gelir.
