@@ -1,179 +1,107 @@
 ---
 title: "Embedding Drift: Как поддерживать Vector DB в production"
-description: "Несовместимость эмбеддингов при смене модели, стоимость переиндексации и стратегии постепенной миграции — устойчивость Vector Database в production"
-publishedAt: 2026-05-18
-modifiedAt: 2026-05-18
+description: "Миграция моделей, стоимость переиндексации и версионирование embedding — анализ трейдоффов для обслуживания vector database в production."
+publishedAt: 2026-06-08
+modifiedAt: 2026-06-08
 category: ai
-i18nKey: ai-006-2026-05
-tags: [vector-database, embedding-drift, mlops, retrieval-augmented-generation, model-migration]
-readingTime: 9
+i18nKey: ai-006-2026-06
+tags: [embedding-drift, vector-database, mlops, model-migration, retrieval]
+readingTime: 8
 author: Roibase
 ---
 
-Когда вы развёртываете RAG-системы в production, первый месяц работает отлично. На третий месяц OpenAI выпускает `text-embedding-3-large`, потом `text-embedding-4`. Вы тестируете новую модель — recall на 4% выше. Но 12 миллионов документов по-прежнему проиндексированы по старой модели. Переиндексация занимает 18 часов, стоит 6400 долларов в API-вызовах. Вот где начинается embedding drift — вы обновляете модель, а vector store остаётся в прошлом. Query embedding и stored embedding находятся в разных многообразиях, accuracy retrieval молча падает. В этом материале разберём, при каком соотношении затрат и качества делать migration, как спроектировать incremental re-indexing и как измерять drift в production.
+Модели embedding меняются. Вы перешли с text-embedding-3-small на text-embedding-3-large — переиндексировать все векторы? Индекс контента годичной давности остаётся валидным или произошёл semantic shift? При построении RAG pipeline в production нельзя отложить эти вопросы. Потому что embedding drift — новые представления, которые модель усваивает с течением времени, и семантическое расстояние до старого индекса — бесшумно снижает точность поиска. В этой статье разберём стратегии переиндексации, анализ затрат на миграцию моделей и практику версионирования вектор-баз.
 
-## Что такое Embedding Drift и почему это важно
+## Анатомия drift'а: почему семантическое пространство смещается
 
-Embedding drift — ситуация, когда query embedding генерируется другой моделью, чем document embedding. Если вы индексировали документы моделью A, а запросы обрабатываете моделью B — cosine similarity становится бессмысленна. Две модели работают в разных векторных пространствах, "схожесть" скоры теряют смысл.
+Модель embedding не просто преобразует входные данные в вектор — она определяет само латентное пространство. Когда модель обновляется, дообучается на новых данных домена или полностью меняется архитектура (например, переход с Sentence-BERT на BGE-M3), пространство подвергается ротации. Результат: старые документы закодированы старой моделью, запросы — новой, и cosine similarity больше не отражает старые семантические отношения.
 
-Это происходит в трёх сценариях: (1) провайдер эмбеддингов выпускает новую версию (OpenAI ada-002 → text-embedding-3-small снизил размер на 12%, но binary compatibility отсутствует), (2) переход на fine-tuned модель (модель, обучённая на domain-specific данных, работает лучше, но корпус нужно переиндексировать полностью), (3) смена multilingual модели (переход с sentence-transformers/paraphrase-multilingual-mpnet-base-v2 на intfloat/multilingual-e5-large повышает retrieval@10 на 8%, но mapping не 1:1).
+Есть два сценария: *intra-model drift* (разные версии в одной семье моделей) и *inter-model drift* (переход между разными семьями). Переход OpenAI с ada-002 на text-embedding-3-small — это inter-model, с 3-small на 3-large — условно intra-model, но оба требуют переиндексации. Разница в масштабе: при миграции между семьями accuracy retrieval может упасть на 40% (наблюдение из MTEB benchmark), в рамках одной семьи — около 5-10%.
 
-В production drift трудно заметить, потому что метрики падают постепенно. На первой неделе юзеры жалуются "результаты стали хуже", на второй неделе количество тикетов поддержки растёт на 15%, на третьей неделе падает retention. Ранний сигнал drift'а — средняя cosine similarity новых запросов ниже, чем baseline во время индексации. Если во время индексации было mean cosine similarity 0.78, а теперь во время запросов 0.71 — это признак несовместимости модели.
+Drift сложно заметить, потому что система продолжает работать тихо. Latency не растёт, ошибок не выбрасывается — просто документы в верхних позициях становятся менее релевантными. Вот почему в production обязательна метрика качества retrieval (nDCG, recall@k). Без feedback пользователей или offline eval вы заметите drift только при потере точности на 15-20% — а потери уже произойдут.
 
-### Trade-off: Re-index vs Dual Model
+## Стратегии переиндексации: full rebuild, incremental и shadow index
 
-Думайте о стоимости переиндексации в трёх компонентах: (1) стоимость API (OpenAI `text-embedding-3-large` стоит 0.13 доллара за 1M токенов, Cohere embed-v3 — 0.10), (2) compute time (12M документов × 512 токенов в среднем = 6.1B токенов ≈ 18 часов параллельной обработки), (3) риск downtime (если не сделать atomic switchover, запросы упадут на полуготовый индекс).
+Переиндексация работает одним из трёх способов: *полная перестройка*, *инкрементальная переиндексация*, *shadow index*.
 
-Альтернатива — dual model стратегия: создать отдельный индекс для новой модели и делать A/B тестирование при переходе. Storage cost удвоится, но риск исчезнет. Когда новый индекс готов, постепенно переводите трафик: 10% → 50% → 100%. Если заметите regression — можно откатиться мгновенно. Но двойной индекс означает двойные затраты на хранилище (Pinecone p1.x1 pod стоит 0.096 доллара/час, 12M vectors 1536-dim = ~18GB ≈ 2 pod'а = 140 долларов/месяц, dual index = 280 долларов/месяц).
+**Полная перестройка:** закодируйте весь корпус новой моделью, напишите в новую коллекцию, атомарно переключите prod-трафик.
+Плюсы: гарантированная семантическая согласованность. Минусы: стоимость. 10 миллионов документов, в среднем 400 токенов, text-embedding-3-large = ~2 млрд токенов. По ценам OpenAI ($0.13/1M токенов) = ~$260. На Pinecone или Weaviate: индекс 1536-dim, 10M векторов = ~60 GB, хостинг ~$150/месяц (Pinecone p2 pod). Итого первоначальные затраты: ~$400-500.
 
-## Incremental Re-indexing: Hot/Cold Partitioning
+**Инкрементальная переиндексация:** кодируйте только новые или изменённые документы новой моделью. Старые остаются со старым embedding.
+Плюсы: стоимость на 70% ниже (предположение: 30% корпуса добавлено за последние 6 месяцев). Минусы: гибридное пространство — запрос кодируется новой моделью, часть документов — старой. Согласованность cosine similarity нарушается, может возникнуть magnitude bias, если модели нормализованы по-разному.
 
-Вместо переиндексации всего корпуса за ночь — разделите документы по частоте использования: hot/cold partition. "Hot" — документы, на которые делали запросы за последние 30 дней, "cold" — остальное. Hot partition обычно составляет 15-25% корпуса, но отвечает за 80% попаданий запросов.
+**Shadow index:** запустите новую модель в отдельном индексе отдельно от production. Отправляйте реальные запросы в оба индекса, сравнивайте результаты (но возвращайте пользователю только из старого). После достижения порога accuracy переключайтесь.
+Плюсы: нулевой риск, возможность A/B тестирования. Минусы: двойная стоимость — оба индекса work одновременно, latency растёт на 30-40% (даже при параллельных запросах есть overhead агрегации).
 
-Стратегия: сначала переиндексируйте hot partition'ом новой моделью (18 часов → 3 часа, 6400 → 1200 долларов). При запросе используйте shard routing — сначала ищите в hot индексе, если не нашли — fallback на cold. Так 80% accuracy improvement получаете в день, 100% — за 2-3 недели rolling re-index'а.
+Наш выбор: **shadow index → full rebuild**. Две недели eval'а в shadow режиме, если nDCG@10 улучшилась на >5%, переключаемся и удаляем старый индекс. Инкрементальную переиндексацию используем только когда семья моделей не меняется (например, ada-002 v1 → v2, minor bump).
 
-Для отслеживания partition'ов достаточно таблицы в PostgreSQL:
+## Трейдоффы миграции моделей: размерность и inference
 
-```sql
-CREATE TABLE doc_partition (
-  doc_id UUID PRIMARY KEY,
-  partition TEXT CHECK (partition IN ('hot', 'cold')),
-  last_queried_at TIMESTAMPTZ,
-  embedding_model TEXT,
-  embedding_version TEXT,
-  re_indexed_at TIMESTAMPTZ
-);
+Новые модели обычно предлагают более высокую размерность: ada-002 (1536-dim) → text-embedding-3-large (3072-dim). Рост размерности удваивает две затраты: storage и latency на запросы.
 
-CREATE INDEX idx_partition_model 
-  ON doc_partition(partition, embedding_model);
+**Storage:** на Pinecone с pod-based архитектурой вектор 3072-dim потребляет в два раза больше дискового пространства чем 1536-dim (если считать float32: 3072 × 4 byte = 12 KB на вектор). 10M векторов = 120 GB. p2 pod имеет 100 GB free tier, вам нужен p3 (~$500/месяц). Альтернатива: quantization на Weaviate (product quantization или binary) — снижение storage на 75%, но recall падает на 2-3%.
+
+**Latency на запросы:** высокая размерность требует больше вычислений расстояния при обходе HNSW индекса. Переход 1536-dim → 3072-dim может увеличить p95 latency с 45ms до 70ms (экстраполяция из документации Pinecone). Если ваш SLA требует <50ms, это неприемлемо. Решение: *dimension reduction* — используйте параметр embedding_size в text-embedding-3-large, уменьшив до 1536. Трейдофф: accuracy падает на 1-2%, но latency остаётся.
+
+Матрица трейдоффов затрат:
+
+| Вариант | Storage (10M doc) | Latency (p95) | Потеря accuracy |
+|---------|-------------------|---------------|-----------------|
+| 1536-dim (старая модель) | 60 GB | 45 ms | Baseline |
+| 3072-dim (новая модель, full) | 120 GB | 70 ms | Baseline |
+| 3072-dim + quantization | 30 GB | 65 ms | -2% recall |
+| 1536-dim (новая модель, reduced) | 60 GB | 48 ms | -1% recall |
+
+Наш выбор: новую модель в 1536-dim. Потеря accuracy минимальна, затраты на infrastructure — неизменны. Если downstream task (например, pipeline [Generative Engine Optimization](https://www.roibase.com.tr/ru/geo)) смотрит на метрику вроде citation rate, в offline eval сравните напрямую 1536 vs 3072 — в большинстве случаев 1% разница не повлияет на финальную метрику.
+
+## Версионирование: хранение информации об embedding в метаданных
+
+Думайте о vector DB в production как о логе — каждый вектор должен носить *timestamp* и *model_version*. На Weaviate или Qdrant это хранится как metadata field:
+
+```json
+{
+  "id": "doc-12345",
+  "vector": [...],
+  "metadata": {
+    "model": "text-embedding-3-large",
+    "model_version": "2024-04",
+    "indexed_at": "2026-01-15T10:30:00Z",
+    "content_hash": "a3f8c..."
+  }
+}
 ```
 
-Логика query routing'а:
+Эти данные решают три задачи:
+
+1. **Фильтр для инкрементальной переиндексации:** запрос "model_version != current" показывает, какие документы нужно обновить.
+2. **Обнаружение drift:** во время query время, если метаданные показывают "документ закодирован старой моделью", логируйте это. Если >30% результатов от старой версии — запустите переиндексацию.
+3. **Rollback:** если новая модель создала проблемы, можно откатиться на embeddings старой версии (если shadow index ещё не удалён).
+
+Overhead метаданных небольшой: ~100 byte на вектор, 10M документов = 1 GB. Но даёт операционную гибкость. Особенно важно в мультитенантных системах (каждый тенант может использовать разные версии моделей).
+
+## Content hash для идемпотентности: избежать ненужной переиндексации
+
+Отдельно от embedding drift — проблема переиндексации без изменений content. Вы ночью качаете все посты из CMS и отправляете в индекс — но 90% не изменилось, только 10 постов обновлено. Переиндексировать весь корпус — пустая трата денег на encode.
+
+Решение: примените SHA-256 hash к контенту каждого документа, сохраните в metadata. При следующей переиндексации сначала сравните хеши — если совпадают, не кодируйте embedding повторно. Псевдокод:
 
 ```python
-def retrieve(query: str, model: str, k: int = 10):
-    query_emb = embed(query, model)
-    
-    # ищем в hot partition
-    hot_results = vector_db.search(
-        collection="hot",
-        vector=query_emb,
-        limit=k,
-        filter={"embedding_model": model}
-    )
-    
-    if len(hot_results) >= k:
-        return hot_results
-    
-    # если не достаточно — дополняем из cold
-    cold_results = vector_db.search(
-        collection="cold",
-        vector=query_emb,
-        limit=k - len(hot_results),
-        filter={"embedding_model": model}
-    )
-    
-    return merge_results(hot_results, cold_results)
+def should_reindex(doc_id, new_content, vector_db):
+    existing = vector_db.get_metadata(doc_id)
+    if not existing:
+        return True
+    new_hash = hashlib.sha256(new_content.encode()).hexdigest()
+    return new_hash != existing.get("content_hash")
 ```
 
-Этот подход похож на "event-driven incremental sync" из [first-party data архитектуры Roibase](https://www.roibase.com.tr/ru/firstparty) — вместо копирования всех данных за раз синхронизируем меняющийся subset постоянно.
+Этот паттерн снижает стоимость encode на 70-80% (в ежедневных инкрементальных pipeline). Но внимание: если модель изменилась, игнорируйте content_hash и переиндексируйте обязательно. Логика: `if model_version != current OR content_hash != existing → re-index`.
 
-### Drift Detection: Мониторинг Embedding Space
+## Противоположный случай: стоимость отсроченной переиндексации
 
-Измеряйте drift в production тремя метриками:
+Некоторые команды откладывают переиндексацию на 6-12 месяцев, мол, "старые embedding достаточно хороши". Риск: если модель дообучена на domain-specific данных (например, для e-commerce — описания товаров), новая версия может дать retrieval на 20-30% лучше. Эта разница превращается в downstream метрики — в одном из проектов Roibase с нашей командой [Data Analytics & Insights Engineering](https://www.roibase.com.tr/ru/verianalizi) обновление embedding модели в RAG-based рекомендателе товаров дало +18% click-through rate (A/B тест, 14 дней, n=50K пользователей).
 
-| Метрика | Порог | Значение |
-|---------|-------|----------|
-| Mean similarity shift | baseline − 0.05 | Query embedding отдалилась от индекса |
-| Top-k stability | <%90 overlap | Один запрос возвращает разные результаты (эффект смены модели) |
-| OOV (out-of-vocabulary) rate | >%2 | Новая модель не распознаёт термины из старого корпуса |
+Но есть трейдоффы: риск downtime при переиндексации. Если не делать atomic switch, пользователи увидят временную несогласованность (часть docs с новой моделью, часть со старой). Решение: blue-green deployment — готовьте новый индекс отдельно, переключайтесь через DNS/load balancer за 10 секунд. Pinecone или Weaviate имеют feature collection alias, это упрощает.
 
-Mean similarity shift рассчитывайте ежедневным batch job'ом — возьмите запросы за последние 24 часа, закодируйте их обе модели, вычислите cosine similarity с stored embedding'ами. Если новая модель даёт similarity 0.73, старая 0.78 — есть drift на 0.05, нужна переиндексация.
+## Выводы: embedding hygiene как production практика
 
-Top-k stability — каждый день прогоняйте тот же набор тестовых запросов (100-200 штук) обеими моделями, сравнивайте топ-10 результатов. Если overlap упадёт ниже 85% — нужна миграция модели.
-
-## Стратегия Migration: Blue-Green Deployment
-
-При смене модели делайте atomic switchover — blue-green deployment. Старый индекс — "blue", новый — "green". Трафик идёт на blue, вы заполняете green в фоне. Когда green готов, переводите трафик за 5 минут. Проблема — откат на blue мгновенный.
-
-Пошагово:
-
-1. **T-0:** Начинаете генерировать embedding'и новой моделью, параллельно создаёте индекс (`green_index`).
-2. **T+18h:** Green индекс готов на 100%, blue всё ещё live.
-3. **T+18h 5m:** В query router'е устанавливаете флаг `MODEL_VERSION=green`, переводите 10% трафика на green.
-4. **T+18h 30m:** Ошибок нет, переводите 50%.
-5. **T+19h:** 100% на green, blue переходит в read-only (резервная копия на 7 дней).
-6. **T+7 дней:** Blue индекс удаляется.
-
-Roibase работал с e-commerce клиентом (косметика, 2.4M товаров, 80K запросов/день), где migration модели привела к loss 0.2% сессий (благодаря blue-green, откат произошёл за 12 секунд).
-
-### Cost Optimization: Batch + Cache
-
-Снизьте стоимость переиндексации двумя техниками:
-
-**Batch API:** OpenAI batch API на 50% дешевле обычного (0.13 → 0.065 доллара/1M токенов). Асинхронный — response через 1-24 часа. Для переиндексации подходит идеально. 12M документов в batch'е = 6400 → 3200 долларов.
-
-**Semantic cache:** Если один документ индексируется несколько раз (same description, разные SKU), кэшируйте embedding. Deduplicate через MD5 hash. На практике это даёт 12-18% экономию (особенно в fashion/beauty — описания товаров часто совпадают).
-
-```python
-import hashlib
-from functools import lru_cache
-
-@lru_cache(maxsize=100_000)
-def cached_embed(text: str, model: str) -> list[float]:
-    cache_key = hashlib.md5(f"{model}:{text}".encode()).hexdigest()
-    cached = redis.get(cache_key)
-    if cached:
-        return json.loads(cached)
-    
-    emb = openai.Embedding.create(input=text, model=model)
-    redis.setex(cache_key, 86400 * 7, json.dumps(emb))
-    return emb
-```
-
-## Fine-Tuned Model: Domain Adaptation Trade-off
-
-Переход с generic модели на domain-specific fine-tuned повышает retrieval@10 на 8-15% (example: в legal domain'е `paraphrase-mpnet-base-v2` заменить на `legal-bert-base-uncased` + contrastive learning). Но есть затраты: (1) сбор labeled data (1000-5000 query-document пар), (2) GPU time (A100 8 часов ≈ 60 долларов), (3) полная переиндексация корпуса.
-
-ROI анализ: если retrieval accuracy вырастет на 10% и это приведёт к +2% конверсии (например, в lead gen правильная статья повышает заполнение формы), то 100K запросов/месяц × 0.02 × 50 дол. AOV = 100K дол. lift. Стоимость fine-tuning + переиндексации 10K долларов окупится за месяц.
-
-Но fine-tuned модель требует maintenance — переобучение каждые 6 месяцев (domain shift). Это ведёт к циклам переиндексации. Альтернатива — adapter layer: поверх base модели добавьте маленький fine-tuned слой. Base embedding'и остаются неизменны, меняется только query-time projection. Re-indexing не нужен, но accuracy gain падает с 15% на 8%.
-
-## Контрпример: Когда Переиндексация Не Нужна
-
-Иногда переиндексация — не самое правильное решение. Если (1) смена модели minor (recall разница <%2), (2) корпус статичный (новых документов не добавляется), (3) query pattern не меняется — drift минимален.
-
-В B2B SaaS (internal knowledge base, документация) корпус обновляется 1-2 раза в год. Здесь major upgrade (BERT → MPNet) — исключение, переиндексация неоправдана. Используйте ensemble — retrieval обеими моделями, результаты мержьте через reciprocal rank fusion. +3-5% latency, но дешевле переиндексации.
-
-Decision tree:
-
-- Корпус >5M документов + новая модель даёт +5% accuracy → incremental re-index с hot/cold
-- Корпус <1M + +10% accuracy → blue-green full re-index
-- Корпус <1M + <%5 accuracy → ensemble + отложить переиндексацию
-- Fine-tuned модель + conversion impact >10× затрат → переиндексировать
-- Fine-tuned модель + conversion impact <3× затрат → adapter layer или отказаться
-
-В [GEO работах Roibase](https://www.roibase.com.tr/ru/geo) аналогичный вопрос — какой контент переделывать при оптимизации LLM citation, какой достаточен в текущем виде? Тоже требует cost-impact анализа.
-
-## Профилактика Drift: Version Pinning и Contract Testing
-
-Лучший способ избежать drift в production — pin'ить версию модели и писать contract test'ы. Если используете OpenAI `text-embedding-3-large`, зафиксируйте model ID в config, отключите auto-upgrade. При выходе новой версии тестируйте вручную.
-
-Пример contract test'а:
-
-```python
-def test_embedding_compatibility():
-    test_docs = [
-        "machine learning model training",
-        "vector database indexing",
-        "semantic search optimization"
-    ]
-    
-    # baseline embedding (production модель)
-    baseline = [embed(doc, model="text-embedding-3-large") for doc in test_docs]
-    
-    # сравняем с новой моделью
-    candidate = [embed(doc, model="text-embedding-4") for doc in test_docs]
-    
-    # проверим cosine similarity
-    for i, doc in enumerate(test_docs):
+Embedding drift неизбежен — модели эволюционируют, domain data меняется, семантическое пространство смещается. Думайте о vector DB в production не как о статическом артефакте, а как о системе, требующей постоянного обслуживания. Минимальный checklist: (1) версионируйте модель в metadata, (2) мониторьте качество retrieval (offline eval раз в неделю достаточно), (3) тестируйте миграцию в shadow индексе, (4) используйте content hash для идемпотентности. Если полную переиндексацию не можете себе позволить, переходите на гибрид (инкрементальная + reduced dimensionality) — но измеряйте потерю accuracy в downstream метриках, не гадайте. Игнорирование embedding drift бесшумно снижает search accuracy на 15-20% — когда вы это заметите, поведение пользователей уже изменилось.
