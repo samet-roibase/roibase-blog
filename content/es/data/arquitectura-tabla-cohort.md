@@ -1,210 +1,203 @@
 ---
 title: "Arquitectura de Tabla Cohort: Escalado de Análisis de Retención en Production"
-description: "Materialized views, partitioning y query cost optimization para ejecutar cohort analysis sobre millones de usuarios: arquitectura BigQuery production-ready."
-publishedAt: 2026-05-22
-modifiedAt: 2026-05-22
+description: "Diseño de arquitectura que procesa 100M+ eventos diarios en tablas cohort en 5 segundos usando materialized views, particionamiento y optimización de costos de query."
+publishedAt: 2026-06-09
+modifiedAt: 2026-06-09
 category: data
-i18nKey: data-007-2026-05
-tags: [analisis-cohort, bigquery, materialized-views, retention-engineering, query-optimization]
+i18nKey: data-007-2026-06
+tags: [cohort-analysis, bigquery, materialized-views, query-optimization, retention-engineering]
 readingTime: 8
 author: Roibase
 ---
 
-El análisis de retención es uno de los métodos más poderosos para entender el comportamiento del usuario. Pero a escala real —millones de eventos diarios, cientos de miles de usuarios— las consultas SQL ingenuas se agotan en 30 segundos o consumen toda la capacidad de slots. La retención sostenible en production requiere optimizar la arquitectura de la tabla según el motor de consultas. En este artículo te mostramos cómo escalar tablas cohort en BigQuery usando materialized views, partitioning e incremental refresh strategies.
+Cuando trasladas métricas de retención a un dashboard en tiempo real, el primer impacto llega en el costo de la query. Una consulta cohort básica —"¿cuántos usuarios registrados el 1 de enero seguían activos el día 7?"— escrita de forma ingenua escanea 200GB de datos, tarda 18 segundos y genera un costo de $4. Para un equipo que accede al dashboard 500 veces al día, este cálculo suma $60.000 mensuales. El problema no está en tu capacidad analítica, sino en la arquitectura de las tablas. El análisis de cohort en production requiere almacenar snapshots de cohort, no datos de eventos sin procesar.
 
-## Por qué la Consulta Cohort Ingenua Falla
+## Naive Cohort Query: Por Qué No Escala
 
-El análisis cohort clásico funciona así: encuentra la fecha de primera actividad del usuario (cohort_date), calcula todas las actividades posteriores como "Día N" respecto a esa fecha, suma tasas de retención por grupo. El siguiente SQL es lógicamente correcto pero no funciona en production:
+Una consulta cohort clásica une tres tablas: `users`, `events` y `cohort_definitions`. Cada query escanea la tabla `events` completa sin filtro de partición. Con 100M eventos diarios, este enfoque es insostenible.
 
 ```sql
-WITH first_event AS (
-  SELECT user_id, MIN(DATE(event_timestamp)) AS cohort_date
-  FROM `project.dataset.events`
-  GROUP BY user_id
-),
-daily_activity AS (
-  SELECT e.user_id, DATE(e.event_timestamp) AS activity_date
-  FROM `project.dataset.events` e
-  GROUP BY 1,2
-)
+-- ❌ Anti-pattern: Escanea todos los events cada vez
 SELECT 
-  f.cohort_date,
-  DATE_DIFF(d.activity_date, f.cohort_date, DAY) AS day_n,
-  COUNT(DISTINCT d.user_id) AS retained_users
-FROM first_event f
-JOIN daily_activity d USING(user_id)
-GROUP BY 1,2
-ORDER BY 1,2;
+  DATE_TRUNC(u.created_at, DAY) AS cohort_date,
+  DATE_DIFF(e.event_date, u.created_at, DAY) AS day_n,
+  COUNT(DISTINCT u.user_id) AS retained_users
+FROM users u
+JOIN events e ON u.user_id = e.user_id
+WHERE u.created_at >= '2026-01-01'
+  AND e.event_name = 'session_start'
+GROUP BY 1, 2
+ORDER BY 1, 2;
 ```
 
-Hay dos grandes problemas aquí: (1) la tabla `events` se escanea completa en cada ejecución —sin partition pruning—, (2) para cada cohort_date se hace join de todas las actividades de todos los usuarios —riesgo de explosión cartesiana. Con 100M eventos, esta consulta procesa 400GB de datos y termina en 2 minutos; pero en refresh diario no es sostenible. La factura de BigQuery crece 10x antes de fin de mes.
+Esta consulta escanea 480GB para 6 meses de datos. En BigQuery, con utilización de slots, tarda 12 segundos y se factura como $2.40 (on-demand pricing: $5/TB). Si multiplicas el mismo cohort por 20 métricas diferentes (revenue, session count, conversion rate), el costo sube a $48. Si el dashboard se refresca 100 veces al día, el costo mensual alcanza $144.000. Para adaptar esto a production a escala, hay dos estrategias: **materialización incremental** y **snapshots pre-agregados de cohort**.
 
-## Tabla Base Particionada para Reducir Carga de Filtrado
+### Materialización Incremental: Pipeline Event-to-Cohort con dbt
 
-El primer paso: particionar la tabla `events` por `DATE(event_timestamp)`. Esto garantiza que cuando la consulta incluya `WHERE DATE(event_timestamp) BETWEEN X AND Y`, solo las particiones relevantes se escaneen:
-
-```sql
-CREATE TABLE `project.dataset.events`
-PARTITION BY DATE(event_timestamp)
-CLUSTER BY user_id, event_name
-AS SELECT * FROM ...;
-```
-
-El clustering en (user_id, event_name) coloca los eventos del mismo usuario en bloques físicamente cercanos —el rendimiento del join mejora 30-50%. Pero esto solo no es suficiente; la lógica de cálculo cohort se repite en cada consulta. Aquí entra la materialized view.
-
-## Materialized View: Tabla Cohort Incremental
-
-Las materialized views de BigQuery almacenan físicamente el resultado de una consulta y se refresca automáticamente cuando cambian los datos base. Para análisis cohort usamos esta estructura:
+En lugar de calcular cohorts cada vez, actualiza tablas cohort acumuladas con batches diarios. La estrategia `incremental` de dbt permite agregar los eventos del nuevo día a la tabla cohort existente.
 
 ```sql
-CREATE MATERIALIZED VIEW `project.dataset.user_cohorts`
-PARTITION BY cohort_date
-CLUSTER BY user_id
-AS
-SELECT 
-  user_id,
-  MIN(DATE(event_timestamp)) AS cohort_date,
-  COUNT(*) AS first_day_events
-FROM `project.dataset.events`
-GROUP BY user_id;
-```
-
-Esta view calcula una sola vez la fecha de primer evento de cada usuario (cohort_date) y la almacena. Cuando llegan eventos nuevos, BigQuery solo procesa el delta —no hay escaneo completo. La partición por cohort_date permite pruning en filtros como `WHERE cohort_date = '2026-05-01'`.
-
-Ahora la consulta de retención se reduce a:
-
-```sql
-SELECT 
-  c.cohort_date,
-  DATE_DIFF(DATE(e.event_timestamp), c.cohort_date, DAY) AS day_n,
-  COUNT(DISTINCT e.user_id) AS retained_users
-FROM `project.dataset.user_cohorts` c
-JOIN `project.dataset.events` e 
-  ON c.user_id = e.user_id 
-  AND DATE(e.event_timestamp) >= c.cohort_date
-WHERE c.cohort_date BETWEEN '2026-05-01' AND '2026-05-15'
-GROUP BY 1,2;
-```
-
-Esta consulta usa la materialized view en lugar de la tabla base —las filas a escanear se reducen de millones a miles. Pero aún procesa toda la tabla de eventos. El siguiente nivel es pre-agregar la retención.
-
-## Tabla de Retención Pre-Agregada: Capa Final
-
-El análisis cohort típicamente se ve en intervalos fijos —"Día 0, Día 1, Día 7, Día 30"— no hay necesidad de recalcular para cada día. Con dbt implementamos esta lógica:
-
-1. Cada día, extrae cohorts nuevos de la view `user_cohorts`
-2. Para cada cohort calcula retención histórica de los últimos 30 días (que no cambia después del día 30)
-3. Escribe el resultado en `cohort_retention_summary` de forma **incremental**
-
-Modelo dbt:
-
-```sql
+-- models/cohort_retention_daily.sql
 {{
   config(
     materialized='incremental',
-    unique_key=['cohort_date','day_n'],
-    partition_by={'field':'cohort_date','data_type':'date'},
-    cluster_by=['day_n']
+    partition_by={'field': 'cohort_date', 'data_type': 'date'},
+    cluster_by=['day_n', 'metric_name'],
+    unique_key='cohort_date || day_n || metric_name'
   )
 }}
 
-WITH cohorts_to_update AS (
-  SELECT DISTINCT cohort_date 
-  FROM {{ ref('user_cohorts') }}
-  WHERE cohort_date >= CURRENT_DATE() - 31
-  {% if is_incremental() %}
-    AND cohort_date > (SELECT MAX(cohort_date) FROM {{ this }})
-  {% endif %}
-),
-retention_calc AS (
+WITH new_events AS (
   SELECT 
-    c.cohort_date,
-    DATE_DIFF(DATE(e.event_timestamp), c.cohort_date, DAY) AS day_n,
-    COUNT(DISTINCT e.user_id) AS retained_users,
-    MAX(c.first_day_events) AS cohort_size
-  FROM {{ ref('user_cohorts') }} c
-  JOIN {{ source('raw','events') }} e 
-    ON c.user_id = e.user_id
-  WHERE c.cohort_date IN (SELECT cohort_date FROM cohorts_to_update)
-    AND DATE(e.event_timestamp) >= c.cohort_date
-    AND DATE_DIFF(DATE(e.event_timestamp), c.cohort_date, DAY) <= 30
-  GROUP BY 1,2
+    u.user_id,
+    DATE_TRUNC(u.created_at, DAY) AS cohort_date,
+    DATE_DIFF(e.event_date, u.created_at, DAY) AS day_n,
+    e.event_name,
+    e.revenue_usd
+  FROM {{ ref('events') }} e
+  JOIN {{ ref('users') }} u ON e.user_id = u.user_id
+  {% if is_incremental() %}
+  WHERE e.event_date = CURRENT_DATE() - 1  -- Solo datos de ayer
+  {% endif %}
 )
-SELECT 
+SELECT
   cohort_date,
   day_n,
-  retained_users,
-  cohort_size,
-  SAFE_DIVIDE(retained_users, cohort_size) AS retention_rate
-FROM retention_calc;
+  'active_users' AS metric_name,
+  COUNT(DISTINCT user_id) AS metric_value
+FROM new_events
+WHERE event_name = 'session_start'
+GROUP BY 1, 2, 3
+
+UNION ALL
+
+SELECT
+  cohort_date,
+  day_n,
+  'revenue_per_cohort' AS metric_name,
+  SUM(revenue_usd) AS metric_value
+FROM new_events
+GROUP BY 1, 2, 3;
 ```
 
-Este modelo actualiza solo los cohorts de los últimos 31 días cada día. Los cohorts más antiguos tienen retención fija —no se recalculan. El uso de slots baja 95%. [CDP & Retention Engineering](https://www.roibase.com.tr/es/retention-engineering-cdp) se conecta directamente a esta tabla —las herramientas BI (Looker, Metabase) devuelven resultados en 100ms.
+En la primera ejecución (full refresh), se procesa todo el histórico. Cada día posterior, solo se agregan 1 día de nuevos eventos. Un día de 100M eventos escanea 3.2GB (gracias a partition + cluster), la query tarda 4 segundos y cuesta $0.016. Costo mensual incremental total: $0.48 — una millonésima parte del método ingenuo.
 
-## Estrategia de Query Cost y Partition Expiration
+## Materialized Views: Capa de Cache Automática de BigQuery
 
-En BigQuery, el storage es barato ($0.02/GB/mes), el compute es caro ($5/TB de datos procesados). El análisis de retención es retrospectivo, así que las particiones antiguas se escanean frecuentemente. Dos optimizaciones:
-
-1. **Partition expiration:** Elimina automáticamente particiones de más de 90 días en `events` —no hay necesidad de raw events después del cálculo cohort.
-2. **Actualiza estadísticas de clustering periódicamente:** `ANALYZE TABLE ... UPDATE STATISTICS` —el query optimizer elige mejor plan de ejecución.
-
-Comparación de costos (100M eventos/día, 1M usuarios):
-
-| Método | Datos procesados/día | Compute mensual |
-|---|---|---|
-| Consulta ingenua (full scan) | 12TB | $600 |
-| Particionado + materialized view | 800GB | $40 |
-| Tabla pre-agregada (incremental) | 50GB | $2.5 |
-
-Agregar la capa pre-agregada reduce el compute 240x. Esta diferencia es crítica en production —especialmente si refresh es cada hora.
-
-## Trade-off de Análisis Cohort en Tiempo Real
-
-La estructura de materialized view y pre-agregado introduce latencia: los datos se atrasan 1-5 minutos. Si necesitas retención en tiempo real (por ejemplo, para las primeras 24 horas), usa un enfoque híbrido:
-
-- Últimas 24 horas: streaming insert + real-time query (sin cache)
-- Datos más antiguos: tabla pre-agregada
-
-La consulta BI combina ambas fuentes con UNION ALL:
+El modelo incremental se actualiza por lotes (una vez al día). Para un dashboard en tiempo real que requiera datos de la última hora, entra en juego la característica **materialized view** de BigQuery. Una materialized view almacena físicamente el resultado de una query base y se refresca automáticamente cuando la tabla fuente cambia.
 
 ```sql
-SELECT * FROM cohort_retention_summary WHERE cohort_date < CURRENT_DATE()
-UNION ALL
-SELECT * FROM realtime_cohort_view WHERE cohort_date = CURRENT_DATE();
+CREATE MATERIALIZED VIEW `project.dataset.cohort_retention_mv`
+PARTITION BY cohort_date
+CLUSTER BY day_n, metric_name
+AS
+SELECT
+  DATE_TRUNC(u.created_at, DAY) AS cohort_date,
+  DATE_DIFF(e.event_date, u.created_at, DAY) AS day_n,
+  'active_users' AS metric_name,
+  COUNT(DISTINCT u.user_id) AS metric_value
+FROM `project.dataset.events` e
+JOIN `project.dataset.users` u ON e.user_id = u.user_id
+WHERE e.event_date >= CURRENT_DATE() - 90  -- Solo ventana de 90 días
+  AND e.event_name = 'session_start'
+GROUP BY 1, 2, 3;
 ```
 
-Aunque la view en tiempo real es costosa, solo procesa el cohort actual —el impacto en compute total es limitado.
+Al consultar una materialized view, BigQuery primero devuelve el resultado cacheado. Cuando la tabla base cambia (se agregan nuevos eventos), se calcula el delta en segundo plano. La query del dashboard ahora tarda 0.2 segundos, y el costo es $0 (cache hit). Sin embargo, ten en cuenta que la propia materialized view genera un costo de almacenamiento (BigQuery storage: $0.02/GB/mes), y una tabla cohort de 90 días de 12GB suma $0.24 mensuales en overhead.
 
-## Segmentación de Cohort y Explosión de Cardinalidad
+**Tabla de compensaciones:**
 
-Dividir análisis de retención por segmentos de usuario (plataforma, país, channel de adquisición) puede dispara problemas de cardinalidad. Por ejemplo, 5 segmentos × 30 días × 365 cohorts = 54.750 filas únicas. En este caso:
+| Método | Duración Primera Query | Duración Query Dashboard | Costo Compute Mensual | Costo Storage Mensual |
+|--------|------------------------|--------------------------|------------------------|------------------------|
+| Naive JOIN | 12s | 12s | $144.000 | $0 |
+| dbt Incremental | 4s (primer batch) | 2s (lectura snapshot) | $0.48 | $0.18 (tabla snapshot) |
+| Materialized View | 8s (primer build) | 0.2s (cache hit) | $0 (refresh automático) | $0.24 |
 
-1. **Limita segmentos:** Analiza solo los 3-5 más importantes; crea tablas separadas para otros.
-2. **Segmentación dinámica:** En lugar de agregar segmento a la tabla pre-agregada, filtra en join-time —mantiene flexibilidad pero aumenta uso de slots.
-3. **Tabla rollup:** Crea tabla separada para cohorts semanales (weekly_cohort_retention) —cardinalidad baja 85%.
+En production, la combinación de ambas es ideal: **modelo incremental dbt** actualiza cohorts históricos con batch diario, mientras que **materialized view** mantiene los últimos 7 días en tiempo real.
 
-En el proceso [Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/es/verianalizi) de Roibase, integramos estrategia de segmentación con attribution de fuente de adquisición —la retención se vincula directamente con desempeño de canal.
+## Particionamiento y Clustering: Reducir Costo de Query en 97%
 
-## Monitoreo y Detección de Regresión
+Sin particionar y clusterizar tablas cohort, BigQuery escanea toda la tabla en cada query. En una tabla cohort de 1TB (2 años de datos), una sola consulta "mostrar cohort de enero 2026" escanea 1TB, facturando $5. Con partition + cluster, la misma query escanea 8GB, pagando $0.04.
 
-Monitorea el pipeline cohort en production con estas métricas:
+**Estrategia de particionamiento:** particiona por `cohort_date` con granularidad diaria. Cuando BigQuery ve un filtro de partición en la query, escanea solo las particiones relevantes.
 
-- **Query slot time:** El uso de slots en refresh diario —un aumento súbito indica explosión de cardinalidad o pérdida de partition pruning.
-- **Row count delta:** Filas agregadas en cada refresh —más de lo esperado significa riesgo de eventos duplicados.
-- **Retention rate stddev:** Un cambio >10% en retención del Día 1 señala problema de calidad de datos.
-
-Agrega estos checks como tests en dbt:
-
-```yaml
-tests:
-  - dbt_utils.expression_is_true:
-      expression: "retention_rate BETWEEN 0 AND 1"
-  - dbt_utils.recency:
-      datepart: day
-      field: cohort_date
-      interval: 1
+```sql
+CREATE OR REPLACE TABLE `project.dataset.cohort_retention`
+PARTITION BY cohort_date
+CLUSTER BY day_n, metric_name
+AS
+SELECT * FROM `project.dataset.cohort_retention_temp`;
 ```
 
-Si falla un test, activa alerta Slack/PagerDuty —sin esperar revisión manual.
+**Clustering:** dentro de cada partición, designa los campos filtrados frecuentemente (ej. `day_n`, `metric_name`) como clusters. BigQuery aplica block-level pruning. Una query "mostrar retención day_7 + métrica active_users" escanea solo los bloques relevantes.
 
-La arquitectura de tabla cohort traslada análisis de retención de "consulta ad-hoc" a "data product de production". Refresh incremental con materialized view, partition pruning, optimización de slots con pre-agregado —cada capa reduce costos 10x. Analizar retención sobre millones de usuarios y miles de millones de eventos ahora se resume en query de dashboard en 100ms. Decidir qué patrones de retención monitorear sigue siendo tu trabajo —pero procesar datos a esa velocidad ya no es un problema de ingeniería.
+Ejemplo concreto: 365 particiones (diarias), cada una de 3GB. Sin clustering, un filtro "day_7" escanea 365 particiones × 3GB = 1TB. Con clustering, solo se leen los bloques `day_n=7`, totalizando 12GB. Diferencia de costo: $5 → $0.06.
+
+**Anti-pattern:** no clusterices por `user_id`. El análisis cohort es agregación a nivel cohort, no a nivel usuario. Ordenar por `user_id` no ayuda al query planner y reduce la eficiencia de cache.
+
+## Resolución de Identidad para Precisión de Cohort
+
+La precisión del análisis cohort depende de la precisión de `user_id`. Cuando una sesión basada en cookies + una sesión post-login pertenecen al mismo usuario, un JOIN ingenuo crea dos registros cohort distintos. Resolvemos este problema con [First-Party Data & Arquitectura de Medición](https://www.roibase.com.tr/es/firstparty): construimos un identity graph entre `client_id` anónimo y `user_id` autenticado.
+
+```sql
+-- Tabla de resolución de identidad
+CREATE TABLE `project.dataset.identity_graph` (
+  canonical_user_id STRING,
+  client_id STRING,
+  user_id STRING,
+  merged_at TIMESTAMP
+)
+PARTITION BY DATE(merged_at)
+CLUSTER BY canonical_user_id;
+
+-- Uní con query cohort
+WITH resolved_users AS (
+  SELECT 
+    COALESCE(ig.canonical_user_id, e.user_id) AS user_id,
+    e.event_date,
+    e.event_name
+  FROM events e
+  LEFT JOIN identity_graph ig 
+    ON e.client_id = ig.client_id OR e.user_id = ig.user_id
+)
+SELECT 
+  DATE_TRUNC(u.created_at, DAY) AS cohort_date,
+  DATE_DIFF(r.event_date, u.created_at, DAY) AS day_n,
+  COUNT(DISTINCT r.user_id) AS retained_users
+FROM resolved_users r
+JOIN users u ON r.user_id = u.user_id
+GROUP BY 1, 2;
+```
+
+Sin resolución de identidad, los cohorts se inflan 12-18% (un usuario se registra con dos IDs distintos). Este error distorsiona métricas de retención: el denominador (tamaño del cohort) crece pero el numerador (actividad en day_n) permanece igual, haciendo parecer la retención más baja.
+
+## Monitoreo de Costo de Query: Monitoreo de Production con INFORMATION_SCHEMA
+
+Después de construir la arquitectura cohort, debes optimizar continuamente el costo de queries. La tabla `INFORMATION_SCHEMA.JOBS` de BigQuery muestra cuántos bytes escanea cada query, utilización de slots y costo total.
+
+```sql
+SELECT
+  user_email,
+  query,
+  total_bytes_processed / POW(10, 12) AS tb_processed,
+  (total_bytes_processed / POW(10, 12)) * 5 AS cost_usd,
+  total_slot_ms / 1000 / 60 AS slot_minutes
+FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+  AND statement_type = 'SELECT'
+  AND query LIKE '%cohort_retention%'
+ORDER BY total_bytes_processed DESC
+LIMIT 20;
+```
+
+Esta query lista las queries a tablas cohort de los últimos 7 días ordenadas por costo. Si un panel de dashboard se gatilla 500 veces diarias y escanea 80GB cada vez (indica falta de filtro de partición), genera $200 de costo diario. Agregar un filtro `WHERE cohort_date >= CURRENT_DATE() - 30` en la query del panel reduce el costo a $6.
+
+**Checklist de production:**
+- [ ] ¿Todas las tablas cohort están particionadas por `cohort_date`?
+- [ ] ¿`day_n` y `metric_name` están clusterizados?
+- [ ] ¿El job incremental de dbt se ejecuta diariamente?
+- [ ] ¿La materialized view está limitada a ventana de 90 días?
+- [ ] ¿Las queries del dashboard tienen filtro `WHERE cohort_date >= ...`?
+- [ ] ¿Se recopila reporte de costo semanal con `INFORMATION_SCHEMA`?
+
+Cuando la arquitectura cohort está correctamente implementada, el análisis de retención en dashboard alcanza madurez production: 100M eventos diarios, 5 segundos de tiempo de query, $10 de costo mensual de compute. Pero esta arquitectura requiere resolución de identidad first-party, estandarización de esquema de eventos y disciplina en pipeline dbt — por eso retention engineering es una plataforma, no SQL de una sola vez.
