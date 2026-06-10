@@ -1,90 +1,116 @@
 ---
-title: "Bayesian Price Optimization в мобильных F2P"
-description: "Почему переход от классического A/B-тестирования к Bayesian estimation критичен для IAP-тестов? Posterior-обновления, сегмент-специфичные ценовые лестницы, ранние механизмы принятия решений."
-publishedAt: 2026-05-10
-modifiedAt: 2026-05-10
+title: "Bayesian Price Optimization in Mobile F2P"
+description: "Managing IAP price tests with posterior estimation: segmentation, price ladder A/B, false positive filtering, and posterior confidence intervals."
+publishedAt: 2026-06-10
+modifiedAt: 2026-06-10
 category: gaming
-i18nKey: gaming-002-2026-05
-tags: [f2p-monetization, bayesian-testing, iap-pricing, mobile-gaming, price-optimization]
+i18nKey: gaming-002-2026-06
+tags: [bayesian-optimization, iap-pricing, f2p-monetization, price-testing, posterior-estimation]
 readingTime: 8
 author: Roibase
 ---
 
-В мобильной F2P-экономике ценовая оптимизация по-прежнему работает по принципу «давайте поднимем самый продаваемый пакет с $4.99 на $5.99». В 2026 году студии, оптимизирующие ставки в Apple Search Ads с миллисекундной точностью, все еще теряют месяцы на классические A/B-тесты IAP-лестниц. Когда Bayesian estimation используется не просто для захвата нескольких процентов маржи, а для раннего принятия решений и построения сегмент-специфичных лестниц, LTV растет в среднем на 12–18% за тест. В этой статье мы разбираем логику posterior-обновления, как интегрировать сегментацию и почему Bayesian-фреймворк незаменим в мобильном контексте.
+Mobile F2P games still run IAP price optimization using frequentist A/B logic: two price packages, 14 days, p<0.05 threshold. This approach causes statistical power loss in small segments (VIP users, whales), killing the chance to make early decisions. Bayesian price optimization updates posterior distributions, enabling both faster decision-making and confidence even with small samples. This article explains how to manage IAP price ladder tests using posterior estimation, segmentation boundaries, false positive filtering, and revenue uplift modeling.
 
-## Почему классическое A/B-тестирование цен отстает
+## Where Frequentist A/B Breaks Down in IAP Testing
 
-Во фреквентистском A/B-тесте доведение изменения цены до статистической значимости может потребовать 5000–10000 транзакций (p=0.05, мощность=0.80). В среднесегментной F2P-игре с 200–300 платящими пользователями в день это означает 25–30 дней ожидания на один вариант. За это время выходит новый Season Pass, меняется календарь событий, выходят обновления конкурентов — поддержание контрольной группы становится невозможным.
+Classic A/B testing requires fixed sample size. Since IAP purchase rates sit at 2–5%, gathering enough conversion volume for a price test takes 3–4 weeks. In whale segments (top %1 spenders), the rate drops further, stretching test duration to 6 weeks. The problem: the game meta shifts, new events launch, seasonal periods end — 6 weeks later, your data is no longer representative.
 
-Вторая проблема классического подхода — бинарная структура решения: либо «прирост цены незначим, вернемся обратно», либо «значим, применяем». Но на мобильных устройствах каждая когорта имеет разную ценовую эластичность. Органические пользователи iOS конвертируют на $9.99, тогда как платные установки на Android на 40% чувствительнее. Единственное p-value вынуждает все сегменты в один вывод.
+Frequentist logic also produces binary decisions: winner/loser. But IAP pricing effects aren't monotonic. Moving from $4.99 to $6.99 might drop conversion by 8% while boosting average revenue per paying user (ARPPU) by 22%, yielding +12% net revenue uplift. This tradeoff disappears from frequentist p-values; you'd need post-hoc calculation.
 
-Третья сложность — невозможность раннего завершения. Фреквентистский тест обязан продолжаться до достижения размера выборки — даже если на 2-й неделе posterior-уверенность достигла 92%, нужно ждать еще 4 недели из-за недостатка данных. Это задержка упускает LTV-выгоду, которая уже могла быть применена к расписанию live ops.
+Bayesian approach combines prior belief (e.g., "this segment typically monetizes best at $5–7") with data to generate posterior distribution. It updates posterior from day one, delivering early signals at 500 impressions. You can stop early, cutting test duration in half while using posterior confidence intervals to design risk-aware strategies (aggressive vs. conservative).
 
-## Как работает Posterior-оценка в Bayesian-фреймворке
+## Prior and Likelihood Setup in Price Ladder Testing
 
-Bayesian-подход рассматривает изменение цены конверсии (или среднего дохода на платящего пользователя) не как фиксированное число, а как **вероятностное распределение**. До начала теста есть prior-убеждение: распределение CVR из старой цены. С каждой новой транзакцией posterior-распределение обновляется по теореме Байеса:
+A price ladder test looks like: current price $4.99, test variants $5.99, $6.99. You maintain separate posterior distributions for each: `P(θ | data)` — where θ = true conversion rate or expected revenue per user (ERPU).
 
-```
-P(θ | data) ∝ P(data | θ) × P(θ)
-```
+**Prior selection:**
+Beta(α, β) distribution works well for conversion rates. If you have historical data for the segment (e.g., last 90 days: %3.2 conversion, 1200 impressions), convert it to `α = conversions`, `β = non-conversions` in your prior. Without historical data, use uninformative Beta(1,1) — uniform distribution. For whale segments, informative priors are preferred since sample size will be small; priors stabilize posteriors.
 
-Здесь θ = истинная конверсия (или ARPPU), data = наблюдаемые покупки. Обычно используется Beta(α, β) как prior (подходит для бинарных исходов в IAP). Ежедневно параметры α и β обновляются с учетом числа новых транзакций.
-
-На практике это выглядит так: вы тестируете Starter Pack, подняв цену $4.99 на $5.99. Prior-убеждение: CVR ~2.8% (Beta(280, 9720) — выведено из 10000 impressions). За первые 3 дня вариант $5.99 получил 600 impressions, 14 конверсий. Posterior теперь Beta(294, 10306). Доверительный интервал сузился, средний CVR обновился до 2.78%. На 10-й день — 2000 impressions, 48 конверсий — posterior Beta(328, 11672), CVR 2.74%. Пока фреквентистский тест говорит «недостаточно выборки», Bayesian-подход заявляет: «Вероятность того, что новая цена имеет более низкий CVR, 87% — но компенсирует ли это увеличение ARPPU?»
-
-### Метрика решения: Expected Revenue Gain
-
-Снижение CVR — не единственное основание для решения. В Bayesian-фреймворке ключевая метрика — **expected revenue per impression** (ERPI):
+**Likelihood:**
+Each price variant is a Bernoulli trial. User sees IAP, purchases or doesn't. Observed data: n impressions, k conversions. Posterior update:
 
 ```
-ERPI = E[CVR × Price]
+Posterior = Beta(α + k, β + n - k)
 ```
 
-Для обоих вариантов вы берете Monte Carlo-выборки из posterior-распределения (10000 итераций), в каждой итерации сравниваете CVR_new × $5.99 с CVR_old × $4.99. Если более 85% итераций благоприятны новой цене (т.е. P(ERPI_new > ERPI_old) > 0.85), решение — «масштабировать». Если менее 15% — откатываться.
+This updates daily as new impressions arrive. Example scenario:
 
-Этот подход позволяет принимать решение за 10–12 дней на 1500–2000 транзакциях. Это на 60% быстрее, чем классический A/B за 4–5 недель.
+| Day | Price | Impressions | Conversions | Posterior |
+|-----|-------|-------------|-------------|-----------|
+| 1   | $5.99 | 120         | 4           | Beta(5, 117) |
+| 3   | $5.99 | 380         | 13          | Beta(14, 368) |
+| 7   | $5.99 | 820         | 28          | Beta(29, 793) |
 
-## Построение сегмент-специфичных ценовых лестниц
+By day 7, posterior mean = 29/(29+793) = %3.53. Credible interval: [%2.4, %4.9] (95% HPD).
 
-Реальная сила Bayesian-оценки проявляется при объединении с форматом **многорукого бандита**. Для каждого сегмента ведется отдельный posterior, каждый день Thompson Sampling динамически определяет, какой ценовой вариант получит трафик.
+## Segmentation and Multi-Armed Bandit Integration
 
-Конкретный сценарий: 4 сегмента — (1) Organic iOS, (2) Paid iOS, (3) Organic Android, (4) Paid Android. Вы тестируете 3 цены Starter Pack: $4.99, $5.99, $6.99. Итого 12 posterior-распределений (4 сегмента × 3 цены).
+Running price ladder tests on your entire user base is inefficient. Target highest-revenue-potential segments: new whales (first IAP by D7, $20+ spend), returning spenders (2+ purchases in last 14 days), event-triggered spenders (activated by new season pass). Maintaining separate posteriors per segment increases model complexity but gains sample efficiency.
 
-На первой неделе каждому сегменту распределяются все 3 варианта равномерно (exploration). Со 2-й недели включается Thompson Sampling: при каждом impression для того сегмента берется выборка из 3 posterior'ов, вариант с наибольшим ERPI получает трафик. Если на Organic iOS быстро лидирует $6.99, пользователи этого сегмента начинают видеть эту цену на 70%+ случаев. На Paid Android $5.99 оказывается оптимальным — трафик туда смещается.
+Combining MAB with Bayesian optimization enables dynamic allocation: assign more traffic to the price point with highest posterior mean (exploit), while giving minimum traffic to those with high posterior variance (explore). Thompson Sampling does this automatically by sampling from posteriors and selecting the highest:
 
-| Сегмент | Оптимальная цена (день 14) | Posterior-уверенность | Дневное распределение |
-|---|---|---|---|
-| Organic iOS | $6.99 | 91% | 78% |
-| Paid iOS | $5.99 | 88% | 74% |
-| Organic Android | $5.99 | 85% | 71% |
-| Paid Android | $4.99 | 82% | 69% |
+```python
+def thompson_sampling(posteriors):
+    samples = [beta.rvs(p['alpha'], p['beta']) for p in posteriors]
+    return np.argmax(samples)
+```
 
-Такая структура захватывает сегмент-специфичную ценовую эластичность, генерируя на 15–20% больше revenue, чем единая глобальная цена. При добавлении нового сегмента (например, «платящие пользователи Tier-2 GEO») вы для него создаете новый prior, и многорукий бандит автоматически начинает тестирование по этому направлению.
+This runs at each impression allocation. After 10,000 impressions, the best price point naturally captures most traffic, but others remain alive — if new data arrives, posterior updates and a prior loser can move to first.
 
-## Механизм раннего решения и минимизация сожаления
+## False Positive Filtering and Posterior Confidence Intervals
 
-Критальное преимущество Bayesian-фреймворка в мобильном контексте — **последовательное принятие решений**. Posterior обновляется ежедневно, проверяется правило решения. Если P(ERPI_new > ERPI_old) > 0.90, вы говорите: «Мы достаточно уверены, перенаправим оставшийся трафик на выигравший вариант». Фреквентистский тест ждет «пока не соберется sample size», а Bayesian-подход принимает решение на 7-й день, масштабируя выигравшую цену на оставшихся 3 недели.
+Bayesian tests have no "statistical significance," only posterior probability: `P(θ_A > θ_B | data)`. If >%95, price A beats price B. But beware: high posterior probability doesn't guarantee operational gains if effect size is tiny.
 
-Способность принимать ранние решения минимизирует **cumulative regret** (интегральное сожаление). Regret = «сколько мы заработали бы, зная оптимальную цену» − «что мы заработали во время теста». При классическом A/B половина трафика 30 дней идет на субоптимальный вариант; при Bayesian Thompson Sampling с 10-го дня 80% трафика переходит на победителя. Интеграл regret'а падает на 60–70%.
+**Minimum Detectable Effect (MDE) threshold:**
+Revenue uplift <5% won't justify implementation cost (app store compliance, new SKU, localization). Decision rule:
 
-На практике, за 2–3 недельный цикл тестирования:
-- Классический A/B: 21 день × 50% субоптимальный трафик = 10.5 дневных эквивалентов потерь
-- Bayesian банdit: 7 дней exploration + 14 дней 15% субоптимальный = 2.1 дневных эквивалентов потерь
+```
+IF P(uplift > 5%) > 0.95 AND posterior_mean_uplift > 5%:
+    DEPLOY
+ELSE:
+    CONTINUE or STOP
+```
 
-Эта разница трансформируется в десятки тысяч долларов дневного revenue-impact'а на высокой DAU.
+This dual filter controls false positives. Say $5.99's posterior mean uplift is +%3.2 but credible interval is [-%1.2, +%7.8] — too early to decide. After 2 more weeks, the interval tightens to [+%2.1, +%5.6] and mean exceeds 5%; now deploy.
 
-## Компромиссы и типичные ошибки
+**Posterior predictive check:**
+Post-deployment, simulate the deployed price's performance against posterior predictive distribution. If observed revenue sits outside (e.g., below the %99th percentile), segment composition has shifted or external factors emerged (new competitor game, Apple pricing policy change). Invalidate that posterior and restart with fresh prior.
 
-Bayesian price optimization не свободна от рисков. Выбор prior критичен: слишком узкий prior (например, Beta(5000, 195000) — «CVR однозначно 2.5%») медленно обновляется при новых данных. Слишком широкий prior (Beta(1, 1) — uniform) затягивает exploration. Здоровое начало: преобразовать последние 30 дней транзакций из старой цены в Beta-параметры (method of moments).
+## Revenue Uplift Modeling and Operational Decision Tree
 
-Вторая ошибка — с ростом числа сегментов convergence многорукого бандита замедляется. 4 сегмента × 3 цены = 12 рук; каждой нужно 200–300 выборок, итого 2400–3600 транзакций — на игре с 300 платящими пользователями в день это 10–12 дней. Если расширить до 8 сегментов × 4 цены = 32 рука, convergence растягивается на 4–5 недель. Решение: иерархический Bayes, позволяющий сегментам делиться информацией (например, prior-убеждение: «Tier-1 GEO имеют похожую эластичность»).
+An IAP price test's final metric is segment-level ERPU (expected revenue per user) gain, not conversion rate. Model ERPU in Bayesian terms:
 
-Третий момент внимания: IAP-лестница не тестируется изолированно, она переплетена с расписанием live ops. Ценовая эластичность меняется во время событий (эффект срочности). Нужно обновлять posterior быстрее в дни событий, но не сбрасывать prior после завершения события. Иначе информация «$6.99 оптимальна во время события» протекает в обычные дни, приводя к субоптимальным решениям.
+```
+ERPU = P(conversion) × Price
+Posterior ERPU = E[θ] × Price
+```
 
-Наконец: Bayesian-подход не дает фреквентистские гарантии. Вы говорите «P(θ > x) = 0.95», но это 95%-й credible interval, а не confidence interval. Если регулятор или юридические требования (например, регулирование loot box) требуют фреквентистские метрики, вам нужно подкреплять Bayesian результаты bootstrap'ом.
+Calculate posterior ERPU for each price point, pick the highest. But tradeoff exists: higher price cuts conversion, lower price cuts ARPPU. To find the optimum, test the entire price ladder simultaneously (3–4 variants) and compare posterior ERPU distributions.
 
-## Привязка сегмент-специфичных ценовых лестниц к измерениям в Roibase
+**Operational decision tree:**
 
-Для мобильных gaming-студий price optimization — это не изолированный тест, а часть всего конвейера [App Store Optimization](https://www.roibase.com.tr/ru/aso) и attribution. Bayesian posterior'ы используются не только для решений о цене, но и для тестирования ASO-креативов: какая пользовательская страница приложения дает выше IPM для какого сегмента, какая оптимальная IAP-лестница для того сегмента — объединяя два потока данных, вы получаете на 30% более точные когорт-уровневые LTV-прогнозы.
+1. **Day 3:** Posterior variance still high? Yes → adjust traffic allocation (MAB). No → check for early winner signal.
+2. **Day 7:** Is best price point's posterior probability >%90? Yes → soft launch (whale segment %10). No → continue 7 more days.
+3. **Day 14:** Is posterior credible interval tight (<%3 range) and uplift >%5? Yes → full deploy. No → test inconclusive, run meta analysis.
 
-Интеграция Bayesian-фреймворка в infrastructure измерений означает как раннее принятие решений, так и построение сегмент-специфичных ценовых лестниц. В 2026 году выигрывающие мобильные F2P-студии — это те, которые превратили ценовое тестирование из «ежемесячной оптимизации» в систему, которая ежедневно обновляет posterior-распределение, Thompson Sampling распределяет трафик и минимизирует regret.
+This tree resolves tests in median 10 days (vs. 21 frequentist). Even narrow populations like whale segments get decisions by day 14 because informative priors narrow posteriors fast.
+
+Meta analysis: if test inconclusive, micro-segment within the segment (iOS vs. Android, tier-1 vs. tier-2 geo, D7 vs. D30 age). Calculate posterior separately for each, find where signal is strongest, apply segment-specific pricing. This parallels [App Store Optimization](https://www.roibase.com.tr/ru/aso) — each segment sees different creative; here, different price.
+
+## Long-Term Price Calibration via Rolling Posteriors
+
+Bayesian price optimization isn't one-off testing; it's continuous calibration. New cohorts arrive monthly, meta shifts, seasonal events alter posteriors. Apply rolling posterior logic: update posterior weekly using last 60 days of data, fade old prior (exponential decay).
+
+```python
+def update_rolling_posterior(current_posterior, new_data, decay=0.95):
+    alpha_new = current_posterior['alpha'] * decay + new_data['conversions']
+    beta_new = current_posterior['beta'] * decay + new_data['non_conversions']
+    return {'alpha': alpha_new, 'beta': beta_new}
+```
+
+This system doesn't reset posterior post-price-change; it adds new price data to the old posterior. History isn't lost; current patterns dominate.
+
+Over time, extract price elasticity curve: plot posterior mean ERPU for each price point, fit curve, measure marginal impact per $1 increase. If curve plateaus at $6.99, don't test higher prices — instead, try bundles (2 IAPs together at 15% discount). Test this with Bayesian too, prior bundle conversion = 70% of single IAP (industry heuristic), update with posterior data.
+
+Bayesian price optimization transforms static IAP A/B into a dynamic learning system. Posterior estimation lets you decide early even on small segments while controlling false positives and maximizing revenue uplift. On narrow populations like whales, frequentist fails; Bayesian prior + likelihood solves it. Rolling posteriors auto-update through seasonal swings or meta shifts. Result: halved test duration, better decisions, lower operational cost.

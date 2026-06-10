@@ -1,132 +1,116 @@
 ---
 title: "Bayesian Price Optimization in Mobile F2P"
-description: "Segmented IAP pricing via posterior estimation: probabilistic modeling for conversion, revenue, and LTV balance in F2P monetization testing."
-publishedAt: 2026-05-26
-modifiedAt: 2026-05-26
+description: "Managing IAP price tests with posterior estimation: segmentation, price ladder A/B, false positive filtering, and posterior confidence intervals."
+publishedAt: 2026-06-10
+modifiedAt: 2026-06-10
 category: gaming
-i18nKey: gaming-002-2026-05
-tags: [f2p-monetization, bayesian-testing, iap-optimization, price-ladder, mobile-gaming]
+i18nKey: gaming-002-2026-06
+tags: [bayesian-optimization, iap-pricing, f2p-monetization, price-testing, posterior-estimation]
 readingTime: 8
 author: Roibase
 ---
 
-F2P mobile games still price IAP by intuition: copy the $0.99, $4.99, $9.99 ladder, lower price if conversion dips, add "more value" if it rises. Yet the same $4.99 pack might show 2.1% conversion in organic users, 1.4% in UA cohorts, and 8.7% in D30+ whales. Classical A/B testing breaks down here: sample sizes explode, wait times hit 6 weeks, or you're stuck choosing between revenue and conversion without clarity. Bayesian price optimization solves all three simultaneously: posterior distributions capture early signals, segment-level LTV effects are modeled explicitly, and revenue-conversion tradeoffs are managed within a probabilistic framework.
+Mobile F2P games still run IAP price optimization using frequentist A/B logic: two price points, 14 days, p<0.05. This approach fails in small segments (VIP users, early spenders, whales)—statistical power drops, decision-making becomes guesswork. Bayesian price optimization updates posterior distributions, enabling faster decisions in constrained sample sizes while building confidence in small cohorts. This article covers how to manage IAP price ladder tests using posterior estimation, segmentation boundaries, false positive filtering, and revenue uplift modeling.
 
-## The Frequentist A/B Testing Bottleneck in IAP Pricing
+## Where Frequentist A/B Breaks Down in IAP Testing
 
-Standard A/B tests calculate sample size based on baseline conversion and desired relative lift. A 2% baseline, 10% relative lift goal, and 80% power require ~15,000 exposures. For mid-tier IAP, that's 4–6 weeks. As test duration stretches:
+Classical A/B testing requires fixed sample sizes. Since IAP conversion rates sit in the 2–5% band, accumulating sufficient purchase volume for a price test takes 3–4 weeks. In whale segments (top 1% spenders), conversion drops further; test duration stretches to 6 weeks. The problem: game meta shifts, new events launch, seasonal windows close—data collected 6 weeks later isn't representative anymore.
 
-- Meta campaign CPIs rise (creative fatigue)
-- Organic cohort mix drifts (holiday effects, ASO rank changes)
-- Competitor launches new events, demand elasticity breaks
+Frequentist logic also produces binary decisions: win/lose. But IAP price impact isn't monotonic. Moving from $4.99 to $6.99 might drop conversion 8% while average revenue per paying user (ARPPU) rises 22%, yielding +12% net revenue uplift. This tradeoff doesn't surface in frequentist p-values; you're forced into post-hoc analysis.
 
-More critically, the revenue-conversion split: moving from $2.99 to $4.99 drops conversion from 2.1% to 1.7% but lifts revenue per mille by 42%. Which metric gets the p-value? Most studios say "we gained revenue" and move on. But D7 LTV modeling reveals the whale segment churns 31% harder under the new price, hurting retention.
+Bayesian approaches combine prior belief (e.g., "this segment monetizes best around the $5–7 band") with observed data, generating posterior distributions. Testing begins updating posteriors immediately—at 500 impressions you have interim results. Early stopping cuts test duration in half; posterior confidence intervals let you design aggressive or conservative decision strategies based on measured risk.
 
-Bayesian methods keep conversion and revenue in the same posterior model: prior belief (beta distribution from past tests) + observations (new data) → posterior (updated belief). By day 3, the model says "73% likely $4.99 is better." By day 7, that rises to 89%. By day 10, regret drops below 1% and you stop the test.
+## Prior and Likelihood Setup for Price Ladder Tests
 
-## Building a Prior: Historical IAP Data Over Industry Benchmarks
+Price ladder testing structure: current price $4.99, test variants $5.99, $6.99. Maintain separate posterior distributions for each: `P(θ | data)`—where θ = true conversion rate or expected revenue per user (ERPU).
 
-A Bayesian test's quality depends on a well-specified prior. Most tutorials say "use a uniform prior, let the data speak," but if you have 6 months of IAP history in mobile F2P, ignoring that is wasteful. Example prior-building workflow:
+**Prior selection:**
+Beta(α, β) distributions work well for conversion rates. If you have historical data for a segment (e.g., 3.2% conversion over 90 days, 1200 impressions), translate that into `α = conversions`, `β = non-conversions`. Without prior data, use uninformative Beta(1,1)—uniform distribution. For whale segments, informative priors are standard since sample sizes will be small; prior data stabilizes posterior estimates.
 
-**Step 1:** Extract all IAP tier conversion rates from the past 6 months. $0.99–$2.99 conversions cluster between 1.8%–3.2%, median 2.4%. Beta distribution parameters alpha=24, beta=976 reflect this empirically (mean = alpha/(alpha+beta) ≈ 0.024).
+**Likelihood:**
+Each price variant is a Bernoulli trial. User sees IAP, converts or doesn't. Observed data: n impressions, k conversions. Posterior update:
 
-**Step 2:** Add segment-level variance. Organic cohorts show 18% higher conversion than UA cohorts historically (alpha=28, beta=972). Whale segment (D30+ payers) has separate priors: ~6.8% conversion yields alpha=68, beta=932.
-
-**Step 3:** Encode price elasticity. Past data shows $1.99 → $2.99 cuts conversion by ~14%. If your new test moves $2.99 → $3.99, bake that slope into the prior:
-
-```python
-def price_elasticity_prior(base_price, new_price, base_conversion):
-    slope = -0.14 / 1.00  # $1 increase → 14% drop
-    delta = new_price - base_price
-    expected_drop = slope * delta
-    adjusted_conversion = base_conversion * (1 + expected_drop)
-    alpha = adjusted_conversion * 1000
-    beta = 1000 - alpha
-    return alpha, beta
+```
+Posterior = Beta(α + k, β + n - k)
 ```
 
-This grounds the prior in your game's cohort behavior, not external "industry 2.5%" claims.
+This formula updates daily as new impressions arrive. Example scenario:
 
-## Posterior Estimation and Segmented Price Ladders
+| Day | Price | Impressions | Conversions | Posterior |
+|-----|-------|-------------|-------------|-----------|
+| 1   | $5.99 | 120         | 4           | Beta(5, 117) |
+| 3   | $5.99 | 380         | 13          | Beta(14, 368) |
+| 7   | $5.99 | 820         | 28          | Beta(29, 793) |
 
-Test design: starter pack $2.99 vs $3.99, 7-day run across UA traffic, 50/50 split. Crucially, split by segment:
+By day 7, posterior mean = 29/(29+793) = 3.53%. Credible interval: [2.4%, 4.9%] (95% HPD).
 
-| Segment | Prior α | Prior β | Target N |
-|---------|---------|---------|----------|
-| D0–D7 organic | 28 | 972 | 4000 |
-| D0–D7 UA | 22 | 978 | 6000 |
-| D7+ non-payer | 18 | 982 | 3000 |
-| D7+ past buyer | 68 | 932 | 2000 |
+## Segmentation and Multi-Armed Bandit Integration
 
-Posterior updates separately per segment. By day 3:
+Running price ladder tests across your entire user base is inefficient. Target segments with highest revenue potential: nascent whales (D7 first IAP, $20+ spend), returning spenders (2+ purchases in last 14 days), event-triggered spenders (new season pass triggers). Maintaining separate posteriors per segment increases model complexity but gains sample efficiency.
 
-**Organic segment:** $2.99 yields 87 conversions / 2100 exposures; $3.99 yields 71 / 2050. Posterior: α₁=28+87=115, β₁=972+2013=2985 vs α₂=28+71=99, β₂=972+1979=2951. Monte Carlo sampling (10,000 draws) gives P($2.99 better) = 78%. Revenue-wise: $2.99 × 87 = $260, $3.99 × 71 = $283. Revenue posteriors (modeled as gamma) give P($3.99 revenue superior) = 61%.
-
-Decision point: if organic segment prioritizes conversion, keep $2.99; if revenue-focused, wait 2 more days. UA segment shows $3.99 clearly winning (83% posterior probability), so terminate that variant early and shift traffic to $3.99.
-
-**Dynamic price ladder per segment:** Once test concludes, your IAP inventory becomes:
-
-- Organic D0–D3: $2.99 starter
-- UA D0–D3: $3.99 starter
-- D7+ past buyer: $7.99 booster (from separate posterior)
-- Whale (D30+, $50+ LTV): $14.99 premium bundle
-
-This approach optimizes four elasticity curves instead of one global price. Combined with [App Store Optimization](https://www.roibase.com.tr/en/aso) custom product pages, IAP personalization deepens: creative value props align with tier.
-
-## Thompson Sampling for Multi-Armed Bandit Extension
-
-Rather than a fixed 7-day test, Thompson sampling dynamically optimizes during the test window. On each impression, sample from each variant's posterior, show the price with highest expected value. Exploration/exploitation balance updates automatically.
-
-Pseudo-code:
+Combine multi-armed bandit (MAB) with Bayesian optimization for dynamic allocation: allocate more traffic to price points with highest posterior mean (exploit), but allocate minimum traffic to high-variance posterior arms (explore). Thompson Sampling automates this balance by sampling from posteriors and selecting the highest:
 
 ```python
-def thompson_sampling_price(segment, price_variants):
-    posteriors = {p: get_posterior(segment, p) for p in price_variants}
-    samples = {p: np.random.beta(post['alpha'], post['beta']) 
-               for p, post in posteriors.items()}
-    revenue_samples = {p: s * p for p, s in samples.items()}
-    return max(revenue_samples, key=revenue_samples.get)
+def thompson_sampling(posteriors):
+    samples = [beta.rvs(p['alpha'], p['beta']) for p in posteriors]
+    return np.argmax(samples)
 ```
 
-This is especially powerful for 3+ variants: classical A/B with three prices requires 3× sample size, while Thompson sampling automatically zeros out weak variants via posterior updates. By day 10, if $2.99's posterior drops to 9%, its allocation shrinks to 5%—no sample waste.
+This allocation function runs at every impression decision. After 10,000 impressions, the best price point naturally accumulates most traffic, but other variants don't die—if posteriors shift with new data, they can regain volume.
 
-Caveat: if UA supply is finite (say, $5K daily Meta budget), Thompson risks picking conversion-poor variants, inflating CPA and burning budget by noon. Safe implementation: run 50/50 split for 3 days, then enable Thompson once posterior credibility exceeds 80%.
+## False Positive Filtering and Posterior Confidence Intervals
 
-## Revenue vs LTV: Merging Posteriors with Retention Modeling
+Bayesian tests don't rely on "statistical significance"; instead use posterior probability: `P(θ_A > θ_B | data)`. If this probability exceeds 95%, price A outperforms price B. But caution: high posterior probability doesn't guarantee operational gain if effect size is small.
 
-The final layer: LTV projection. $3.99 shows lower conversion but 8% higher D7 retention—its 90-day LTV might exceed $2.99's. Classical A/B never sees this (LTV finalizes at 90 days), but Bayesian posteriors + survival models catch early signals.
+**Minimum Detectable Effect (MDE) threshold:**
+Revenue uplift under 5% means implementation costs (app store compliance, new SKU setup, localization) exceed gain. Decision rule should be:
 
-Setup: For each variant, fit a Cox proportional hazards model over the first 7 days:
+```
+IF P(uplift > 5%) > 0.95 AND posterior_mean_uplift > 5%:
+    DEPLOY
+ELSE:
+    CONTINUE or STOP
+```
+
+This dual filter controls false positives. Example: $5.99's posterior mean uplift is +3.2% but credible interval spans [−1.2%, +7.8%]—too early to decide. Collect 2 more weeks; interval narrows to [+2.1%, +5.6%] with mean >5%—now deploy.
+
+**Posterior predictive check:**
+After deployment, simulate the chosen price's performance using posterior predictive distribution. If observed revenue falls outside this distribution (e.g., below 99th percentile), segment composition shifted or external factors intervened (new competitor game launched, Apple pricing policy changed). Invalidate posterior, restart with new prior.
+
+## Revenue Uplift Modeling and Operational Decision Tree
+
+An IAP price test's true metric isn't conversion—it's segment-level ERPU (expected revenue per user) increase. Model ERPU within Bayesian framework:
+
+```
+ERPU = P(conversion) × Price
+Posterior ERPU = E[θ] × Price
+```
+
+Calculate posterior ERPU per price point, select the highest. But tradeoffs exist: higher price cuts conversion; lower price cuts ARPPU. Find the optimum by testing the entire price ladder simultaneously (3–4 variants), comparing posterior ERPU distributions.
+
+**Operational decision tree:**
+
+1. **Day 3:** Is posterior variance still high? Yes → adjust MAB allocation. No → check for early winner signal.
+2. **Day 7:** Does best price point have >90% posterior probability? Yes → soft launch (10% whale segment). No → continue 7 days.
+3. **Day 14:** Is posterior credible interval narrow (<3% range) and uplift >5%? Yes → full deploy. No → test inconclusive; run meta-analysis.
+
+This tree reaches median decision by day 10 (vs. 21 for frequentist). Even narrow populations like whales yield decisions by day 14 because informative priors narrow posteriors quickly.
+
+Meta-analysis: if test is inconclusive, micro-segment (iOS vs Android, tier-1 vs tier-2 geo, D7 vs D30 cohort age). Calculate posteriors separately per segment, identify where signal is strongest, apply segment-specific price. This parallels [App Store Optimization](https://www.roibase.com.tr/en/aso) logic: each segment sees different creatives; here each sees different pricing.
+
+## Long-Term Price Calibration via Rolling Posterior
+
+Bayesian price optimization isn't one-off testing—it's continuous calibration. New cohorts arrive monthly, meta shifts, seasonal events alter posteriors. Implement rolling posterior logic: update posterior weekly using last 60 days of data, fade old prior with exponential decay.
 
 ```python
-from lifelines import CoxPHFitter
-
-df['price_variant'] = df['variant'].map({'2.99': 0, '3.99': 1})
-cph = CoxPHFitter()
-cph.fit(df, duration_col='days_retained', event_col='churned', 
-        formula='price_variant + segment + paid_d3')
+def update_rolling_posterior(current_posterior, new_data, decay=0.95):
+    alpha_new = current_posterior['alpha'] * decay + new_data['conversions']
+    beta_new = current_posterior['beta'] * decay + new_data['non_conversions']
+    return {'alpha': alpha_new, 'beta': beta_new}
 ```
 
-Output: $3.99 has hazard ratio 0.88 (12% lower churn, p=0.03). Blend into posterior:
+This system doesn't reset posteriors after price changes; it appends new price data to the existing posterior. Past information isn't lost, but current patterns dominate.
 
-**LTV posterior:**
-- $2.99: E[conversion]=0.024, E[D90 retention]=0.34, ARPDAU=$0.12 → LTV = $2.99 × 0.024 + 90 × 0.34 × 0.12 = $3.74
-- $3.99: E[conversion]=0.019, E[D90 retention]=0.38, ARPDAU=$0.15 → LTV = $3.99 × 0.019 + 90 × 0.38 × 0.15 = $5.21
+Long-term, extract price elasticity curves: plot posterior mean ERPU per price point, fit a curve, observe marginal impact of each $1 increase. If the curve plateaus at $6.99, don't test higher—try bundling instead (2 IAPs together at 15% discount). This strategy also tests Bayesian-style, with prior bundle conversion estimated at 70% of single-IAP rates (industry heuristic), updated via posterior.
 
-Monte Carlo across 10,000 iterations: P($3.99 LTV superior) = 91%. This posterior credibility is far stronger than revenue-only analysis. Decision: select $3.99, rebalance IAP stack.
-
-## Tradeoff: Model Complexity vs Execution Speed
-
-Bayesian IAP optimization carries three operational costs:
-
-**1. Prior maintenance:** New events, meta shifts, competitor launches shift prior distributions. Re-calibration every 6 months is mandatory. Small studios without data scientists can't sustain this.
-
-**2. Segment granularity:** 8 segments × 3 prices = 24 posteriors to track. Small segments (e.g., whales) have high posterior variance; confidence intervals stay wide. Practical fix: segment whales separately, run classical A/B there, apply Bayesian to others.
-
-**3. Platform fragmentation:** iOS vs Android price sensitivity differs. App Store shows 23% higher $2.99 conversion than Android (per App Annie 2025 data). Maintain separate posteriors per platform or pool them? Separate increases sample fragmentation; pooled introduces platform bias. Solution: hierarchical Bayesian model with platform as random effect.
-
-Still, Bayesian beats waiting 4+ weeks for A/B. Tests terminate in 10 days, revenue impact appears week 2, LTV projection updates by day 30. Frequentist timelines stretch 8–12 weeks.
-
-## Conclusion: Probabilistic Pricing Mindset
-
-Mobile F2P pricing is no longer binary but continuous posterior updating. Instead of solving conversion and revenue with separate p-values, model both probabilistically, minimize regret, shorten test windows, and enable segment-level optimization. Bayesian methods require prior-building discipline but unlock early stopping, LTV integration, and Thompson sampling for dynamic allocation. If your IAP stack exceeds 5 tiers and monthly UA spend surpasses $100K, Bayesian test infrastructure is no longer optional—it's essential.
+Bayesian price optimization transforms static A/B tests into dynamic learning systems. Posterior estimation enables early decisions in tiny segments while controlling false positives and maximizing revenue uplift. For whale segments and event-triggered spenders—populations too narrow for frequentist methods—Bayesian priors and likelihood structures solve the power problem. Rolling posteriors continuously calibrate pricing; seasonal shifts or meta changes automatically flow into updates. Result: test duration halves, decision quality rises, operational costs drop.

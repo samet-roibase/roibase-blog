@@ -1,132 +1,116 @@
 ---
 title: "Mobile F2P'de Bayesian Price Optimization"
-description: "IAP fiyat testlerinde posterior estimation ile segmentli optimizasyon: conversion, revenue, LTV dengesi için olasılıksal model yaklaşımı."
-publishedAt: 2026-05-26
-modifiedAt: 2026-05-26
+description: "IAP fiyat testlerini posterior estimation ile yönetmek: segmentasyon, price ladder A/B, false positive filtreleme ve posterior güven aralığı."
+publishedAt: 2026-06-10
+modifiedAt: 2026-06-10
 category: gaming
-i18nKey: gaming-002-2026-05
-tags: [f2p-monetization, bayesian-testing, iap-optimization, price-ladder, mobile-gaming]
+i18nKey: gaming-002-2026-06
+tags: [bayesian-optimization, iap-pricing, f2p-monetization, price-testing, posterior-estimation]
 readingTime: 8
 author: Roibase
 ---
 
-F2P mobile oyunlarda IAP fiyatlandırması hâlâ sezgiyle yürüyor: $0.99, $4.99, $9.99 ladder'ı kopyalanır, conversion düşükse fiyat indirilir, yüksekse "daha fazla value ekleyelim" denir. Ama aynı $4.99 paketi organik kullanıcıda %2.1, UA cohort'unda %1.4, D30+ whale segment'inde %8.7 conversion gösterebilir. Klasik A/B test burada yetersiz kalır: ya sample size patlar ya bekleme süresi 6 haftayı bulur ya da revenue/conversion tradeoff'unda hangi metriğe optimize edeceğiniz net olmaz. Bayesian price optimization bu üç sorunu aynı anda çözer: posterior distribution ile erken sinyal toplar, segment-level LTV etkisini modeller, revenue-conversion dengesini probabilistic çerçevede yönetir.
+Mobile F2P oyunlarda IAP fiyat optimizasyonu hâlâ frequentist A/B mantığıyla yürütülüyor: iki fiyat paketi, 14 gün, p<0.05 bekle. Bu yaklaşım küçük segmentlerde (VIP kullanıcı, yeni giren whale) statistical power kaybına neden oluyor, erken karar alma şansını öldürüyor. Bayesian price optimization posterior dağılımı güncellediği için hem daha hızlı karar vermeye hem küçük örneklemde güven oluşturmaya olanak tanıyor. Bu yazı IAP price ladder testlerini posterior estimation ile nasıl yöneteceğini, segmentasyon sınırlarını, false positive filtrelemeyi ve revenue uplift modelini açıklıyor.
 
-## Frequentist A/B'nin IAP Fiyatlandırmasındaki Tıkanması
+## Frequentist A/B'nin IAP Testlerinde Kırıldığı Nokta
 
-Standart A/B test iki fiyat arasında p<0.05 farkı görmek için conversion rate'e göre sample size hesaplar. %2 baseline conversion, %10 relative lift hedefi, 80% power için ~15.000 exposure gerekir. Orta-katman IAP için bu 4-6 hafta demektir. Test süresi uzayınca:
+Klasik A/B testi sabit sample size gerektirir. IAP satın alan kullanıcı oranı %2–5 bandında olduğu için bir fiyat testinde yeterli conversion hacmi toplamak 3–4 hafta sürer. Whale segmentinde (top %1 spender) oran daha da düşer, bu yüzden test süresi 6 haftaya uzar. Sorun şu: oyunun meta değişiyor, yeni event geliyor, seasonal dönemler bitiyor — 6 hafta sonra elde ettiğin data artık representative değil.
 
-- Meta kampanyalarında CPI artar (creative fatigue)
-- Organik cohort mix kayar (holiday effect, ASO rank değişimi)
-- Rakip oyun yeni event başlatır, demand elasticity bozulur
+Frequentist mantık ayrıca binary karar üretiyor: kazandı/kaybetti. Oysa IAP testinde fiyat değişkeninin etkisi monoton değildir. $4.99'dan $6.99'a çıkarken conversion %8 düşebilir ama average revenue per paying user (ARPPU) %22 artar, net revenue uplift +%12 olur. Bu tradeoff frequentist p-value'da görünmez, post-hoc hesaplaman gerekir.
 
-Daha kritik sorun revenue-conversion split: $2.99'dan $4.99'a geçince conversion %2.1'den %1.7'ye düşer ama revenue per mille %42 artar. p-value hangi metrikte hesaplanacak? Çoğu stüdyo burada "revenue kazandık" deyip geçer ama D7 LTV modellemesi yapıldığında whale segment'inin %31 churn ettiği, yeni fiyatın retention'ı vurduğu görülür.
+Bayesian yaklaşım prior belief'i (örneğin "bu segment genelde $5–7 bandında en iyi monetize olur") data ile birleştirip posterior dağılım üretir. Test başladığı anda posterior güncellemeye başlar, 500 impression'da da ara sonuç verir. Erken durdurabileceğin için test süresini yarı yarıya düşürürsün, aynı zamanda posterior güven aralığı ile risk ölçebildiğin için agresif/conserve karar stratejisi kurabilirsin.
 
-Bayesian yaklaşım bu ikilemde conversion ve revenue'yu aynı posterior model içinde tutar: prior belief (önceki testlerden gelen beta dağılımı) + gözlem (yeni data) → posterior (güncellenen inanç). Test 3. günden itibaren "şu ana kadar %73 olasılıkla $4.99 daha iyi" diyebilir, 7. günde %89'a çıkar, 10. günde regret 1%'in altına düşünce test kesilir.
+## Price Ladder Testinde Prior ve Likelihood Kurgusu
 
-## Prior Distribution Kurma: Benchmark Yerine Historik IAP Data
+IAP price ladder testi şu yapıda: mevcut fiyat $4.99, test edeceğin varyantlar $5.99, $6.99. Her bir price point için ayrı posterior dağılım tutacaksın: `P(θ | data)` — burada θ = true conversion rate veya expected revenue per user (ERPU).
 
-Bayesian test'in kalitesi prior'ı doğru kurmaya bağlı. Çoğu dokümantasyon "uniform prior al, data konuşsun" der ama mobile F2P'de 6 ay IAP historiniz varsa bu kaynağı yakmak mantıksız. Örnek prior kurma süreci:
+**Prior seçimi:**
+Beta(α, β) dağılımı conversion rate için kullanışlıdır. Eğer segment için tarihsel data varsa (örneğin son 90 günde %3.2 conversion, 1200 impression) onu `α = conversions`, `β = non-conversions` olarak prior'a çevirirsin. Veri yoksa uninformative prior Beta(1,1) — uniform dağılım. Whale segment için genelde informative prior tercih edilir çünkü sample size küçük olacak, prior data'yı stabilize eder.
 
-**Adım 1:** Son 6 ay tüm IAP tier'larının conversion rate dağılımını çek. $0.99-$2.99 arası conversion %1.8-3.2 aralığında dağılıyor, median %2.4. Beta dağılımı için alpha=24, beta=976 parametreleri bu dağılımı yansıtır (mean=alpha/(alpha+beta)≈0.024).
+**Likelihood:**
+Her fiyat varyantı için Bernoulli trial. Kullanıcı IAP görür, satın alır/almaz. Gözlemlenen data: n impression, k conversion. Posterior güncellemesi:
 
-**Adım 2:** Segment-level variance ekle. Organik cohort prior'ı UA cohort'undan %18 daha yüksek conversion gösterir (alpha=28, beta=972). Whale segment için ayrı prior: D30+ paying user'da conversion %6.8, alpha=68, beta=932.
-
-**Adım 3:** Price elasticity curve fit'i. Historik datada $1.99 → $2.99 geçişi conversion'ı ortalama %14 düşürmüş. Yeni test $2.99 → $3.99 olacaksa bu slope'u prior'a kod:
-
-```python
-def price_elasticity_prior(base_price, new_price, base_conversion):
-    slope = -0.14 / 1.00  # $1 artışta %14 düşüş
-    delta = new_price - base_price
-    expected_drop = slope * delta
-    adjusted_conversion = base_conversion * (1 + expected_drop)
-    alpha = adjusted_conversion * 1000
-    beta = 1000 - alpha
-    return alpha, beta
+```
+Posterior = Beta(α + k, β + n - k)
 ```
 
-Bu yaklaşım "industry benchmark %2.5" gibi dış kaynaktan çok oyunun kendi cohort davranışını yansıtır.
+Bu formül her gün yeni impression geldiğinde update edilir. Örnek senaryo:
 
-## Posterior Estimation ile Segmentli Fiyat Ladder
+| Day | Price | Impressions | Conversions | Posterior |
+|-----|-------|-------------|-------------|-----------|
+| 1   | $5.99 | 120         | 4           | Beta(5, 117) |
+| 3   | $5.99 | 380         | 13          | Beta(14, 368) |
+| 7   | $5.99 | 820         | 28          | Beta(29, 793) |
 
-Test setup: starter pack $2.99 vs $3.99, 7 gün boyunca UA traffic'e %50/%50 dağıtılacak. Ama segment split zorunlu:
+7. günde posterior mean = 29/(29+793) = %3.53. Credible interval: [%2.4, %4.9] (%95 HPD).
 
-| Segment | Prior α | Prior β | Sample size hedef |
-|---------|---------|---------|-------------------|
-| D0-D7 organik | 28 | 972 | 4000 |
-| D0-D7 UA | 22 | 978 | 6000 |
-| D7+ non-payer | 18 | 982 | 3000 |
-| D7+ past buyer | 68 | 932 | 2000 |
+## Segmentasyon ve Multi-Armed Bandit Entegrasyonu
 
-Her segment'te posterior ayrı güncellenir. 3. gün sonuçları:
+Price ladder testini tüm user base'e aynı anda koşmak verimsizdir. En yüksek revenue potansiyeli olan segmentleri hedefle: yeni whale (D7'de ilk IAP yapan, $20+ harcama), returning spender (son 14 günde 2+ purchase), event-triggered spender (yeni season pass çıkınca tetiklenen). Her segment için ayrı posterior tutmak model complexity artırır ama sample efficiency kazandırır.
 
-**Organik segment:** $2.99 → 87 conversion / 2100 exposure, $3.99 → 71 / 2050. Posterior: α₁=28+87=115, β₁=972+2013=2985 vs α₂=28+71=99, β₂=972+1979=2951. Monte Carlo 10.000 sample ile P($2.99 daha iyi) = %78. Revenue açısından: $2.99 × 87 = $260, $3.99 × 71 = $283. Revenue posterior'u gamma dağılımı ile modellenirse P($3.99 revenue üstün) = %61.
-
-Bu noktada karar: organik segment'te conversion öncelikli ise $2.99 devam, revenue öncelikli ise 2 gün daha bekle. UA segment'te ise $3.99 açık üstün (%83 posterior probability), test erken kesilip o segment $3.99'a yönlendirilir.
-
-**Segment bazlı price ladder dinamik kurma:** Test bittiğinde IAP inventory şöyle olur:
-
-- Organik D0-D3: $2.99 starter
-- UA D0-D3: $3.99 starter
-- D7+ past buyer: $7.99 booster (ayrı test posterior'undan)
-- Whale (D30+ $50+ LTV): $14.99 premium bundle
-
-Bu yapı tek global fiyat yerine 4 farklı elasticity curve'ü optimize eder. [App Store Optimization](https://www.roibase.com.tr/tr/aso) çalışmasında bu segmentasyon custom product page stratejisi ile birleştirilirse IAP funnel daha da kişiselleşir: creative'de gösterilen value proposition ile IAP tier eşleşir.
-
-## Thompson Sampling ile Multi-Armed Bandit Extension
-
-7 günlük fixed test yerine Thompson sampling extension: her impression geldiğinde segment posterior'undan sample çek, en yüksek expected value veren fiyatı göster. Böylece test süresi boyunca exploration/exploitation dengesi dinamik kurulur.
-
-Pseudo-code:
+Multi-armed bandit (MAB) ile Bayesian optimization birleştirilirse dinamik allocation yapabilirsin: posterior mean en yüksek price point'e daha fazla trafik ver (exploit), ama posterior variance yüksek olanlara da minimum trafik ayır (explore). Thompson Sampling algoritması posterior'dan sample alıp en yüksek değeri seçerek bu dengeyi otomatik kurar:
 
 ```python
-def thompson_sampling_price(segment, price_variants):
-    posteriors = {p: get_posterior(segment, p) for p in price_variants}
-    samples = {p: np.random.beta(post['alpha'], post['beta']) 
-               for p, post in posteriors.items()}
-    revenue_samples = {p: s * p for p, s in samples.items()}
-    return max(revenue_samples, key=revenue_samples.get)
+def thompson_sampling(posteriors):
+    samples = [beta.rvs(p['alpha'], p['beta']) for p in posteriors]
+    return np.argmax(samples)
 ```
 
-Bu yaklaşım özellikle 3+ fiyat variant'ı test edilirken regret minimize eder. Klasik A/B'de 3 fiyat testi 3× sample size ister, Thompson sampling posterior güncelleme ile kötü variant'ı otomatik sıfırlar. 10. günde $2.99 posterior'u %9'a düşmüşse exposure oranı %5'e iner, sample waste olmaz.
+Her impression allocation kararında yukarıdaki fonksiyon çalışır. 10.000 impression sonunda en iyi price point doğal olarak trafik çoğunluğunu toplar ama diğerleri tamamen ölmez, yeni data gelirse posterior güncellenip önce geçebilir.
 
-Dikkat: Thompson sampling UA kaynağı unlimited değilse budget tükenme riski taşır. Meta kampanyasında günlük $5000 budget varsa, Thompson'ın seçtiği fiyat conversion'ı düşürür, CPA patlar, bütçe öğlen tükenir. Güvenli kurulum: ilk 3 gün %50/%50 split, posterior credibility %80'i geçince Thompson aç.
+## False Positive Filtreleme ve Posterior Güven Aralığı
 
-## Revenue vs LTV: Posterior'u Retention Modeliyle Birleştirme
+Bayesian testlerde "istatistiksel anlamlılık" kavramı yoktur, yerine posterior probability kullanılır: `P(θ_A > θ_B | data)`. Eğer bu olasılık >%95 ise fiyat A, fiyat B'den üstündür deriz. Ama dikkat: posterior probability yüksek olsa bile effect size küçükse operasyonel kazanç olmaz.
 
-IAP fiyat optimizasyonunun final katmanı LTV projeksiyon. $3.99 conversion düşük ama D7 retention %8 yüksek gösteriyorsa, o cohort'un 90 günlük LTV'si $2.99 cohortunu geçebilir. Klasik A/B bunu görmez çünkü LTV 90 gün sonra kesinleşir. Bayesian posterior'u survival model ile birleştirince erken sinyal yakalanır.
+**Minimum Detectable Effect (MDE) threshold:**
+Revenue uplift <%5 ise implementation maliyeti kazancı geçer (app store compliance, yeni SKU ekleme, localization). Bu yüzden karar kuralı şöyle olmalı:
 
-Setup: Her fiyat variant'ının ilk 7 gününde retention curve fit'i Cox proportional hazard model ile:
+```
+IF P(uplift > 5%) > 0.95 AND posterior_mean_uplift > 5%:
+    DEPLOY
+ELSE:
+    CONTINUE or STOP
+```
+
+Bu çift filter false positive'i kontrol eder. Örneğin $5.99 fiyatının posterior mean uplift'i +%3.2 ama credible interval [-%1.2, +%7.8] ise henüz karara varmak erken. 2 hafta daha data toplayarak interval daralır, %95 HPD [+%2.1, +%5.6] haline gelirse ve mean >%5 koşulu tutarsa deploy edilir.
+
+**Posterior predictive check:**
+Test sonrası deploy edilen fiyatın gerçek performansını posterior predictive distribution ile simüle et. Eğer gözlemlenen revenue bu dağılımın dışında kalıyorsa (örneğin dağılımın %99'unun altında) segment composition değişmiş veya external factor devreye girmiş demektir (yeni competitor oyun çıkmış, Apple fiyat politikası değişmiş). Bu durumda posterior'u invalidate et, yeni prior ile retest başlat.
+
+## Revenue Uplift Modellemesi ve Operasyonel Karar Ağacı
+
+IAP fiyat testinin nihai metriği conversion rate değil, segment-level ERPU (expected revenue per user) artışıdır. Bayesian framework içinde ERPU'yu şöyle modelle:
+
+```
+ERPU = P(conversion) × Price
+Posterior ERPU = E[θ] × Price
+```
+
+Her price point için posterior ERPU hesapla, en yüksek olanı seç. Ama tradeoff var: yüksek fiyat conversion düşürür, düşük fiyat ARPPU düşürür. Optimal noktayı bulmak için tüm price ladder'ı aynı anda test et (3–4 varyant), posterior ERPU dağılımlarını karşılaştır.
+
+**Operasyonel karar ağacı:**
+
+1. **Day 3:** Posterior variance hâlâ yüksek mi? Evet → traffic allocation ayarla (MAB). Hayır → erken winner signal var mı kontrol et.
+2. **Day 7:** En iyi price point'in posterior probability >%90 mı? Evet → soft launch (whale segment %10). Hayır → 7 gün daha devam.
+3. **Day 14:** Posterior credible interval dar mı (<%3 range) ve uplift >%5 mi? Evet → full deploy. Hayır → test inconclusive, meta analiz yap.
+
+Bu ağaç sayesinde test median 10 günde sonuçlanır (frequentist'te 21 gün). Whale segment gibi dar popülasyonlarda bile 14. günde karar verilebilir çünkü prior informative olduğunda posterior hızla daralır.
+
+Meta analiz: eğer test sonuçsuz kalıyorsa segment içinde mikro-segmentasyon yap (iOS vs Android, tier-1 vs tier-2 geo, D7 vs D30 age). Her birinde posterior ayrı hesapla, hangisinde signal güçlü bul, o segmente özel fiyat uygula. Bu [App Store Optimization](https://www.roibase.com.tr/tr/aso) sürecinde custom product page mantığıyla paraleldir: her segment farklı creative görür, burada farklı fiyat görür.
+
+## Posterior Estimation ile Uzun Dönem Price Calibration
+
+Bayesian price optimization tek seferlik test değil, sürekli kalibrasyon sistemidir. Her ay yeni cohort gelir, meta değişir, seasonal event etkisi posterior'u değiştirir. Bunun için rolling posterior mantığı uygula: son 60 günlük data ile posterior'u her hafta güncelle, eski prior'u fade out et (exponential decay).
 
 ```python
-from lifelines import CoxPHFitter
-
-df['price_variant'] = df['variant'].map({'2.99': 0, '3.99': 1})
-cph = CoxPHFitter()
-cph.fit(df, duration_col='days_retained', event_col='churned', 
-        formula='price_variant + segment + paid_d3')
+def update_rolling_posterior(current_posterior, new_data, decay=0.95):
+    alpha_new = current_posterior['alpha'] * decay + new_data['conversions']
+    beta_new = current_posterior['beta'] * decay + new_data['non_conversions']
+    return {'alpha': alpha_new, 'beta': beta_new}
 ```
 
-Model output: $3.99 variant hazard ratio 0.88 (churn %12 düşük, p=0.03). Bunu posterior ile birleştir:
+Bu sistem fiyat değişikliği sonrası da posterior'u sıfırlamaz, yeni fiyatın data'sını eski posterior'a ekler. Böylece geçmiş bilgi tamamen kaybolmaz ama güncel pattern ağır basar.
 
-**LTV posterior hesabı:**
-- $2.99: E[conversion]=0.024, E[D90_retention]=0.34, ARPDAU=$0.12 → LTV=$2.99 × 0.024 + 90 × 0.34 × 0.12 = $3.74
-- $3.99: E[conversion]=0.019, E[D90_retention]=0.38, ARPDAU=$0.15 → LTV=$3.99 × 0.019 + 90 × 0.38 × 0.15 = $5.21
+Uzun dönemde price elasticity curve çıkarabilirsin: her price point için posterior mean ERPU'yu plot et, fitted curve ile $1 artışın marjinal etkisini gör. Eğer curve $6.99'da plateau yapıyorsa daha yüksek fiyat test etme, bunun yerine bundle/package stratejisi dene (2 IAP birlikte %15 indirim gibi). Bu strateji de Bayesian ile test edilir, prior bundle conversion rate'i single IAP'nin %70'i olarak alınır (industry heuristic), posterior data ile güncellenir.
 
-Monte Carlo 10.000 iteration ile LTV posterior dağılımı: P($3.99 LTV üstün) = %91. Bu posterior credibility revenue-only bakıştan çok daha güçlü sinyal. Karar: $3.99 seç, IAP stack'i yeniden dengele.
-
-## Tradeoff: Model Complexity vs Execution Speed
-
-Bayesian IAP optimizasyonu üç operasyonel maliyet taşır:
-
-**1. Prior maintenance:** Her yeni event, meta değişimi, competitor launch prior distribution'ı değiştirir. 6 ayda bir re-calibration şart. Küçük stüdyolarda data scientist yoksa bu sürdürülemez.
-
-**2. Segment granularity:** 8 segment × 3 fiyat = 24 posterior tracking. Sample size küçük segmentlerde (örn. whale) posterior variance yüksek kalır, güven aralığı geniş olur. Pratik çözüm: whale segment'i ayrı çıkar, A/B test koru, diğerlerinde Bayesian.
-
-**3. Platform fragmentation:** iOS vs Android price sensitivity farklı. Apple App Store'da $2.99 conversion Android'den %23 yüksek (App Annie 2025). İki platform ayrı posterior mu yoksa pooled mı? Ayrı tutarsan sample split olur, pooled tutarsan platform bias girer. Çözüm: hierarchical Bayesian model — platform random effect olarak eklenir.
-
-Yine de Bayesian, 4+ hafta A/B beklemekten hızlıdır. Test 10 günde kesilir, revenue impact 2. haftada görülür, LTV projeksiyon 30. günde güncellenir. Frequentist'te bu timeline 8-12 haftadır.
-
-## Sonuç: Probabilistic Pricing Mindset
-
-Mobile F2P'de fiyat testi artık binary değil, continuous posterior updating süreci. Conversion ve revenue metriklerini ayrı p-value'larla çözmek yerine, her ikisini de probabilistic çerçevede modellemek regret minimize eder, test süresini kısaltır, segment-level optimizasyona imkan verir. Bayesian yaklaşım prior kurma disiplini ister ama karşılığında erken karar hakkı, LTV projection entegrasyonu, Thompson sampling ile dynamic allocation sağlar. IAP stack'iniz 5+ tier'sa ve UA bütçeniz ayda $100K+'yı geçiyorsa, Bayesian test altyapısı artık isteğe bağlı değil, zorunludur.
+Bayesian price optimization IAP testlerini statik A/B'den dinamik learning sistemine dönüştürür. Posterior estimation sayesinde küçük segmentlerde erken karar verebilir, false positive'i kontrol ederken revenue uplift'i maksimize edebilirsin. Whale segment, event-triggered spender gibi dar popülasyonlarda frequentist yaklaşım çalışmaz, Bayesian prior + likelihood yapısı bu sorunu çözer. Rolling posterior ile price calibration sürekli güncellenir, seasonal değişim veya meta shift posterior'a otomatik yansır. Sonuç: test süresi yarıya iner, karar kalitesi artar, operasyonel maliyet düşer.

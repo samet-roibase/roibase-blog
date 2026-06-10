@@ -1,90 +1,116 @@
 ---
-title: "Optimización de Precios Bayesiana en F2P Móvil"
-description: "¿Por qué pasar de A/B clásico a estimación Bayesiana en pruebas de IAP? Actualización posterior, ladder específico por segmento, toma de decisiones temprana."
-publishedAt: 2026-05-10
-modifiedAt: 2026-05-10
+title: "Optimización de Precios Bayesiana en F2P Mobile"
+description: "Gestión de pruebas de precios IAP con estimación posterior: segmentación, escalera de precios A/B, filtrado de falsos positivos e intervalos de confianza posterior."
+publishedAt: 2026-06-10
+modifiedAt: 2026-06-10
 category: gaming
-i18nKey: gaming-002-2026-05
-tags: [monetizacion-f2p, prueba-bayesiana, precio-iap, juegos-moviles, optimizacion-precios]
+i18nKey: gaming-002-2026-06
+tags: [bayesian-optimization, iap-pricing, f2p-monetization, price-testing, posterior-estimation]
 readingTime: 8
 author: Roibase
 ---
 
-En la economía móvil F2P, la optimización de precios todavía se decide con "subamos el pack más vendido de $4.99 a $5.99". En 2026, estudios que optimizan pujas de Apple Search Ads con precisión de milisegundos pierden meses en pruebas de ladder IAP clásicas. La estimación Bayesiana, cuando se usa no para detectar márgenes del uno por ciento sino para tomar decisiones tempranas y construir ladder específico por segmento, jala el LTV entre 12-18% promedio por prueba. En este artículo explicamos la lógica de actualización posterior, cómo vincularla a segmentación, y por qué el framework Bayesiano es insustituible en contexto móvil.
+En juegos móviles F2P, la optimización de precios IAP aún se realiza con lógica frecuentista de A/B: dos paquetes de precios, 14 días, espera p<0.05. Este enfoque causa pérdida de potencia estadística en segmentos pequeños (usuarios VIP, ballenas nuevas), eliminando la oportunidad de decisiones tempranas. La optimización bayesiana de precios actualiza la distribución posterior, permitiendo tanto decisiones más rápidas como construcción de confianza en muestras pequeñas. Este artículo explica cómo gestionar pruebas de escalera de precios IAP con estimación posterior, límites de segmentación, filtrado de falsos positivos y modelado de aumento de ingresos.
 
-## Por Qué el Testing A/B Clásico de Precios Queda Lento
+## Dónde falla el A/B frecuentista en pruebas IAP
 
-En una prueba A/B frecuentista, llevar un cambio de precio a significancia estadística puede requerir 5000-10000 transacciones (p=0.05, potencia=0.80). En un juego F2P de segmento medio con 200-300 usuarios pagadores diarios, eso significa 25-30 días de espera solo por un variante. En ese tiempo, el Season Pass se actualiza, el calendario de eventos cambia, el competidor lanza una mejora — mantener el grupo de control se vuelve imposible.
+Las pruebas A/B clásicas requieren un tamaño de muestra fijo. Dado que la tasa de compra de usuarios en IAP oscila entre %2–5, acumular volumen de conversión suficiente en una prueba de precios toma 3–4 semanas. En el segmento ballena (top %1 de gastadores), la tasa es aún más baja, extendiendo el tiempo de prueba a 6 semanas. El problema: el meta del juego cambia, llegan nuevos eventos, terminan períodos estacionales — los datos obtenidos después de 6 semanas ya no son representativos.
 
-El segundo problema en el enfoque clásico es la estructura de decisión binaria: o "el aumento de precio no es significativo, vuelve atrás" o "es significativo, aplícalo globalmente". Pero en móvil cada cohorte lleva elasticidad de precio diferente. El usuario iOS orgánico convierte en $9.99 mientras que el de Android por instalación pagada es 40% más sensible. Un único p-value fuerza la misma decisión a todos los segmentos.
+La lógica frecuentista además produce decisiones binarias: ganó/perdió. Sin embargo, en pruebas IAP el efecto de la variable de precio no es monótono. Al subir de $4.99 a $6.99, la conversión puede caer %8, pero el average revenue per paying user (ARPPU) sube %22, generando un aumento neto de ingresos de +%12. Este tradeoff no aparece en el valor p frecuentista; requiere cálculo post-hoc.
 
-El tercer problema es que no puedes detener temprano. En testing frecuentista, debes esperar hasta alcanzar el tamaño de muestra — aunque la confianza posterior sea del 92% en la semana 2, tienes que esperar 4 semanas más hasta "suficientes datos". Este retardo desperdicia la ganancia LTV que ya podrías estar capturando en el cronograma de live ops.
+El enfoque bayesiano combina la creencia prior (por ejemplo, "este segmento típicamente monetiza mejor en el rango $5–7") con los datos para producir una distribución posterior. Comienza a actualizar la posterior desde el primer día del test, entregando resultados preliminares con 500 impresiones. Al poder detener temprano, reduces el tiempo de prueba a la mitad; simultáneamente, con el intervalo de confianza posterior puedes construir una estrategia de decisión agresiva o conservadora basada en riesgo cuantificado.
 
-## Cómo Funciona la Estimación Posterior en el Framework Bayesiano
+## Construcción de Prior y Likelihood en pruebas de escalera de precios
 
-El enfoque Bayesiano ve el conversion rate de cambio de precio (o average revenue per paying user) no como un número fijo, sino como **probability distribution**. Antes de que inicie la prueba tienes una creencia previa: la distribución del CVR de tu precio anterior. Conforme llega cada nueva transacción, la distribución posterior se actualiza mediante el teorema de Bayes:
+Una prueba de escalera de precios IAP tiene esta estructura: precio actual $4.99, variantes a probar $5.99, $6.99. Mantendrás una distribución posterior separada para cada punto de precio: `P(θ | data)` — donde θ = true conversion rate o expected revenue per user (ERPU).
 
-```
-P(θ | data) ∝ P(data | θ) × P(θ)
-```
+**Selección de Prior:**
+La distribución Beta(α, β) es útil para tasas de conversión. Si tienes datos históricos para el segmento (por ejemplo, %3.2 de conversión en los últimos 90 días, 1200 impresiones), lo conviertes a prior como `α = conversiones`, `β = no-conversiones`. Sin datos, usa prior no-informativo Beta(1,1) — distribución uniforme. Para segmentos ballena, generalmente se prefiere prior informativo porque el tamaño de muestra será pequeño; un prior informativo estabiliza la posterior.
 
-Aquí θ = el verdadero conversion rate (o ARPPU), data = eventos de compra observados. Típicamente usas Beta(α, β) como prior (es apropiada porque el flujo IAP es un resultado binario). Cada fin de día los parámetros α y β se actualizan con los nuevos recuentos de transacciones.
-
-En la práctica funciona así: pruebas subir el Starter Pack de $4.99 a $5.99. Tu creencia previa: CVR ~2.8% (Beta(280, 9720) — derivado de 10000 impresiones). En los primeros 3 días el variante $5.99 recibe 600 impresiones, 14 conversiones. El posterior es ahora Beta(294, 10306). El intervalo de confianza se estrechó, CVR promedio se actualiza a 2.78%. En el día 10, 2000 impresiones, 48 conversiones — posterior Beta(328, 11672), CVR 2.74%. Mientras la prueba frecuentista dice "muestra insuficiente", el enfoque Bayesiano dice: "La probabilidad de que el nuevo precio tenga CVR menor que el anterior es 87% — pero ¿compensa el aumento de ARPPU?"
-
-### Métrica de Decisión: Expected Revenue Gain
-
-La caída de CVR por sí sola no decide nada. En el framework Bayesiano la métrica real es **expected revenue per impression** (ERPI):
+**Likelihood:**
+Cada variante de precio es un ensayo de Bernoulli. El usuario ve el IAP, compra o no. Datos observados: n impresiones, k conversiones. La actualización posterior es:
 
 ```
-ERPI = E[CVR × Price]
+Posterior = Beta(α + k, β + n - k)
 ```
 
-Para cada variante tomas muestras de la distribución posterior mediante Monte Carlo (10000 iteraciones), en cada iteración comparas CVR_nuevo × $5.99 contra CVR_anterior × $4.99. Si más del 85% favorecen el precio nuevo (es decir, P(ERPI_nuevo > ERPI_anterior) > 0.85), la decisión es "escalar". Si cae por debajo del 15%, vuelves atrás.
+Esta fórmula se actualiza cada día conforme llegan nuevas impresiones. Ejemplo de escenario:
 
-Este enfoque te permite decidir en 10-12 días con 1500-2000 transacciones. Son 4-5 semanas del A/B clásico — 60% más rápido.
+| Día | Precio | Impresiones | Conversiones | Posterior |
+|-----|--------|-------------|--------------|-----------|
+| 1   | $5.99  | 120         | 4            | Beta(5, 117) |
+| 3   | $5.99  | 380         | 13           | Beta(14, 368) |
+| 7   | $5.99  | 820         | 28           | Beta(29, 793) |
 
-## Construcción de Ladder Específico por Segmento
+En el día 7, la media posterior = 29/(29+793) = %3.53. Intervalo creíble: [%2.4, %4.9] (%95 HPD).
 
-La verdadera potencia de la estimación Bayesiana emerge cuando se combina con formato **multi-armed bandit**. Mantienes un posterior separado para cada segmento; cada día Thompson Sampling decide dinámicamente qué variante de precio recibe tráfico.
+## Segmentación e integración Multi-Armed Bandit
 
-Escenario concreto: 4 segmentos — (1) iOS orgánico, (2) iOS pagado, (3) Android orgánico, (4) Android pagado. Pruebas 3 precios para el Starter Pack: $4.99, $5.99, $6.99. En total 12 distribuciones posteriores (4 segmentos × 3 precios).
+Ejecutar la prueba de escalera de precios en toda la base de usuarios simultáneamente es ineficiente. Enfócate en segmentos con mayor potencial de ingresos: ballenas nuevas (D7 con primer IAP, gasto >$20), gastadores recurrentes (2+ compras en los últimos 14 días), gastadores disparados por eventos (activados cuando sale el nuevo pase de temporada). Mantener una posterior separada por segmento incrementa la complejidad del modelo pero proporciona ganancia en eficiencia de muestra.
 
-La primera semana cada segmento recibe los 3 variantes equitativamente (exploración). A partir de la semana 2 actúa Thompson Sampling: cuando llega cada impresión, extraes un sample de los 3 posteriores para ese segmento, el variante con ERPI más alto recibe tráfico. Si $6.99 abre ventaja en iOS orgánico, ese segmento comienza a ver $6.99 en proporción 70%+. Si $5.99 resulta óptimo en Android pagado, el tráfico se desplaza allá.
+La integración de Multi-Armed Bandit (MAB) con optimización bayesiana permite asignación dinámica: canaliza más tráfico hacia el punto de precio con media posterior más alta (exploit), pero dedica tráfico mínimo a los de varianza posterior alta (explore). El algoritmo Thompson Sampling logra este equilibrio muestreando desde la posterior y seleccionando el valor más alto:
 
-| Segmento | Precio Óptimo (día 14) | Confianza Posterior | Asignación Diaria |
-|---|---|---|---|
-| iOS Orgánico | $6.99 | 91% | 78% |
-| iOS Pagado | $5.99 | 88% | 74% |
-| Android Orgánico | $5.99 | 85% | 71% |
-| Android Pagado | $4.99 | 82% | 69% |
+```python
+def thompson_sampling(posteriors):
+    samples = [beta.rvs(p['alpha'], p['beta']) for p in posteriors]
+    return np.argmax(samples)
+```
 
-Esta estructura captura elasticidad de precio a nivel de segmento, por lo que genera 15-20% más revenue que imponer un precio global único. Además, cuando añades un nuevo segmento (por ejemplo, "usuario pagado Tier-2 GEO"), configuras un prior para él y el bandit multi-armed automáticamente inicia pruebas en ese brazo.
+En cada decisión de asignación de impresión, la función anterior se ejecuta. Tras 10.000 impresiones, el punto de precio óptimo acumula naturalmente la mayoría del tráfico, pero otros no desaparecen completamente; si llegan nuevos datos, la posterior se actualiza y puede cambiar la preferencia.
 
-## Mecanismo de Decisión Temprana y Minimización de Arrepentimiento
+## Filtrado de falsos positivos e intervalo de confianza posterior
 
-La ventaja crítica del framework Bayesiano en contexto móvil es la **toma de decisiones secuencial**. El posterior se actualiza cada fin de día, verificas la regla de decisión. Si P(ERPI_nuevo > ERPI_anterior) > 0.90, dices "tenemos suficiente certeza, desplaza el resto del tráfico al variante ganador". Mientras la prueba frecuentista espera "porque el tamaño no está completo", Bayesian decide el día 7 y dedica las 3 semanas restantes a escalar el precio ganador.
+En pruebas bayesianas no existe el concepto de "significancia estadística"; se usa probabilidad posterior en su lugar: `P(θ_A > θ_B | data)`. Si esta probabilidad es >%95, decimos que el precio A supera a B. Pero atención: probabilidad posterior alta no implica ganancia operacional si el tamaño del efecto es pequeño.
 
-Poder decidir temprano minimiza el **cumulative regret** — arrepentimiento acumulado = "lo que habríamos ganado sabiendo el precio óptimo" menos "lo que ganamos durante la prueba". En A/B clásico, el 50% del tráfico va a variante subóptimo durante 30 días completos; en Thompson Sampling Bayesiano, después del día 10 el 80% del tráfico fluye hacia el ganador. El integral del arrepentimiento cae 60-70%.
+**Umbral de Minimum Detectable Effect (MDE):**
+Si el aumento de ingresos es <%5, el costo de implementación (cumplimiento App Store, agregar SKU nuevo, localización) supera la ganancia. Por eso la regla de decisión debe ser:
 
-En la práctica, en un ciclo de prueba de 2-3 semanas:
-- A/B Clásico: 21 días × 50% tráfico subóptimo = 10.5 días de pérdida equivalente
-- Bandit Bayesiano: 7 días exploración + 14 días 15% subóptimo = 2.1 días de pérdida equivalente
+```
+IF P(uplift > 5%) > 0.95 AND posterior_mean_uplift > 5%:
+    DEPLOY
+ELSE:
+    CONTINUE or STOP
+```
 
-Esta diferencia se traduce en decenas de miles de dólares de impacto revenue diario en juegos con DAU alto.
+Este doble filtro controla falsos positivos. Por ejemplo, si el aumento posterior medio del precio $5.99 es +%3.2 pero el intervalo creíble es [-%1.2, +%7.8], aún es prematuro decidir. Tras acumular datos 2 semanas más, el intervalo se estrecha a [+%2.1, +%5.6] y la media supera %5, entonces se cumple el criterio para deploy.
 
-## Trade-offs y Trampas
+**Posterior predictive check:**
+Tras desplegar el precio optimizado, simula el rendimiento real usando distribución posterior predictiva. Si los ingresos observados caen fuera de esta distribución (por ejemplo, por debajo del percentil %1), la composición del segmento ha cambiado o un factor externo intervino (nuevo juego competidor lanzado, política de precios de Apple cambió). En este caso, invalida la posterior e inicia retest con prior nuevo.
 
-La optimización Bayesiana de precios no está libre de riesgos. La elección del prior es crítica: un prior muy estrecho (por ejemplo, Beta(5000, 195000) — "CVR es definitivamente 2.5%") actualiza lentamente incluso con datos nuevos. Un prior muy amplio (Beta(1, 1) — uniforme) prolonga demasiado la exploración. Un buen punto de partida: convertir transacciones de los últimos 30 días de tu precio anterior en parámetros Beta (método de momentos).
+## Modelado de aumento de ingresos y árbol de decisión operacional
 
-La segunda trampa: conforme aumenta el número de segmentos, el tiempo de convergencia del bandit multi-armed se alarga. 4 segmentos × 3 precios = 12 brazos; cada brazo necesita 200-300 muestras, así que 2400-3600 transacciones totales — en un juego con 300 usuarios pagadores diarios son 10-12 días. Si escalas a 8 segmentos × 4 precios = 32 brazos, la convergencia se extiende 4-5 semanas. La solución: usar Bayes jerárquico para compartir información entre segmentos (por ejemplo, prior que dice "GEOs Tier-1 muestran elasticidad similar").
+El métrica final de una prueba de precios IAP no es tasa de conversión sino aumento de ERPU a nivel de segmento (expected revenue per user). Dentro del framework bayesiano, modela ERPU así:
 
-El tercer punto de atención: el ladder IAP no existe en aislamiento, se entrelaza con el cronograma de live ops. La elasticidad de precio cambia durante eventos (efecto urgencia). Necesitas actualizar el posterior más rápidamente en días de evento, pero no resetear el prior cuando el evento termina. De lo contrario, el aprendizaje de "evento: $6.99 óptimo" se filtra a días normales, causando decisiones subóptimas.
+```
+ERPU = P(conversion) × Price
+Posterior ERPU = E[θ] × Price
+```
 
-Finalmente: el enfoque Bayesiano no ofrece garantías frecuentista. Dices "P(θ > x) = 0.95" pero ese es intervalo creíble del 95%, no intervalo de confianza del 95%. Si reguladores o reportes legales requieren métrica frecuentista (por ejemplo, en regulaciones de loot boxes), necesitarás validar resultados Bayesianos con bootstrap.
+Calcula el ERPU posterior para cada punto de precio, selecciona el más alto. Pero existe tradeoff: precio alto reduce conversión, precio bajo reduce ARPPU. Para encontrar el punto óptimo, prueba toda la escalera simultáneamente (3–4 variantes), compara las distribuciones posteriores de ERPU.
 
-## Vinculando Pruebas de Ladder Específico por Segmento en Roibase
+**Árbol de decisión operacional:**
 
-Para estudios móviles de gaming, la optimización de precios no es prueba aislada sino vinculada a todo el pipeline de [App Store Optimization](https://www.roibase.com.tr/es/aso) y atribución. Usas posteriors Bayesianos no solo para decisiones de precio sino también pruebas de creatividad ASO: qué custom product page genera IPM más alto por segmento, qué ladder IAP es óptimo para ese segmento — cuando fusionas ambos data streams, la proyección de LTV a nivel de cohorte es 30% más precisa.
+1. **Día 3:** ¿La varianza posterior aún es alta? Sí → ajusta asignación de tráfico (MAB). No → verifica si hay señal de ganador temprano.
+2. **Día 7:** ¿La probabilidad posterior del mejor punto de precio es >%90? Sí → lanzamiento suave (segmento ballena %10). No → continúa 7 días más.
+3. **Día 14:** ¿El intervalo creíble posterior es estrecho (rango <%3) y el aumento >%5? Sí → deploy completo. No → test inconcluso, realiza análisis de meta.
 
-Integrar framework Bayesiano en tu infraestructura de medición habilita tanto decisiones tempranas como ladder específico por segmento. En 2026, los estudios ganadores en F2P móvil son quienes transformaron prueba de precio de "optimización mensual" a un sistema que actualiza distribución posterior diariamente, despacha tráfico via Thompson Sampling, y minimiza arrepentimiento acumulado.
+Este árbol acelera el cierre de pruebas a mediana 10 días (vs 21 en frecuentista). Incluso en segmentos estrechos como ballenas, el día 14 permite decisión porque con prior informativo, la posterior se estrecha rápidamente.
+
+Análisis de meta: si el test resulta inconcluso, microdivide dentro del segmento (iOS vs Android, geo tier-1 vs tier-2, edad D7 vs D30). Calcula posterior por cada uno, identifica dónde la señal es fuerte, aplica precio específico a ese subsegmento. Este proceso paralela la lógica de [App Store Optimization](https://www.roibase.com.tr/es/aso): cada segmento ve creativo diferente; aquí, ve precio diferente.
+
+## Calibración de precios a largo plazo con estimación posterior
+
+La optimización bayesiana de precios no es prueba única sino sistema de calibración continua. Cada mes llegan cohortes nuevas, el meta cambia, efectos de eventos estacionales modifican la posterior. Para esto, aplica lógica de posterior rodante: actualiza la posterior cada semana con datos de últimos 60 días, difumina el prior antiguo (exponential decay).
+
+```python
+def update_rolling_posterior(current_posterior, new_data, decay=0.95):
+    alpha_new = current_posterior['alpha'] * decay + new_data['conversions']
+    beta_new = current_posterior['beta'] * decay + new_data['non_conversions']
+    return {'alpha': alpha_new, 'beta': beta_new}
+```
+
+Este sistema no reinicia la posterior tras cambio de precio, sino integra data del nuevo precio a la posterior existente. Así, información pasada no desaparece completamente pero el patrón actual obtiene mayor peso.
+
+A largo plazo, extraes una curva de elasticidad de precios: grafica media posterior ERPU para cada punto de precio, ajusta con curva fitted, observa efecto marginal de cada $1 de aumento. Si la curva meseta en $6.99, no pruebas precios más altos; en cambio, experimenta con estrategia de bundle/paquete (2 IAP juntos con %15 descuento). Esta estrategia también se prueba bayesianamente, tomando prior de tasa de conversión bundle como %70 del IAP único (heurística de industria), luego actualiza con datos posteriores.
+
+La optimización bayesiana de precios transforma pruebas estáticas de IAP en sistema de aprendizaje dinámico. Con estimación posterior, tomas decisiones tempranas en segmentos pequeños, controlas falsos positivos mientras maximizas aumento de ingresos. En poblaciones estrechas como ballenas o gastadores disparados, frequentista no funciona; la estructura prior + likelihood de bayesiano resuelve este problema. Con posterior rodante, la calibración de precios se actualiza continuamente; cambios estacionales o shifts de meta se reflejan automáticamente. Resultado: tiempo de prueba a la mitad, calidad de decisión superior, costo operacional reducido.
