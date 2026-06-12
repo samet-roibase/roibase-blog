@@ -1,221 +1,194 @@
 ---
 title: "Server-Side GTM e Conversion API: Da Zero a Production"
-description: "Deploy su Cloud Run, container template, event deduplication — come abbiamo configurato lo stack di misurazione server-side in production, quali trappole abbiamo incontrato."
-publishedAt: 2026-05-24
-modifiedAt: 2026-05-24
+description: "Deploy su Cloud Run/Workers, container template, strategie di deduplicazione. Guida tecnica per portare il server-side measurement in produzione."
+publishedAt: 2026-06-12
+modifiedAt: 2026-06-12
 category: data
-i18nKey: data-001-2026-05
-tags: [server-side-gtm, conversion-api, cloud-run, first-party-data, event-deduplication]
+i18nKey: data-001-2026-06
+tags: [server-side-gtm, conversion-api, cloud-run, event-deduplication, privacy-measurement]
 readingTime: 9
 author: Roibase
 ---
 
-Deprecazione dei cookie, Consent Mode v2, iOS ATT — lo spazio affidabile della misurazione client-side si restringe ogni anno. Nel 2024, Meta ha dovuto registrare il 23% di eventi client-side in meno, e in Google Analytics 4 il numero di sessioni è diminuito del 18%. La misurazione server-side non è più "il futuro", è "obbligatoria". Da fine 2025, presso Roibase stiamo configurando nuovi clienti interamente su uno stack sGTM + Conversion API. In questo articolo condividiamo ciò che abbiamo imparato durante la migrazione in production, le decisioni che abbiamo preso e quali componenti devono far parte dello stack.
+L'eliminazione dei cookie, l'irrigidimento dell'ITP, il Consent Mode obbligatorio — la misurazione basata sul browser dal 2024 in poi subisce una perdita di segnali del 30-40%. I tag lato client non offrono più "visibilità completa". Il server-side measurement è l'unico approccio ingegneristico per recuperare questi segnali persi. Google Tag Manager Server Container (sGTM) e Meta Conversion API sono i due componenti fondamentali di questa architettura. Ma non è semplice come "deployare e sperare": hosting del container, deduplicazione degli eventi, gestione dei timeout, arricchimento parametrico dei dati — ogni fase richiede decisioni tecniche precise. Questo articolo affronta il trasferimento di sGTM su Cloud Run o Cloudflare Workers, l'integrazione con CAPI, la logica di deduplicazione e la checklist di produzione.
 
-## Dove Distribuire il Container sGTM
+## Host del Container Server-Side GTM: Cloud Run vs Workers vs App Engine
 
-Il Server Container di Google Tag Manager può essere distribuito su App Engine, Cloud Run, Docker manuale, o soluzioni di hosting di terze parti. Nel 2026, due opzioni dominano: Cloud Run e Cloudflare Workers. App Engine è considerato legacy — nessun scaling automatico, cold start oltre 8 secondi. Workers è più economico ma l'integrazione con l'ecosistema GTM richiede middleware aggiuntivo.
+Il container di sGTM può girare su Google Cloud, ma il **deploy manuale è obbligatorio**. Se usi App Engine Automatic Scaling, i cold start durano 2-3 secondi; in caso di picchi di traffico c'è un rischio di drop di evento del 15-20%. Cloud Run è preferibile: minimo 1 istanza "sempre attiva", concorrenza 80-100, timeout della richiesta 10 secondi. Google mette a disposizione il template di Dockerfile in un repo pubblico — `gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable`. Quando fai il deploy di questa immagine al tuo progetto, sono obbligatorie 3 variabili d'ambiente:
 
-Abbiamo scelto Cloud Run: l'immagine container ufficiale di GTM funziona direttamente, scaling orizzontale automatico, cold start sotto 2 secondi. Il calcolo dei costi è importante: 1M richieste/mese + istanza RAM 512MB × 3 zone = circa €30/mese. Con Cloudflare Workers sarebbe €5/mese, ma gli strumenti di debug sono deboli e l'integrazione delle variabili personalizzate richiede configurazione manuale.
+```bash
+CONTAINER_CONFIG=<GTM server container ID>
+PREVIEW_SERVER_URL=https://<preview-domain>
+RUN_AS_HTTPS_SERVER=true
+```
 
-Il comando di deploy è il seguente:
+Esempio di comando per Cloud Run:
 
 ```bash
 gcloud run deploy sgtm-prod \
   --image=gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable \
   --platform=managed \
   --region=europe-west1 \
-  --memory=512Mi \
+  --set-env-vars=CONTAINER_CONFIG=GTM-XXXXXX,RUN_AS_HTTPS_SERVER=true \
   --min-instances=1 \
   --max-instances=10 \
-  --allow-unauthenticated \
-  --set-env-vars="CONTAINER_CONFIG=$(cat container.json | base64)"
+  --concurrency=80 \
+  --timeout=10s \
+  --memory=512Mi
 ```
 
-`min-instances=1` è critico — su un sito di e-commerce, il tempo di spin-up di un'istanza da zero può far perdere una conversione. Il costo aggiuntivo di circa €9/mese garantisce uptime al 100%. `container.json` è la configurazione del container esportata dall'interfaccia web di GTM — invece della sincronizzazione manuale, potete integrarla nel vostro CI/CD.
+**Alternativa Cloudflare Workers:** Se la latenza edge globale è una priorità, puoi usare Workers. Portare la logica del container di GTM al runtime di Workers è necessario (non è nativo). Il vantaggio: response time sotto i 50ms; lo svantaggio: l'ecosistema dei template di tag è limitato — dovrai scrivere JavaScript personalizzato.
 
-La struttura dei sottodomini: `sgtm.example.com` → IP Cloud Run. Non usiamo Load Balancer; l'IP anycast globale di Cloud Run è sufficiente. SSL è automatico, il certificato gestito di Cloud Run è pronto in 3 minuti.
+**Costo di hosting:** Su Cloud Run, circa 1M di richieste al mese costa $40-60 (1 istanza sempre accesa + autoscale incluso). App Engine Flex costa $150-200. Workers costano $5 base + $0,50/milione di richieste — molto più economico, ma senza supporto nativo di sGTM, richiede tempo di sviluppo extra.
 
-## Event Deduplication: Due Segnali, Una Conversione
+### Dominio personalizzato e certificato SSL
 
-La più grande trappola della misurazione server-side è questa: la stessa conversione arriva sia dal browser che dal server, e la piattaforma la conta due volte. Il parametro `event_id` nell'API di Conversione di Meta risolve questo problema — se il client e il server condividono lo stesso ID, Meta elimina i duplicati entro una finestra di 28 ore.
+Il dominio di default di sGTM `*.run.app` **è considerato di terze parti** — Safari ITP elimina i cookie da questo dominio in 7 giorni. Per questo motivo, un **subdomain first-party** come `analytics.tuosito.com` è obbligatorio. Setup di Cloud Load Balancer + certificato SSL gestito:
 
-Flusso di esempio: l'utente completa un ordine, il browser GTM attiva l'evento `purchase` → Meta Pixel. Contemporaneamente, il frontend invia una POST al nostro endpoint `/api/track` → sGTM → Meta Conversion API. Entrambi i segnali trasportano `event_id: order_12345_ts1716547200`.
+1. Aggiungi un **NEG (Network Endpoint Group)** al servizio Cloud Run
+2. Crea un HTTPS Load Balancer, collega il NEG al backend
+3. Ottieni un certificato SSL gestito da Google per `analytics.tuosito.com` (può richiedere 48 ore)
+4. Nel DNS, punta il record A al IP del Load Balancer
+
+Questa configurazione è obbligatoria a livello di produzione. In ambiente di test puoi usare il dominio `run.app`, ma non vedrai gli scenari legati all'ITP.
+
+## Integrazione Meta Conversion API: Strategia di Deduplicazione degli Eventi
+
+Meta CAPI consente l'invio dell'evento pixel lato server tramite sGTM. Però il **Meta Pixel lato client** sta già inviando lo stesso evento — se viene contato due volte, l'attribution si rompe. Il metodo ufficiale di deduplicazione di Meta: aggiungi il parametro **`event_id`** a ogni evento, invia lo stesso ID sia da client che da server. Meta unisce i duplicati entro 48 ore.
+
+Quando configuri il tag CAPI in sGTM:
+
+- **Event Name:** `PageView`, `Purchase`, `AddToCart` (eventi standard di Meta)
+- **Event ID:** Usa l'hash di `fbp` cookie da client-side + timestamp
+- **User Data:** `em` (email con hash), `ph` (phone con hash), `client_ip_address`, `client_user_agent` — sGTM può estrarre questi parametri automaticamente dall'HTTP header
+
+Esempio di generazione di Event ID (lato client):
 
 ```javascript
-// Variabile GTM client-side: event_id
-function() {
-  var orderId = {{Order ID}};
-  var timestamp = Math.floor(Date.now() / 1000);
-  return orderId + '_ts' + timestamp;
+const eventId = CryptoJS.SHA256(
+  fbp + '_' + eventName + '_' + Date.now()
+).toString();
+
+fbq('track', 'Purchase', {
+  value: 99.00,
+  currency: 'USD'
+}, {
+  eventID: eventId
+});
+```
+
+Dal lato di sGTM, passa lo stesso `eventId` al tag CAPI. Meta deduplica gli eventi con lo stesso ID entro **48 ore**. Gli eventi tardivi ricevuti dopo questo periodo possono essere contati come duplicati.
+
+**Protocollo di test:** In Meta Events Manager, vai alla scheda **Test Events**. Quando invii sia l'evento client che server, dovresti vedere il messaggio "Deduplication Active", e una sola conversione sotto lo stesso event_id.
+
+### Arricchimento dei dati utente: IP e User-Agent
+
+La potenza di Meta CAPI dipende dalla **ricchezza dei parametri di user data**. Il Pixel lato client raccoglie questi parametri automaticamente dal browser; lato server devi inviarli manualmente. Usa la variabile **HTTP Request Headers** di sGTM:
+
+- `client_ip_address` → `{{Client IP Address}}` (variabile built-in di sGTM)
+- `client_user_agent` → `{{User Agent}}` (variabile built-in)
+
+Senza questi parametri, l'evento CAPI fornisce un match rate del 40-60% più basso (secondo i dati interni di Meta). Se aggiungi email con hash (`em`) e phone con hash (`ph`), il match rate sale all'80%. L'hash va fatto con SHA-256, con minuscole + trim:
+
+```python
+import hashlib
+
+email_hash = hashlib.sha256('user@example.com'.strip().lower().encode()).hexdigest()
+```
+
+## Google Ads Enhanced Conversions: Hash SHA-256 e Matching di gclid
+
+Google Ads Enhanced Conversions richiede l'invio di **user data con hash** tramite sGTM. La logica è simile a Meta CAPI: hash SHA-256 di PII come email, phone, indirizzo, poi aggiungili al tag di conversion. Google abbina questo dato al `gclid` e collega la conversione offline.
+
+Nel tag **Google Ads Conversion Tracking** in sGTM:
+
+- Attiva l'opzione **Enhanced Conversions**
+- Nella sezione **User Data**, aggiungi le variabili `{{Email Hash}}`, `{{Phone Hash}}`
+- Passa il parametro **gclid** da client-side (dalla query string dell'URL o da un cookie)
+
+La funzione di hash in JavaScript:
+
+```javascript
+async function hashSHA256(value) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(value.trim().toLowerCase());
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 ```
 
-Nel GTM server-side, mappiamo lo stesso valore di `event_id` al tag Meta Conversion API. Importante: il componente timestamp non è obbligatorio, ma previene collisioni di ID unici — lo stesso order_id potrebbe essere riutilizzato in sessioni diverse.
+Lato client, passa questo hash via `dataLayer.push()`, sGTM lo cattura come variabile e lo invia al tag di Google Ads. **Critico:** L'hash va fatto lato client (privacy — il testo in chiaro non deve andare al server) OPPURE se lo fai in sGTM, disabilita la registrazione.
 
-Per Google Ads è diverso: il parametro `gclid` è sufficiente, non esiste un ID di deduplication aggiuntivo. Ma in Google Analytics 4, se inviate la combinazione `client_id` + `session_id` sia dal client che dal server, GA4 esegue automaticamente la dedup — una funzione aggiunta nel Q3 2024.
+**Connessione con Consent Mode v2:** Se `ad_user_data` e `ad_personalization` non sono stati consentiti, anche Enhanced Conversions non funzionerà. Devi inviare i segnali di consenso a sGTM tramite l'evento `consent` nel dataLayer.
 
-Validazione della dedup: in Meta Events Manager, il punteggio "Event Match Quality" deve essere superiore all'80%. Se questo punteggio è basso — soprattutto se mancano gli hash di `em` (email), `ph` (telefono), `fn` (nome) — Meta considera l'evento "bassa confidenza" e l'affidabilità della pulizia dei duplicati diminuisce.
+## Deduplicazione degli eventi: Invio parallelo lato client + server
 
-## Container Template: Quali Tag Dovrebbero Essere Predefiniti
+In alcuni scenari, sia il tag lato client che quello lato server vengono attivati — per esempio, su Safari il tag lato client funziona, MA l'ITP elimina il cookie in 7 giorni, e nel frattempo il lato server continua a funzionare. C'è un rischio di evento duplicato. Soluzione: usare un **unique event_id** (Meta) o **transaction_id** (Google Analytics 4).
 
-Il Server Container di GTM inizia vuoto, ogni tag va aggiunto manualmente. Dopo aver configurato 15+ container, abbiamo creato un repository di template — un nuovo cliente raggiunge la production-readiness in 5 minuti.
-
-**Tag obbligatori:**
-- **Meta Conversion API** (usando Meta Business Extension)
-- **Google Analytics 4** (con client server-side)
-- **Google Ads Conversion** (con Enhanced Conversion)
-- **Snapchat Conversion API** (per clienti gaming/fashion)
-- **TikTok Events API** (per il targeting della Gen Z)
-
-**Facoltativi ma consigliati:**
-- **Writer Firestore/BigQuery** — registra ogni evento in forma grezza, fondamentale per audit trail e modellazione dell'attribuzione
-- **Consent check variable** — analizza la stringa TCF 2.2 e controlla l'approvazione per purpose 1 (storage) e purpose 2 (measurement), invia `action_source=physical_store` a Meta se c'è diniego (non è elusione del consenso, è segnale aggregato)
-- **User IP enrichment** — estrai `X-Forwarded-For` dall'header della richiesta Cloud Run, migliora l'accuratezza geolocalizzazione dell'API di Conversione del 12%
-
-Struttura di esempio del repository di template:
-
-```
-sgtm-template/
-├── clients/
-│   └── ga4-client.json
-├── tags/
-│   ├── meta-capi.json
-│   ├── google-ads.json
-│   └── bigquery-log.json
-├── variables/
-│   ├── event-id.json
-│   ├── user-data.json
-│   └── consent-status.json
-└── triggers/
-    ├── all-events.json
-    └── conversion-only.json
-```
-
-Ogni file JSON viene esportato dall'interfaccia web di GTM — non potete importarlo direttamente con il CLI `gcloud`, ma potete automatizzarlo con script nel CI/CD. Esiste un provider Terraform per GTM, ma è gestito dalla comunità, non ufficiale.
-
-### Variabile User Data: Invio Senza Hash
-
-Meta e Google richiedono che le PII (informazioni di identificazione personale) siano hashate: email → SHA256, telefono → formato E.164 + SHA256. Nel GTM client-side, l'hash avviene in JavaScript, ma nel sGTM è più sicuro farlo lato server — i dati in testo normale non sono visibili negli strumenti di sviluppo del browser.
+Deduplicazione in GA4:
 
 ```javascript
-// Variabile personalizzata sGTM: hashed_email
-const crypto = require('crypto');
-const getEventData = require('getEventData');
-
-const email = getEventData('user_data.email_address');
-if (!email) return undefined;
-
-return crypto.createHash('sha256')
-  .update(email.toLowerCase().trim())
-  .digest('hex');
+gtag('event', 'purchase', {
+  transaction_id: 'ORDER_12345', // univoco per ordine
+  value: 99.00,
+  currency: 'USD'
+});
 ```
 
-Per il telefono, il formato E.164: `+905321234567` (codice paese + numero senza zero iniziale). Nei progetti Roibase, il 40% dei dati telefonici viene rifiutato a causa di errori di formattazione — dovete aggiungere una validazione.
+Se invii lo stesso `transaction_id` sia dal gtag.js lato client che da sGTM, il backend di GA4 pulisce il duplicato (finestra di 48 ore).
 
-## Conversion API e Enhanced Conversion: Qual è la Differenza
+**Gestione dei timeout:** I tag di sGTM hanno un'impostazione **timeout** (predefinita 2000ms). Se la risposta di CAPI impiega 3-4 secondi, il tag va in timeout e l'evento non viene inviato. In produzione, alza il timeout a 5000ms e monitora. Il timeout della richiesta di Cloud Run (10s) deve essere coerente con il timeout del tag di sGTM.
 
-L'API di Conversione di Meta e Google Enhanced Conversion sono protocolli diversi ma servono lo stesso scopo: aumentare il tasso di corrispondenza della piattaforma con dati first-party. Conversion API è basato su eventi — ogni clic, aggiunta al carrello, acquisto è una POST HTTP separata. Enhanced Conversion è basato su tag — i dati utente vengono inviati solo in fase di conversione (acquisto, registrazione).
+## Checklist di produzione: Monitoring, logging, debug
 
-Configurazione del tag Google Enhanced Conversion in sGTM:
+Prima di portare sGTM in produzione:
 
-```json
-{
-  "type": "google_ads_remarketing",
-  "enhancedConversionData": {
-    "email": "{{Hashed Email}}",
-    "phone": "{{Hashed Phone}}",
-    "address": {
-      "first_name": "{{Hashed First Name}}",
-      "last_name": "{{Hashed Last Name}}",
-      "country": "IT",
-      "postal_code": "{{Postal Code}}"
-    }
-  }
-}
-```
+1. **Preview Mode:** Apri Preview nel GTM web, collegati all'URL del container di sGTM, debug gli eventi client nella console
+2. **Test tag firing:** Per ogni tag (CAPI, Google Ads, GA4), valida con **Tag Assistant**
+3. **Segnali di consenso:** Testa i segnali di Consent Mode v2 — verifica quali tag non si attivano quando `ad_storage=denied`
+4. **Log export:** Flussi Cloud Run log a **Cloud Logging**, filtro: `resource.type="cloud_run_revision"`, visualizza i payload degli eventi
+5. **Alerting errori:** In Cloud Monitoring, crea un alert: `http_response_code >= 500`, soglia 10/min
 
-In Meta, l'oggetto `user_data` viene inviato per ogni evento — `ViewContent`, `AddToCart`, `Purchase` ricevono tutti gli stessi dati hashati.
+**Strumenti di debug:**
 
-Differenza pratica: Google Enhanced Conversion è attivo solo nel pixel di conversione — se il traffico è limitato, il tasso di corrispondenza rimane basso. Meta CAPI riceve dati utente per ogni evento, rendendo l'audience di retargeting più ricca. Per questa ragione nell'e-commerce, il setup di Meta CAPI è prioritario, Google EC è in secondo piano.
+- **sGTM Debug Mode:** Apri l'URL di preview del container nel browser, aggiungi `gtm_debug=x` nella query string
+- **Network Tab:** Nel DevTools del browser, ispeziona le richieste `/gtm.js` e `/r/collect`
+- **Meta Event Test:** Events Manager → Test Events, visualizza gli eventi dell'ultima ora
 
-## Monitoraggio e Debug: Quali Metriche Dovremmo Osservare
+**Problema comune:** L'indirizzo IP del client non arriva a sGTM — controlla che Cloud Load Balancer stia passando l'header `X-Forwarded-For`, attiva l'opzione **Preserve Client IP**.
 
-Uno stack server-side in production, senza monitoraggio, non funziona. Nel GTM client-side c'è la modalità preview — nel server-side no, fate debug sul traffico live.
+## Architettura dei dati: Connessione sGTM + BigQuery + dbt
 
-**Metriche critiche:**
-- **Conteggio istanze Cloud Run** — anche se min=1, durante i picchi di traffico il conteggio può salire a 10, impostate allarmi per il controllo dei costi
-- **Tempo di risposta P95** — oltre 500ms inizia la perdita di conversioni, soprattutto nella pagina di checkout
-- **Punteggio Meta Event Match Quality** (controllo manuale in Events Manager) — sotto l'80% significa dati utente incompleti
-- **Rapporto tra conteggio evento GA4 server / client** — ideale 1.1-1.3 (il server dovrebbe vedere leggermente di più, a causa dei blocchi client-side), sotto 0.8 c'è un errore sul server
+Puoi streamare gli eventi di sGTM direttamente a BigQuery — tramite **Firestore** o **Pub/Sub**. L'export di GA4 a BigQuery è un batch giornaliero; con sGTM è possibile uno stream real-time. Questa strategia è importante nel contesto dell'[architettura first-party di misurazione](https://www.roibase.com.tr/it/firstparty): dati di evento grezzo → modelli dbt → semantic layer → dashboard.
 
-Query Cloud Logging:
+Flusso di esempio:
+
+1. Tag di sGTM → invia l'evento JSON al topic di Pub/Sub
+2. Job di Dataflow (o Cloud Function) → legge da Pub/Sub e scrive a BigQuery
+3. Modello dbt → unisce gli eventi per `user_id`, applica la logica di sessione
+4. Looker/Metabase → dashboard basate sulle view di dbt
+
+Questa architettura è critica anche per la **identity resolution**: puoi unire gli identifier da sGTM come `client_id`, `fbp`, `gclid` in BigQuery e creare un singolo `user_id`. Esempio di modello dbt incrementale:
 
 ```sql
-resource.type="cloud_run_revision"
-resource.labels.service_name="sgtm-prod"
-jsonPayload.event_name="purchase"
-severity="ERROR"
+{{ config(materialized='incremental', unique_key='event_id') }}
+
+SELECT
+  event_id,
+  user_id,
+  client_id,
+  event_timestamp,
+  event_name,
+  event_params
+FROM {{ source('sgtm_events', 'raw_events') }}
+{% if is_incremental() %}
+WHERE event_timestamp > (SELECT MAX(event_timestamp) FROM {{ this }})
+{% endif %}
 ```
 
-I log di errore non vengono scritti in GTM con `console.log` — dovete usare l'API `logToConsole()`, che li scrive in Cloud Logging.
+Questa configurazione supporta anche il **modello di attribution**: puoi JOIN gli eventi di sGTM a BigQuery tramite `gclid` e `fbclid` e calcolare l'attribution multi-touch.
 
-Schema della tabella BigQuery log:
+---
 
-| Campo | Tipo | Descrizione |
-|---|---|---|
-| event_timestamp | TIMESTAMP | Orario server (UTC) |
-| event_name | STRING | purchase, add_to_cart, ecc. |
-| user_id | STRING | Hashato |
-| client_id | STRING | ID client GA4 |
-| event_id | STRING | ID dedup |
-| platform | STRING | meta, google_ads, snapchat |
-| response_code | INTEGER | Codice di stato HTTP |
-
-Questa tabella, nell'ambito di [Architettura dei Dati First-Party e della Misurazione](https://www.roibase.com.tr/it/firstparty), viene scritta nel data warehouse BigQuery, collegata a modelli downstream (attribuzione, previsione LTV) tramite dbt.
-
-## Consent Mode v2 e Server-Side: Come Integrare
-
-Da marzo 2024, Google Consent Mode v2 è obbligatorio nell'EEA — lo stato del consenso per `ad_storage` e `analytics_storage` deve essere inviato in ogni hit. Nel server-side, questa informazione non proviene da GTM client-side, dovete inviarla manualmente.
-
-Esistono due metodi:
-1. **Query parameter:** `sgtm.example.com/g/collect?consent=granted` — facile ma visibile nell'URL, problemi di cache
-2. **HTTP header:** `X-Consent-Status: analytics_storage=granted,ad_storage=denied` — metodo preferito
-
-Variabile personalizzata in sGTM:
-
-```javascript
-const getRequestHeader = require('getRequestHeader');
-const consentHeader = getRequestHeader('x-consent-status');
-
-if (!consentHeader) return {analytics_storage: 'denied', ad_storage: 'denied'};
-
-const pairs = consentHeader.split(',');
-const consent = {};
-pairs.forEach(pair => {
-  const [key, value] = pair.split('=');
-  consent[key.trim()] = value.trim();
-});
-
-return consent;
-```
-
-Mappate questa variabile ai tag GA4 e Google Ads. In Meta CAPI non esiste un parametro di consenso — il controllo indiretto avviene con `action_source`: `action_source=website` significa consenso presente, `action_source=physical_store` significa modalità aggregata (nessun consenso ma conteggiabile come offline).
-
-## Cosa Testare nella Prima Settimana
-
-Quando andate in production, esecuzione parallela è indispensabile: i pixel client-side continuano a funzionare, il server-side gira in parallelo. Monitorate entrambi per due settimane, poi disabilitate il client-side.
-
-**Checklist di test:**
-- [ ] Il conteggio degli eventi in Meta Events Manager è entro ±10% dal client-side
-- [ ] C'è calo nel conteggio delle sessioni GA4 (il server-side dovrebbe vederne di più)
-- [ ] Il conteggio delle conversioni in Google Ads è cambiato (ci si aspetta un aumento di +8-15% con Enhanced Conversion)
-- [ ] Il costo Cloud Run supera i €50/mese (per 1M eventi/mese, il range normale è €30-40)
-- [ ] La dedup funziona — nessun avviso di evento duplicato nei Test Events di Meta
-- [ ] Il conteggio degli eventi giornalieri nella tabella BigQuery log corrisponde all'analytics del frontend
-
-Problemi che certamente sorgeranno nella prima settimana: errore di formato nei dati utente hash (30-40% degli eventi), header di consenso mancante (15-20%), perdita di conversioni iniziali a causa di cold start di Cloud Run (se min-instances=0). Per questo, non attivate il nuovo stack durante periodi critici come il Black Friday — stabilizzatelo in un periodo di traffico normale.
-
-## Stack Production: Cosa Fare Ora
-
-La misurazione server-side nel 2026 non è più "sperimentale", è "standard". Fare affidamento su pixel client-side significa perdita di conversioni del
+La misurazione lato server non è più un'ottimizzazione opzionale, è un'infrastruttura obbligatoria in un mondo privacy-first. Deploy su Cloud Run, deduplicazione di CAPI, hash Enhanced Conversions, stream a BigQuery — ogni passaggio richiede una decisione tecnica. Inizia in ambiente di test con il dominio `run.app`, prima di andare in produzione configura un dominio personalizzato + SSL, valida i segnali di consenso, attiva il monitoring. sGTM da solo non è la soluzione — deve lavorare in parallelo con i tag lato client, la logica di deduplicazione deve essere solida. Se vuoi salvare l'attribution, la migrazione al server-side measurement è inevitabile, ma il percorso da zero a produzione richiede 4-6 settimane di lavoro di ingegneria.
