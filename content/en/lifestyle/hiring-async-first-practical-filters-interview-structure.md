@@ -1,106 +1,87 @@
 ---
 title: "Hiring for Async-First: Practical Filters and Interview Structure"
-description: "Trial week, written assessment, breaking sync bias — redesigning recruitment for async-first team culture"
-publishedAt: 2026-06-01
-modifiedAt: 2026-06-01
+description: "Trial week, written evaluation, and measurable hiring process to eliminate sync bias. Discover how async work culture is established from the recruitment phase."
+publishedAt: 2026-06-13
+modifiedAt: 2026-06-13
 category: lifestyle
 i18nKey: lifestyle-005-2026-06
-tags: [async-first, hiring, remote-work, team-culture, knowledge-work]
-readingTime: 8
+tags: [async-first, hiring, remote-work, trial-week, team-culture]
+readingTime: 7
 author: Roibase
 ---
 
-Classical interview structure is optimized for synchronous communication: 45-minute Zoom, whiteboard challenge, pressure to answer immediately. If you're building an async-first team, this process measures the wrong signals. Fast talking ≠ quality thinking. Silence ≠ ignorance. Roibase has worked remotely for 8 years, fully async for the last 3 — we've redesigned our hiring process 4 times. This article shares the practical filters, trial week mechanism, and how we broke the sync bias.
+Building an async-first work culture starts with hiring. A process that begins with "we work flexibly" followed by a Zoom interview already carries sync bias. If a candidate feels synchronous performance pressure in the first 30 minutes, they won't transition to written communication in the following six months. Async work culture has a measurable foundation: response time, async documentation quality, autonomous decision-making speed. Teams that don't establish this foundation during hiring later complain about "why does everything require a meeting."
 
-## Why synchronous interviews mislead async teams
+This article turns async-first hiring into a practical process. Trial week, written evaluation, and filtering mechanisms that eliminate sync bias — a concrete framework drawn from eight years of team-building experience.
 
-In classical interview format, candidates spend 45 minutes pitching themselves, hiring teams decide based on real-time performance. This format rewards extroverted communication — but the critical skill in async teams is different: writing structured context, making autonomous decisions under uncertainty, adapting to async feedback loops.
+## Breaking the sync interview bias
 
-In 2023, Roibase reviewed the last 12 hires: we found 3 people with high interview scores but low Linear ticket throughput in their first 90 days. Common trait: brilliant in sync meetings, but context-deficient in Asana/Linear comments, 12-hour lag in Slack threads. Counter-examples exist too — 2 people quiet in interviews but with flawless RFCs (request for comment), hitting 6-month code review approval rates our team envied.
+Traditional interview format creates "diagnose someone in 30 minutes" pressure. The candidate recites prepared answers. The interviewer does a "vibe check." The most critical skill for async culture — written thinking, maintaining context, autonomous decision-making — never gets tested. Result: as the team grows, @channel mentions increase on Slack while Linear tickets remain empty.
 
-The gap comes from this: sync environments reward "fast answers," async environments reward "considered answers." Interview format measures the first, daily work requires the second. To break this mismatch, we redesigned the hiring pipeline around async signals.
+To take the first step, you need written evaluation before the interview. Instead of "why do you want to join us?" provide a concrete scenario: "How would you increase this product's conversion rate by 15%? How would you measure each change?" Give them 48 hours to respond in a Google Doc. Minimum 500 words, maximum 1,000. This format has two values: the candidate organizes their own time (async discipline), and you see thinking structure quality.
 
-## First filter: Not CV, written assignment
+The 48-hour response window also reveals "how you work." A candidate sending two hours before the deadline carries last-minute culture. One submitting within 24 hours makes fast decisions but might lack revision depth. A candidate submitting between 36-40 hours with well-structured text already has async discipline — they'll adapt to remote context from day one.
 
-We screen CVs but our real first filter is a 2-hour written assessment. Candidates answer 3 open-ended questions in writing — Google Doc, within 48 hours, references allowed.
+## Trial week structure: from theory to practice
 
-Example questions (product manager role):
-- "You launched a feature, adoption hit 3% in week one. Which metrics do you examine, what do you test changing first? How do you document the decision?"
-- "How should product roadmap be shaped in an async team? Linear milestone, Notion RFC, Slack poll — what's each for?"
-- "Engineering says 'this creates technical debt,' founding team says 'direct revenue impact.' How do you resolve this conflict async?"
+Trial week is designed as a "paid test project." Standard contract: 5 days, $50-75 hourly (by seniority), real project. Don't simulate — add the candidate to Linear, invite them to Notion workspace, grant Figma comment access. Let them work in the real workflow from day one.
 
-Evaluation criteria:
-- **Structural clarity:** Headers, bullet points, sections — is structure deliberate?
-- **Context building:** Are assumptions explicit? Uncertainties named?
-- **Reference discipline:** Own experience vs. sourced knowledge — is the distinction clear?
-- **Autonomy signal:** "Should I ask you" or "in these 3 scenarios I'd decide this way"?
+Day one: single synchronous onboarding call (30 minutes). Explain team structure, tool stack, async communication rules. Don't say "be online 9-5." Instead say "update Linear tickets within 24 hours, respond to Figma comments within 12 hours." Set measurable expectations.
 
-In 2024, 47 candidates entered written assessment, 12 passed. 10 of 12 reached final hiring — 17% false positive rate. CV filtering ran 60%. Written assessment directly measures async capability.
+Days two through five: completely async. Give the candidate a small but real project. Examples: landing page A/B test hypothesis + wireframe, BigQuery query + data dashboard, content brief + first draft. Project scope: 15-20 hours of work. Trial week = 40 hours total, not 40 hours of work — rather, 20 hours of actual work plus 20 hours of "observing how they work."
 
-### For technical roles: RFC review instead of code challenge
+Metrics you observe:
+- Linear ticket update frequency (minimum one per day)
+- Async question quality (not "how do I do this?" but "I chose method A over B based on criterion X, waiting for approval")
+- Doc/Figma comment depth (single-line comments = low, 3-4 paragraph context + alternatives = high)
+- Proactive updates before deadline ("it'll be done tomorrow" vs. "60% complete today, remaining section needs 6 more hours")
 
-We don't do whiteboard challenges for developer hiring. Instead we provide a real RFC (architectural decision record), ask candidates to "review this design, suggest alternatives, write tradeoffs." GitHub comment format, markdown, 4-hour window.
+After trial week, two more synchronous calls: mid-week check-in (15 minutes, optional) and final review (45 minutes). In final review, don't discuss project output — discuss process discipline. If they can answer "Why did you choose this approach?" and "Where did you get stuck and how did you solve it?" with structured thinking, they're async-ready.
 
-Example RFC: "PostgreSQL to BigQuery ETL pipeline — dbt + Airflow vs Fivetran. Which fits us?" Candidate runs technical analysis *and* demonstrates async code review culture. Result: first-30-day code review quality was 40% higher (2025 cohort).
+## Written evaluation score: objective criteria
 
-## Trial week: Real work, real observation
+When trial week ends, you need measurable criteria, not subjective "liked it/didn't like it." Roibase uses a four-dimensional async hiring score (each dimension 1-5 points):
 
-Candidates passing written assessment get offered a paid trial week (1/4 gross salary, 20 hours). They take a real project — not production but production-adjacent. Ticket in Linear, channel in Slack, context in Notion.
+**1. Async communication clarity (1-5):**
+- 1 point: Unclear messages, follow-up questions required
+- 3 points: Clear but minimal context, occasionally needs clarification
+- 5 points: Single message contains context + question + proposed solution + alternative
 
-Trial week rules:
-- **Async-only:** No Zoom, Loom video or written update
-- **Autonomous scope:** Not "do this," but "solve this problem, method is yours"
-- **Real feedback loop:** Team members async-comment, candidate iterates
+**2. Autonomous decision making (1-5):**
+- 1 point: Waits for approval at every step
+- 3 points: Asks about major decisions, handles small details independently
+- 5 points: Made decision, shared reasoning in doc, sent notification for approval
 
-Observation criteria:
-1. **First 24 hours, question quality:** Naming uncertainty or just "what do I do"?
-2. **48 hours, first commit/draft:** Starting iteration without perfection paralysis?
-3. **72 hours, async feedback response:** Defensive or "understood, changing this"?
-4. **Final day delivery:** Shipping defined scope without creep?
+**3. Documentation discipline (1-5):**
+- 1 point: Nothing written down, lost in Slack
+- 3 points: Linear tickets updated but lacking detail
+- 5 points: Notion page, Linear ticket, Figma comments all synchronized and searchable
 
-30% of trial week candidates fail — but this is early fail, far cheaper than 90-day probation fail. In 2025, 15 trial week candidates, 10 converted to full-time, 9 of 10 still here at 12 months — 90% retention.
+**4. Time management transparency (1-5):**
+- 1 point: Missed deadline silently
+- 3 points: Said "didn't make it" after the deadline
+- 5 points: Warned "risk exists, here's plan B" 48 hours before
 
-## Breaking sync bias: Silent interview
+Total score 16-20 = hire, 12-15 = borderline (consider second trial week), below 11 = no hire. This numerical structure also structures team discussion. If two people score differently, you can see which dimension they diverge on and discuss concrete examples.
 
-After trial week comes final interview, but format is inverted: "silent interview." 30 minutes, candidate doesn't speak — we send questions via Google Doc in advance, candidate writes answers, we read during interview and ask follow-ups.
+## Where is synchronous interview still necessary?
 
-This format tests 3 things:
-- **Preparation discipline:** Writing answers requires more thinking than spontaneous speech
-- **Distillation:** Structured prose over verbal rambling
-- **Async empathy:** Reader-centered writing, not speaker-centered
+Async-first doesn't mean "no meetings ever." Completely eliminating synchronous interviews means skipping culture fit testing. The right format: one to two synchronous calls after the candidate passes async written evaluation.
 
-Example question: "What counts as success in your first 90 days? Write with metrics." Not "adapting well" but "merging my first RFC, dropping code review cycle time to 24 hours, building async alignment with 3 stakeholders."
+First sync call (30 minutes): culture interview. Send questions in advance (Google Doc). Candidate prepares 24 hours ahead. During the call, don't repeat these questions — deepen their written answers. Example: "In your doc you wrote 'I prefer working autonomously.' Tell me about a time your autonomous decision was wrong — how did you handle it?" This format tests both preparation discipline and real-time thinking quality.
 
-After silent interview, 15 minutes sync Q&A — mostly candidate's questions of us. In 2024, 8 final interviews, 7 converted, 1 candidate self-selected out (wasn't ready for async). 
+Second sync call (45 minutes): technical/strategic depth. Discussion based on trial week output. "Why didn't you choose X alternative in this design?" Questions like these matter — because some situations (client call, sprint retro) require real-time discussion. Async-first teams don't mean "never talk," they mean "don't use sync unnecessarily."
 
-## Onboarding: Reinforcing async discipline
+These two calls test consistency between "spontaneous thinking" and "structured written thinking." If the doc is deep but the call is surface-level, they might have gotten help writing it. The opposite (strong call, weak doc) means missing async discipline. If both are strong, they can work in both async and sync contexts.
 
-After hire decision, we strengthen the async muscle through required practices in first 30 days:
+## Using the hiring process as an async branding tool
 
-| Days | Activity | Measurement |
-|-----|----------|-------|
-| 1-7 | Read Notion handbook, ask 10 questions (written) | Question quality (uncertainty vs. info verification) |
-| 8-14 | First Linear ticket: documentation update | Commit message clarity, PR description |
-| 15-21 | First async RFC (small scope) | Peer review comment count, approval time |
-| 22-30 | Review another team's RFC | Constructive feedback signal |
+Async-first hiring is also an employer branding tool. During trial week, the candidate sees how the team actually works. How Linear tickets are written, how detailed Figma comment threads are, how updated Notion docs stay. This is infinitely more powerful than "we're a remote company" slogans.
 
-This builds async muscle — by day 30, even a code-first developer has strengthened written-context capacity. At Roibase, work on [brand positioning](https://www.roibase.com.tr/en/branding) uses similar discipline: brand voice docs, guidelines, tone-of-voice — all async alignment tools.
+Add the candidate to team Slack channels during trial week. Let them see how the team debates in public channels, the async decision logs, Friday win shares. Not to sell — to show real culture. If your team culture lacks async discipline, it becomes obvious here — then fix your own culture first, then hire.
 
-## Counter-argument: Doesn't async hiring take longer?
+The hiring process is also an operational extension of the [branding](/en/branding) process. How the team works, how they communicate, how they decide — these are part of brand identity. Async-first hiring is the clearest way to show this identity to the candidate in a live environment. If you design the process well, even rejected candidates will write "great experience" on LinkedIn.
 
-Yes, 2 weeks longer than classical pipeline. Written assessment 48 hours, trial week 5 days, silent interview 1 week prep. But this time is minimal next to the 6-month opportunity cost of wrong hire. In 2022, Roibase sync-pipeline hires: 2 people left month 4 — cost of bad hire: ~€40K (salary + team disruption). In 2024, async pipeline: 7 people, still here at 12 months — cost of good hire: initial investment compounding.
+## Closing: build async culture from day one
 
-Other counter: "Fast-moving startup can't afford async hiring." Response: speed = right hires, not fast hires. Building async team with sync-filtered pipeline is logical error — measuring wrong signals.
-
-## Second-order effects of async hiring
-
-This structure creates spillovers:
-- **Employer brand:** Candidate pool shifts — "work without meetings" seekers arrive
-- **Retention:** First-90-day cultural fit 40% faster (2025 cohort vs 2022)
-- **Referral quality:** Team members refer friends with similar async capability
-
-In the last 12 months, 9 of 23 Roibase applications came from "async-first hiring process" search — the pipeline itself signals brand.
-
----
-
-Building async teams doesn't start with *who* you hire — it starts with *how* you hire. CV screening, 45-minute interview, "culture fit" intuition — these are sync-era tools. Written assessment, trial week, silent interview — these are async-era filters. Process takes longer, but signal quality is higher. As knowledge work goes fully async in 2026, hiring should too.
+Async-first work culture can't be built in retrospective hiring. The "hire first, teach later" approach means drowning in @here notifications on Slack for six months. Trial week, written evaluation, and numerical scoring — these aren't "extra work," they're the foundation of async discipline. You can't say "we have a remote culture" while conducting sync interviews. Alignment between process and culture determines whether teams scale with discipline or chaos. Async-first hiring isn't just about finding the right person — it's about designing how your team will grow.
