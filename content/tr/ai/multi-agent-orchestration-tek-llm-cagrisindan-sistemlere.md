@@ -1,143 +1,109 @@
 ---
 title: "Multi-Agent Orchestration: Tek LLM Çağrısından Sistemlere"
-description: "Agent SDK'lar, tool use ve paralel/seri topology'lerle LLM'leri production sistemine dönüştürmek — latency, cost, reliability tradeoff'ları."
-publishedAt: 2026-05-23
-modifiedAt: 2026-05-23
+description: "Agent SDK'lar, tool use ve paralel/seri topology'lerle LLM uygulamalarını üretime taşımak. Token maliyeti, latency ve hata yalıtımı tradeoff'ları."
+publishedAt: 2026-06-13
+modifiedAt: 2026-06-13
 category: ai
-i18nKey: ai-008-2026-05
-tags: [multi-agent, llm-orchestration, tool-use, agent-sdk, ai-engineering]
+i18nKey: ai-008-2026-06
+tags: [multi-agent, llm-orchestration, tool-use, agent-sdk, production-ai]
 readingTime: 8
 author: Roibase
 ---
 
-2024'te "AI asistan" demek tek prompt-response döngüsü demekti. 2026'da production'da olan şey farklı: paralel agent mesh'leri, seri orchestration pipeline'ları, tool use ile dış sistemlere bağlı ajanlar. Tek LLM çağrısı yerine birbirine sinyal gönderen ajanlar sistemi kurmak, reliability ve cost/latency dengesini yeniden yazıyor. Multi-agent orchestration, LLM'i production infrastructure parçasına dönüştüren mimari katman.
+Tek bir LLM promptu birkaç ay önce yeterliydi. Şimdi production'da çalışan sistemler paralel agent topology'leri, structured output ve fallback zinciri gerektiriyor. Anthropic'in Computer Use, OpenAI'nin function calling ve LangGraph'in state machine desteği agent orchestration'ı framework düzeyine taşıdı. Multi-agent mimari artık yalnızca research değil, büyüme ekiplerinin günlük tooling'i. Token maliyetini düşürmek, latency'yi kontrol etmek ve hata yalıtımı yapabilmek için single-agent çağrısından orchestrated system'e geçiş zorunlu.
 
-## Agent SDK'lar ve Tool Use Katmanı
+## Agent SDK'lar ve Tool Use Protokolü
 
-Agent framework'leri — LangGraph, Autogen, CrewAI — LLM'e "fonksiyon çağırabilirsin" yetkisi veriyor. Tool use, modelin kendi çıktısını JSON schema'ya uygun function call'a dönüştürmesi ve interpreter'ın o fonksiyonu çalıştırıp sonucu tekrar prompt'a eklemesi. OpenAI function calling, Anthropic Claude'un tool use API'si, Google'ın Gemini function declaration'ı aynı ilkeye dayanıyor: LLM deterministik kod çalıştıramaz ama hangi fonksiyonun hangi parametreyle çağrılacağını söyleyebilir.
+OpenAI'nin function calling JSON şeması 2023'te standart haline geldi. Anthropic, Claude 3.5 ile tool use'i genişletti: API response artık `tool_use` bloğu döndürüyor, sen execute edip `tool_result` olarak geri veriyorsun. Bu loop 20+ iterasyona kadar gidebilir, ama token limiti seni kesiyor. Gemini'nin function declarations syntax'ı benzer, fark grounding ve retrieval extension'larında. Üç provider da aynı pattern'i paylaşıyor: model function descriptor alıyor, function name + arguments döndürüyor, execution kullanıcıda.
 
-SDK'lar bu döngüyü manage ediyor: user query gelir, model "hava durumu API'sine city=Istanbul parametresiyle git" der, orchestrator API'yi çağırır, cevabı prompt'a ekler, model final output üretir. Bu 3 turnaround = 3×latency. Production'da tool call zinciri 5-7 adıma çıkabiliyor, her biri 200-800ms ekliyorsa toplam 1-5 saniye response time demek. Multi-agent'ta amaç bu latency'yi paralelleştirme ve cache'leme ile kırmak.
+Agent SDK'lar bu loop'u soyutluyor. LangChain'in `AgentExecutor`, LlamaIndex'in `ReActAgent`, AutoGPT'nin core engine — hepsi aynı sorunu çözüyor: tool call sequence'ini yönetmek. Ama abstraksiyonlar token overhead yaratıyor. Örneğin LangChain, her iterasyonda conversation history'yi prefix olarak gönderiyor. 10 tool call = 10× context window. Bunu azaltmak için summarization agent veya selective context pruning gerekiyor. Production'da LangSmith gibi observability katmanı olmadan debugging imkansız.
 
-Örnek tool definition:
+Tool use protokolü deterministik değil — model bazen hallucinate ediyor, yanlış function argument veriyor. Bu yüzden validation katmanı zorunlu: Pydantic schema ile input validate et, runtime'da exception yakala, model'e error message döndür. LangChain'de `PydanticOutputParser`, Anthropic'te `tool_choice="required"` parametresi bu riski düşürüyor. Ama asıl sorun şu: model her zaman doğru tool'u seçmiyor. 3-4 benzer tool varsa, seçim yanılması %8-12 oranında. Bu durumda retry logic veya routing agent ekliyorsun.
 
-```python
-tools = [
-    {
-        "name": "query_analytics",
-        "description": "BigQuery'den belirtilen metriği çek",
-        "parameters": {
-            "metric": "string (revenue|sessions|conversions)",
-            "date_range": "string (7d|30d|90d)"
-        }
-    }
-]
-```
+## Paralel vs Seri Agent Topology
 
-Model bu tool'u kullanmaya karar verirse orchestrator BigQuery client'ını invoke ediyor, result'u prompt'a append ediyor, model final synthesis yapıyor. Tool use'un gücü: LLM determinizmden feragat etmeden dış dünyayı sorgulayabiliyor.
+Tek agent'in yapamadığı şeyi niye iki agent yapsın? Çünkü **specialization** token verimliliğini artırıyor. Örnek senaryo: e-posta gelen kutusu → kategorize et → yanıt yaz → onay al. Monolithic prompt 8K token context kullanır, her e-posta için aynı instruction'ı tekrarlar. Bunu 3 agent'e böl: **classifier** (kategorize), **drafter** (yanıt yaz), **validator** (onay logic). Her biri kendi küçük prompt'una sahip. Toplam token: 8K → 2K+2K+1.5K = 5.5K. %31 düşüş.
 
-## Paralel ve Seri Agent Topology'leri
+Paralel topology başka avantaj: **latency azaltma**. Örnek: content generation pipeline — bir agent SEO keyword analizi yapıyor, diğeri ton ve style guide'ı parse ediyor, üçüncüsü rakip içerik scrape ediyor. Seri çalıştırırsan 3× latency. Paralel çalıştırırsan (LangGraph'in `StateGraph` + `map` node'u ile) max latency = en yavaş agent'in süresi. Ancak paralelde coordination zorlaşıyor. Hangi agent'in output'u öncelikli? Conflict olursa kim karar veriyor? Bu yüzden **arbiter agent** gerekiyor — paralel sonuçları alıp final decision veren meta-layer.
 
-Tek agent = seri işlem. Multi-agent = paralel + seri karışımı. İki temel pattern: **scatter-gather** ve **pipeline**.
+Seri topology hata yalıtımı sağlıyor. Agent A başarısız olursa, B ve C çalışmıyor. Fallback chain kurabilirsin: A fail olursa A2'ye geç. Paralelde ise partial failure senaryosu var: 3 agent'ten 2'si başarılı, biri timeout. Sistem nasıl devam edecek? Bu durumda state machine logic gerekiyor. LangGraph'de `conditional_edges` ile routing yapıyorsun: agent başarılıysa "next", fail ise "retry" veya "fallback".
 
-**Scatter-gather:** Ana orchestrator görevi 3 alt ajana böler, her biri aynı anda farklı tool'la çalışır, sonuçlar merkezi ajanda birleşir. Örnek: "Geçen ayın kampanya performansını analiz et" → agent_1 Google Ads API'sine, agent_2 Meta Ads API'sine, agent_3 BigQuery'ye gider, hepsi paralel. Orchestrator 3 response'u alır, sentez eder, final report verir. Latency: max(agent_1, agent_2, agent_3) + synthesis latency. Seri olsaydı agent_1 + agent_2 + agent_3 + synthesis olacaktı. 3×800ms yerine 800ms + 300ms = 1.1s.
+### Topology Seçim Kılavuzu
 
-**Pipeline:** Agent_A'nın çıktısı agent_B'nin input'u. Örnek: (1) query planlayıcı agent SQL yazıyor → (2) execution agent SQL'i çalıştırıyor → (3) visualization agent grafik spec'i üretiyor. Her adım bir sonrakinin dependency'si. Latency seri ama **her agent specialized** — query planner küçük model (GPT-4o-mini, 50ms) olabilir, execution logic gerektirmez, visualization agent Gemini Flash kullanabilir. Tek büyük model yerine 3 küçük model = daha ucuz + daha hızlı (bazı durumlarda).
+| Senaryo | Topology | Neden |
+|---------|----------|-------|
+| Sequential dependency (A'nın output'u B'nin input'u) | Seri | Paralelde coordination overhead |
+| Bağımsız subtask'ler | Paralel | Latency azaltma |
+| Yüksek fail riski | Seri + fallback | Hata yalıtımı |
+| Token maliyeti kritik | Hybrid (paralel fetch, seri process) | Context paylaşmadan veri toplama |
 
-Roibase'in [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) hizmetinde multi-agent orchestration'ı attribution pipeline'larında kullanıyoruz: bir agent raw event'i parse ediyor, bir agent session'a bağlıyor, bir agent revenue'yü mapping'liyor, final agent cross-channel attribution'ı hesaplıyor. Pipeline topology = deterministik adımlar, her biri özel tool set'e sahip.
+## State Management ve Context Pruning
 
-### Paralel vs Seri Tradeoff
+Multi-agent sistemin en kritik sorunu: **state bloat**. Her agent conversation history'yi tutuyor, her iterasyonda context window büyüyor. 10 agent × 5 iterasyon = 50 message. Claude'un 200K context window'u bile dolabiliyor. Sonuç: latency artıyor (token hesaplama maliyeti O(n²)), cost artıyor, bazı model'ler timeout veriyor.
 
-| Topology | Latency | Cost | Kullanım Durumu |
-|----------|---------|------|-----------------|
-| Paralel (scatter-gather) | Düşük (max işlem süresi) | Yüksek (N agent × LLM call) | Bağımsız sorgular (multi-source data pull) |
-| Seri (pipeline) | Yüksek (toplam süre) | Orta (her agent küçük model olabilir) | Bağımlı işlem (parse → enrich → analyze) |
-| Hibrit (paralel → merge → seri) | Orta | Orta-Yüksek | Karmaşık görev (veri toplama paralel, sonuç pipeline'da) |
+Çözüm: **stateful orchestration** ve **selective memory**. LangGraph'in `checkpointing` özelliği state'i external store'a yazıyor (Redis, PostgreSQL). Her agent yalnızca kendi ilgili context'ini okuyor. Örnek: drafter agent classifier'ın output'unu görüyor, ama validator'ın önceki onay geçmişini görmüyor — gerekmedikçe.
 
-Production'da scatter-gather'ı rate limit'e çarpmamak için concurrency limit koyuyoruz (örn: max 5 paralel LLM call). Seri pipeline'da intermediate cache kullanıyoruz — agent_A'nın çıktısı 10 dakika geçerli ise aynı query geldiğinde agent_B doğrudan cached output'tan başlıyor.
+Bir diğer pattern: **summarization agent**. Her N iterasyonda devreye giriyor, conversation'ı 3-4 cümleye indiriyor. LangChain'in `ConversationSummaryMemory` bu işi yapıyor ama dikkat: summarization kendisi de LLM call gerektiriyor, ekstra maliyet. Bu yüzden trigger threshold iyi ayarlanmalı. Bizim production pipeline'ımızda 12 iterasyonda 1 summarization çalıştırıyoruz — 200 token yerine 50 token context tutuyor, %75 tasarruf.
 
-## Orchestrator'ın Sorumluluğu: Routing ve Error Handling
+Context pruning başka bir seçenek: ilgisiz message'ları sil. Örnek: classifier agent'in output yalnızca category label, ama model tüm reasoning chain'i de dönüyor. Drafter'a gönderirken reasoning'i kesiyorsun, yalnızca label'ı bırakıyorsun. LangChain'de `MessagesPlaceholder` + custom filter function ile yapabilirsin. Bu manuel iş, ama %40-50 token düşürüyor.
 
-Orchestrator sadece agent'ları tetiklemekle kalmıyor, **hangi agent'ın hangi görevi alacağına karar veriyor**. LangGraph'ta "supervisor agent" diye geçiyor: gelen query'yi categorize edip routing yapıyor. Örnek logic:
+## Production'da Reliability ve Observability
 
-```python
-def route_query(user_query: str) -> str:
-    # LLM-based router (küçük model, hızlı)
-    classification = llm.classify(user_query, categories=["data_query", "content_gen", "code_review"])
-    
-    if classification == "data_query":
-        return "analytics_agent"
-    elif classification == "content_gen":
-        return "writer_agent"
-    else:
-        return "code_agent"
-```
+Multi-agent sistem demek N× failure surface demek. Bir agent timeout veriyor, diğeri rate limit yiyor, üçüncüsü hallucinate ediyor. Bu chaos'u yönetmek için **circuit breaker** ve **retry logic** zorunlu. LangChain'in `RunnableRetry` wrapper'ı var, ama granular kontrol istemiyorsan Tenacity kütüphanesi daha esnek: exponential backoff, jitter, max attempt.
 
-Router agent genellikle GPT-4o-mini veya Claude Haiku gibi hızlı, ucuz model. 50-100ms'lik overhead ekliyor ama gereksiz büyük model kullanımını kesiyor. User "kampanya performansını özetle" diyorsa analytics_agent'a gidiyor (BigQuery tool use), "blog yazısı yaz" diyorsa writer_agent'a (web search tool + writing LLM).
+Observability olmadan debug edemezsin. LangSmith, LangGraph Studio, Weights & Biases gibi tool'lar agent trace'i görselleştiriyor: hangi agent ne zaman çağrıldı, ne döndü, ne kadar token harcadı. Bizim stack'imizde LangSmith + custom Prometheus exporter kullanıyoruz: agent latency, token count, error rate metriklerini Grafana'da gösteriyoruz. Alert threshold: P95 latency >3s veya error rate >5%.
 
-**Error handling multi-agent'ta kritik.** Tek agent'ta LLM hallucinate ederse retry atarsın. Multi-agent'ta agent_2, agent_1'in hatalı output'uyla çalışırsa cascade failure oluyor. Orchestrator her agent'ın output'unu validate etmeli:
+Bir başka production sorunu: **non-determinism**. Aynı input, farklı output verebiliyor — çünkü model stochastic. Temperature=0 yapsan bile, provider'ın infrastructure'ına bağlı varyasyon oluyor. Bu yüzden [first-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) gibi güvenilir input pipeline'ı şart: structured data girerse, output daha tutarlı. Ayrıca eval framework gerekiyor: her deploy'da regression test koştur, output quality'yi ölç. LangChain'in `EvaluatorChain` veya Anthropic'in model-based eval kullanabilirsin.
+
+## Cost Optimization ve Tradeoff'lar
+
+Multi-agent sistem pahalı. Tek agent çağrısı 2K token = $0.006 (Claude Sonnet 3.5 fiyatıyla). Aynı task'ı 3 agent'le yaparsan: 3× API call, toplam 6K token, $0.018. 3× maliyet. Bunu haklı çıkaran senaryolar: uzun context'i kısaltmak (büyük doc → chunk → parallel process), specialization (her agent küçük model kullanıyor, toplam ucuz), hata yalıtımı (monolith fail riski yüksek).
+
+Token maliyetini düşürmenin yolları: **model distillation** (büyük model küçük model'i fine-tune ediyor, sonra küçük model production'da), **caching** (aynı context tekrar gelirse cached response dön — Anthropic'in prompt caching'i %90 indirim sağlıyor), **batch processing** (real-time yerine async çalıştır, ucuz model tercih et).
+
+Latency vs cost tradeoff: paralel topology latency düşürüyor ama maliyet artırıyor. Kritik path'te paralel, non-kritik'te seri yapabilirsin. Örnek: kullanıcı query → classifier paralel (hızlı cevap), ama raporlama agent seri (background job). Bu hybrid yaklaşım latency'yi P95 <2s tutarken cost'u %35 düşürüyor.
+
+## Orchestration Örnekleri ve Kod
+
+Basit seri chain (LangChain):
 
 ```python
-def validate_agent_output(output: dict, schema: dict) -> bool:
-    # JSON schema validation
-    if not matches_schema(output, schema):
-        raise AgentOutputError("Agent çıktısı schema'ya uymadı")
-    
-    # Semantic check (opsiyonel, pahalı)
-    if confidence_score(output) < 0.7:
-        return False  # retry or fallback
-    
-    return True
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
+from langchain_anthropic import ChatAnthropic
+
+classifier = LLMChain(
+    llm=ChatAnthropic(model="claude-3-5-sonnet"),
+    prompt=PromptTemplate.from_template("Kategorize et: {text}")
+)
+
+drafter = LLMChain(
+    llm=ChatAnthropic(model="claude-3-5-sonnet"),
+    prompt=PromptTemplate.from_template("Yanıt yaz: {category}, {text}")
+)
+
+category = classifier.run(text=user_input)
+response = drafter.run(category=category, text=user_input)
 ```
 
-Agent_1 başarısız olursa orchestrator fallback chain'e gidiyor: önce retry (1×), sonra alternatif agent (daha büyük model), sonra human-in-the-loop. Production'da bu logic olmadan multi-agent güvenilmez.
+Paralel execution (LangGraph):
 
-## Latency ve Cost: Benchmark Senaryoları
+```python
+from langgraph.graph import StateGraph
 
-Test senaryosu: "Son 30 günün gelir trendini analiz et, kampanya performansını özetle, CEO'ya özet email yaz" — 3 bağımsız görev.
+def parallel_tasks(state):
+    seo_result = seo_agent.invoke(state["content"])
+    tone_result = tone_agent.invoke(state["style_guide"])
+    return {"seo": seo_result, "tone": tone_result}
 
-**Tek agent (GPT-4, seri):**
-- Query BigQuery → 800ms (LLM + API)
-- Query ad platforms → 900ms
-- Generate email → 600ms
-- **Toplam:** 2300ms
-- **Cost:** 3 turn × $0.03/1K token = ~$0.09 (varsayılan input/output mix)
-
-**Multi-agent (scatter-gather + pipeline):**
-- Agent_1, 2, 3 paralel (BigQuery, ads, email prep) → max 900ms
-- Orchestrator merge + synthesis → 400ms
-- **Toplam:** 1300ms
-- **Cost:** 3 agent × $0.02 (küçük model) + synthesis $0.03 = ~$0.09 (aynı ama model seçimiyle düşürülebilir)
-
-**Kazanç:** %43 latency düşüşü. Cost aynı ama model optimization ile (agent_1 → Gemini Flash, agent_2 → Claude Haiku, orchestrator → GPT-4o-mini) $0.05'e iniyor.
-
-**Ama:** Paralel agent = paralel rate limit tüketimi. OpenAI tier limit 500 RPM ise 10 paralel agent = 5 dakikada 50 user'a hizmet verebilirsin. Tek agent olsa 500 user'a hizmet verebilirdin. Production'da bu tradeoff'u queue + cache ile yönetiyoruz.
-
-## Gözlemlenebilirlik ve Debug
-
-Multi-agent sistemde "nerede yanlış gitti?" sorusunu cevaplamak zor. LangSmith, Helicone, Arize Phoenix gibi araçlar agent trace'ini görselleştiriyor: hangi agent ne zaman hangi tool'u çağırdı, hangi prompt'la, ne döndü, nerede retry etti. Örnek trace:
-
-```
-orchestrator → classify_query (50ms, GPT-4o-mini) → "data_query"
-→ analytics_agent → query_bigquery (800ms, tool_call) → success
-→ writer_agent → generate_summary (600ms, GPT-4) → success
-→ orchestrator → merge_results (200ms) → final_output
+workflow = StateGraph()
+workflow.add_node("parallel", parallel_tasks)
+workflow.add_node("merge", merge_agent)
+workflow.set_entry_point("parallel")
+workflow.add_edge("parallel", "merge")
+app = workflow.compile()
 ```
 
-Her adımda token count, latency, cost log'lanıyor. Production'da bu telemetri olmadan multi-agent debug edilemez. Agent A'nın tool call'u timeout'a düşüyorsa trace'te görüyorsun, retry logic ekliyorsun.
+Bu kod 2 agent'i paralel çalıştırıp, sonucu merge agent'e veriyor. LangGraph otomatik olarak state'i yönetiyor, checkpoint'leri Redis'e yazıyor.
 
-Bir diğer metric: **agent utilization**. 5 agent tanımladıysan ama kullanıcı query'lerinin %80'i tek agent'a gidiyorsa routing logic bozuk demektir. Orchestrator'ın classification accuracy'sini ölçüyoruz — user feedback ile label'lı dataset oluşturup router agent'ı fine-tune ediyoruz (few-shot prompt yerine lightweight classifier).
-
-## Multi-Agent'ın Limitleri
-
-Multi-agent her problemi çözmüyor. **Coordination overhead** var: agent'lar arası mesaj geçişi, orchestration logic, error handling — hepsi latency ekliyor. Tek agent'la 1 saniyede bitecek basit query, multi-agent'ta 1.5 saniye sürebilir (orchestrator + routing + merge). Mimari karmaşıklığı artıyor — kod tabanı büyük, test etmek zor, deployment daha hassas.
-
-Multi-agent'ın anlamlı olduğu durumlar:
-- **Paralel data pull gerekli:** 5 farklı API'den veri çekilecekse scatter-gather kazandırır
-- **Specialized model'ler optimal:** Query planning için küçük model, code generation için büyük model — pipeline topology ile cost düşer
-- **Long-running task:** Agent_1 işi başlatır, agent_2 async izler, agent_3 biter, orchestrator notify eder — sync LLM call yerine event-driven mimari
-
-Kısa, sık, basit query'lerde tek agent + caching daha iyi. Multi-agent, karmaşık görevin decompose edilip optimize edilmesinde değer yaratıyor.
-
----
-
-Multi-agent orchestration, LLM'i stateless function call'dan stateful, gözlemlenebilir, ölçeklenebilir sisteme dönüştürüyor. Paralel topology latency'yi kırıyor, pipeline topology cost'u düşürüyor, orchestrator reliability sağlıyor. Production'da scatter-gather ile başla, rate limit ve cost'u izle, gerektiğinde pipeline'a geç. Agent trace'i log'la, error handling'i katmanla, routing logic'i test et. Multi-agent, LLM engineering'den LLM infrastructure'a geçiş noktası.
+Multi-agent orchestration tek başına amacı değil, araç. Başka bir büyüme kanalını otomatikleştiriyorsan veya decision pipeline kuruyorsan agent topology seç, ama metrik netleştir: token/task, latency, error rate. Production'da başarı ölçütü, sistemin %95 uptime'la çalışması ve token cost'un bütçede kalması. Eğer multi-agent sistemi content generation için kuruyorsan, [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) stratejisiyle entegre et — agent'ler citation verisi topluyor, GEO metriklerini besliyorsa, ROI ölçülebilir hale geliyor. Aksi halde yalnızca karmaşık bir API wrapper.
