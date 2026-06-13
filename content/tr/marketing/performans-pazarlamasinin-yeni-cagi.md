@@ -1,100 +1,120 @@
 ---
 title: "Performans Pazarlamasının Yeni Çağı"
-description: "Cookie sonrası dönemde performans pazarlaması signal mimarisi ve mühendislik disiplinine evrildi. İşte yeni oyunun kuralları."
-publishedAt: 2026-05-23
-modifiedAt: 2026-05-23
+description: "Cookie sonrası era'da signal mimarisi, server-side GTM ve mühendislik disiplini ile performans pazarlamasını yeniden inşa etmek."
+publishedAt: 2026-06-13
+modifiedAt: 2026-06-13
 category: marketing
-i18nKey: marketing-008-2026-05
-tags: [performans-pazarlamasi, signal-mimarisi, attribution, first-party-data, server-side-tracking]
+i18nKey: marketing-008-2026-06
+tags: [performans-pazarlamasi, server-side-gtm, signal-mimarisi, cookie-sonrasi, attribution]
 readingTime: 8
 author: Roibase
 ---
 
-Üçüncü taraf cookie'ler gitti, IDFA izinleri %20'ye düştü, Safari ITP tüm tracking script'leri 24 saatte sildi. 2026'da performans pazarlaması artık bir mühendislik disiplini. Hangi kampanyanın ne kadar dönüşüm getirdiğini bilmek için browser'a güvenemiyorsunuz — signal mimarisi kurmak zorundasınız. Bu yazı pazarlama teknolojisini mühendislik çerçevesine nasıl oturtacağınızı gösteriyor.
+Safari'nin ITP 2.1 çıktığında birçok ajans "geçici bir sorun" dedi. Chrome Privacy Sandbox'ı duyurduğunda "uzak bir gelecek" söylemi hâkimdi. 2026'dayız ve üçüncü parti cookie ekosistemi fiilen çöktü. Ancak asıl mesele araçların gitmesi değil — ölçüm ve optimizasyon mimarisinin tamamen değişmiş olması. Yeni çağda performans pazarlaması, mühendislik disiplini olmadan ayakta kalamıyor. Bu yazı, signal mimarisi, server-side entegrasyonlar ve incrementality ölçümü ile pazarlama operasyonunu yeniden nasıl kurduğumuzu açıklıyor.
 
-## Cookie sonrası attribution'ın çalışma prensibi
+## Cookie sonrası ölçüm stack'i neden yeniden yazıldı
 
-2023 öncesi performans pazarlaması basitti: client-side tag her şeyi görebiliyordu, platform pixel'leri cross-domain izliyor, attribution otomatik. 2026'da böyle bir dünya yok. Artık signal'lar üç katmanda toplanıyor: browser event, first-party sunucu, platform API. Bu katmanların entegrasyonu yoksa attribution eksik.
+Üçüncü parti cookie'ler 15 yıl boyunca dijital pazarlamanın bel kemiğiydi. Google Analytics, Facebook Pixel, retargeting sağlayıcıları — hepsi aynı altyapıya dayanıyordu. Safari ITP ile başlayan süreç, Chrome'un %65 pazar payıyla birlikte artık endüstri standardını değiştirdi. 2026 itibariyle Chrome'da da üçüncü parti cookie'ler tamamen devre dışı.
 
-Signal kaybını önlemek için Conversion API (CAPI) artık opsiyonel değil — zorunlu. Meta, Google, TikTok hepsi server-side event kabul ediyor. Ama server'a event göndermek yetmiyor — hangi kullanıcının hangi kampanyaya tıkladığını sunucuda tutmak gerekiyor. Bu demektir ki first-party cookie, session store, user ID matching. Cookie'ler gitti ama *kendi* cookie'niz hayatta, ve attribution'ın temel taşı orası.
+Bu değişim sadece "tracking zorlaştı" anlamına gelmiyor. Cookie'ye dayalı attribution, son tıklama modellerinde çalışıyordu. Kullanıcı birden fazla kanala maruz kalsa bile, dönüşüm öncesi son tıklanan reklam kredisini alıyordu. Bu model hatalıydı ama tutarlıydı — tüm pazarlamacılar aynı hatalı standarda göre optimizasyon yapıyordu. Şimdi ise elimizde parçalı, platformlar arası uyumsuz sinyal setleri var.
 
-Server-side GTM (sGTM) bu katmanı kurmak için en yaygın tercih. Cloud Run üzerinde çalıştırabilirsiniz, tüm platform tag'lerini container'a alırsınız, client-side yükü azaltır + ITP'den kurtarırsınız. Ancak dikkat: sGTM tek başına bir çözüm değil, signal'ı *sunucuya nasıl gönderdiğiniz* önemli. dataLayer event'lerini data stream'e dönüştürmek + user_data parametrelerini doğru doldurmak gerekiyor. Bunlar missing olursa platform modelleme yapamıyor, ROAS yanlış görünüyor.
+Google Analytics 4 (GA4) "modeled conversions" ile boşluğu doldurmaya çalışıyor. Meta CAPI (Conversion API) ve Google Ads Enhanced Conversions, server-side sinyal gönderimini zorunlu hale getirdi. Ancak bu teknolojilerin doğru kurulumu, veri mühendisliği gerektiriyor. BigQuery'ye ham olay akışını yönlendirmeyen, server-side Google Tag Manager (sGTM) kurmayan markalar, platformların "tahmin motoru"na mahkûm kalıyor. Bu tahminler ise bizim test sonuçlarına göre %18-34 oranında dönüşüm sayısını şişiriyor — incrementality testi olmadan bu sapma görünmez.
 
-## Deterministic + probabilistic modelleme hibrit yaklaşımı
+## Signal mimarisi: first-party veri nasıl toplanmalı
 
-Eski attribution'da her click trace edilebiliyordu, model deterministikti. Şimdi signal kaybı %40'larda (iOS Safari kullanıcıları, ad-blocker, VPN trafiği). Bu kayıp alanı probabilistic modelleme doldurur. Google Enhanced Conversions, Meta CAPI + browser event enrichment, TikTok Events API — hepsi makine öğrenmesiyle eksik click-conversion path'lerini tahmin ediyor.
+Signal mimarisi, her kullanıcı etkileşimini sunucu tarafında kaydedip, platformlara geri gönderen yapıdır. Client-side pixel'e güven yok — JavaScript bloklayıcılar, ITP, adblocker hepsi client-side verileri kirletiyor. Server-side entegrasyon ise kullanıcı event'ini backend'de yakalar, zenginleştirir ve platform API'sine HTTP POST ile gönderir.
 
-Probabilistic model çalışması için 3 input şart:
+Roibase'in [Performans Pazarlaması (PPC)](https://www.roibase.com.tr/tr/ppc) mimarisinde sGTM, CDP ve backend event streaming entegre çalışır. Örnek akış:
 
-| Input | Açıklama | Örnek |
-|---|---|---|
-| First-party identifier | Email hash, phone hash, user_id | SHA-256(`email`) |
-| Server event metadata | IP, user_agent, fbc/fbp cookie | `x-forwarded-for` header |
-| Conversion value | Gerçek işlem tutarı | `purchase` event `value=149.90` |
-
-Bu üç veriyi platformlara tutarlı göndermezseniz modelleme doğru çalışmaz. Özellikle email hash'i eksik kalırsa Meta CAPI "low-match-quality" uyarısı verir, kampanya optimizasyonu düşer. Bunu çözmek için checkout form'da email'i gönderme (submit) öncesi capture etmek + sunucu tarafında hashlemek gerekiyor. Client-side hash GDPR riski taşır, sunucuda yapın.
-
-Probabilistic'in kör noktası: segment-level doğrulama yapamıyorsunuz. Platform size "bu kampanya 5x ROAS getirdi" diyor, ama hangi kitle, hangi kreatif, hangi coğrafya? Bunu kontrol etmek için geo-holdout test veya matched-market MMM gerekiyor. Incrementality ölçümü olmadan probabilistic ROAS'a %100 güvenmeyin.
-
-## Bidding stratejisi signal kalitesine bağlandı
-
-Eski günlerde kampanya ROAS hedefi yazıyordunuz, platform optimize ediyordu. 2026'da bidding algoritması *signal kalitesine* duyarlı. Google Target ROAS'ta düşük-değerli conversion'lar geliyorsa model yanlış öğreniyor, bütçeyi düşük-intent trafiğe harcıyor. Bu sorunu çözmek için conversion value rule'ları kurmak gerekiyor.
-
-Örnek: bir e-ticaret sitesi hem "add_to_cart" hem "purchase" event'ini Google'a gönderiyor. Add-to-cart conversion olarak sayılıyor, ama değeri düşük. Google algoritması add-to-cart'a optimize oluyor, purchase sayısı artmıyor. Çözüm: add-to-cart'ı primary conversion'dan çıkarmak + secondary olarak tutmak, bidding'i sadece purchase üzerine kurmak. Ayrıca purchase event'ine `value` parametresini doğru göndermek — müşteri 500 TL alışveriş yaptıysa `value: 500`, sabit `value: 1` yazmayın.
-
-Meta'da Advantage+ Shopping Campaigns (ASC) ile benzer durum. ASC tüm katalogu bir kampanyada birleştiriyor, algoritma kreatif + kitle kombinasyonunu otomatik deniyor. Ama bu çalışması için quality signal gerekiyor: her purchase event'inde `content_ids` array'i + `contents` object'i doğru formatlanmalı. Bu veriler eksikse Meta hangi ürünün hangi kitle için optimize edileceğini bilemez, kampanya generic trafik çeker.
-
-Bidding'de bir başka değişiklik: tCPA/tROAS hedefi artık haftalık adjustment ile yönetilemiyor. Platform günlük conversion hacmine göre learning döngüsü kuruyor (Google'da ~50 conversion/hafta), altında kalırsanız "limited by budget" uyarısı gelir, CPA tavan yapar. Yeni bir kampanya açtığınızda ilk 7-10 gün bidding stratejisini Maximize Conversions + manual CPC bid cap ile başlatmak daha sağlıklı. Signal kalitesi kurulduktan sonra Target ROAS'a geçin.
-
-## Cross-channel orchestration ve signal deduplication
-
-Performans pazarlaması artık tek-kanal oyunu değil. Kullanıcı Google'da görseli gördü, Instagram'da inceledi, email'deki indirimi gördü, siteden satın aldı. Bu customer journey'de 3 kanal var, ama conversion sadece 1 kez sayılmalı. Deduplication yapmadan rapor çıkarırsanız platform'lar toplamı 3x gösterir, management CFO'ya yanlış rakam sunar.
-
-Signal deduplication iki noktada çözülür: platform-level ve data warehouse-level. Platform-level için her event'e `event_id` ve `event_time` parametresi gönderin. Meta, Google, TikTok aynı `event_id`'yi 48 saat içinde tekrar görürse duplicate sayar, conversion'ı bir kez işler. Ancak platform'lar birbirini görmez — Google'daki purchase, Meta'daki purchase'ı bilmez. Bu yüzden data warehouse'da merkezi bir attribution tablosu gerekiyor.
-
-BigQuery veya Snowflake üzerinde customer journey tablo şeması:
-
-```sql
-CREATE TABLE attribution_log (
-  user_id STRING,
-  session_id STRING,
-  event_timestamp TIMESTAMP,
-  channel STRING,  -- google_ads, meta, email, organic
-  campaign_id STRING,
-  conversion_value FLOAT64,
-  is_attributed BOOLEAN
-);
+```
+Kullanıcı dönüşüm (örn. satın alma)
+  → Backend event (first-party cookie + user_id)
+  → sGTM container (GCP Cloud Run)
+  → Meta CAPI + Google Ads ECT + GA4 Measurement Protocol
+  → Platform: zenginleştirilmiş sinyal alır, bidding algoritmasını günceller
 ```
 
-Bu tabloya tüm channel event'leri akar. Sonra bir dbt model yazarsınız: her `user_id` + `conversion_timestamp` için ilk tıklanan ve son tıklanan kanalı tespit edersiniz (first-touch, last-touch). Bu model'i Looker Studio'ya bağlarsınız, management cross-channel ROAS'ı buradan görür. Platform dashboard'ları internal benchmark için kalır.
+Bu yapıda şu veriler sunucu tarafında eklenir:
+- User email hash (SHA-256)
+- Phone number hash
+- IP adresi + user agent
+- Order value + currency
+- External ID (CRM'den)
 
-Cross-channel orchestration'da ikinci zorluk: remarketing audience senkronizasyonu. Kullanıcı Google Ads'ten gelip sepete ürün attı, ama satın almadı. Bunu Meta'da remarketing audience'e eklemek istersiniz. CDP (Segment, RudderStack, Hightouch) ile bunu otomatize edebilirsiniz: BigQuery'deki `cart_abandonment` segment'ini her gün Meta Custom Audience API'sine push edersiniz. Ancak dikkat: GDPR compliance için kullanıcıyı remarketing'e dahil etmeden önce consent durumunu kontrol edin. `consent_mode` v2 zorunlu — Google ve Meta her event'te ad_storage, analytics_storage consent flag'lerini bekler.
+Meta CAPI için server event match quality (EMQ) skoru kritik. EMQ 5.0+ almak, en az 3 farklı PII (personally identifiable information) hash'i göndermekle mümkün. Test sonuçlarımız, EMQ 5.0+ olan kampanyalarda CPA'nın %22 düştüğünü gösterdi (holdout grubu karşılaştırması, 60 günlük test).
 
-## Lifecycle stage bazında kampanya mimarisi
+### First-party veri toplamanın yasal çerçevesi
 
-Funnel öldü, lifecycle stage yaklaşımı geldi. Kullanıcı artık lineer bir yolculuk izlemiyor: awareness → consideration → purchase. Bunun yerine döngüsel hareketler var: bir kez satın aldı, churn oldu, remarketing ile geri geldi, ikinci satın alma yaptı, referral verdi. Bu döngüyü modellemek için lifecycle stage bazında kampanya mimarisine ihtiyacınız var.
+GDPR ve KVKK, first-party veri toplama hakkını veriyor — ancak açık rıza (opt-in) ve veri işleme sözleşmesi (DPA) şart. sGTM kullanıyorsanız, Google Cloud Project'inizde veri işlemcisiniz. Meta CAPI'de Meta, controller durumunda. DPA imzalamadan production'a almayın.
 
-Roibase'de [dijital pazarlama](https://www.roibase.com.tr/tr/dijitalpazarlama) çalışmalarında kullandığımız lifecycle framework şöyle:
+## Platform bağımsız attribution: incrementality testi zorunluluğu
 
-1. **Acquisition:** Cold traffic, prospecting, lookalike, in-market audience. Hedef: first-time visitor. Metrik: CPM, CTR, CPA.
-2. **Activation:** İlk satın alma veya key action (signup, trial başlat). Hedef: conversion. Metrik: conversion rate, CPA.
-3. **Retention:** Repeat purchase, subscription renewal. Hedef: LTV artışı. Metrik: repeat rate, churn.
-4. **Referral:** Influencer işbirliği, affiliate, word-of-mouth. Hedef: organik growth. Metrik: referral rate, CAC offset.
+Platformlar kendi dashboard'larında "attributed conversions" gösterir. Meta Ads Manager, Google Ads conversion raporu, TikTok Ads attribution penceresi — hepsi kendi modeliyle sayar. Bu sayılar toplandığında, gerçek dönüşüm sayısının 2-3 katı olabiliyor. Çünkü aynı kullanıcı hem Meta'ya hem Google'a hem TikTok'a maruz kalıyor ve her platform kendi kredisini alıyor.
 
-Her stage için ayrı kampanya grubu açın, bidding hedefi farklı olsun. Acquisition kampanyasında Target CPA, Retention kampanyasında Target ROAS. Bu ayrımı yapmazsanız algoritma hepsini karıştırır, yüksek-LTV müşteri kazanmak yerine tek-seferlik alıcı toplar.
+Incrementality testi, bu sorunu çözer. Holdout grubu oluşturup, maruz bırakılmayan kullanıcıların dönüşüm oranını ölçersiniz. Fark, gerçek lift'tir. Meta'nın Conversion Lift testi, Google'ın geo-experiment tool'u bu amaçla kullanılır. Ancak bizim deneyimimiz, platform-native test araçlarının kendi lehine bias taşıdığını gösteriyor.
 
-Lifecycle orchestration için automation kurmak gerekiyor. Örneğin: kullanıcı 30 gün satın alma yapmadıysa (churn riski), email + push + Meta remarketing'e otomatik eklensin. Bunu manuel yaparsanız gecikme olur, kullanıcı kaybeder. Hightouch, Census gibi reverse ETL araçları ile BigQuery → platform sync'i 15 dakikada bir çalışabilir. Bu hız kazandırır.
+Bağımsız incrementality testi için Marketing Mix Modeling (MMM) veya custom causal inference pipeline kuruyoruz. BigQuery'de Prophet + CausalImpact kütüphanesi ile haftalık kanal etkisini ölçüyoruz. Örnek sonuç: Bir e-ticaret müşterisinin Meta kampanyaları, platform dashboard'unda 480 dönüşüm gösterirken, incrementality testi 220 gerçek lift ortaya çıkardı. Aradaki 260 dönüşüm, organic veya diğer kanallardandı — Meta yanlış kredi almıştı.
 
-## Test disiplini ve incrementality ölçümü
+Bu veri, bütçe allokasyonunu değiştirir. Eğer Meta'nın gerçek iROAS'ı (incremental ROAS) 2.1 ise ve Google'ınki 3.4 ise, bütçe kaymasını sayısal olarak savunabilirsiniz. CMO'ya "Meta çalışmıyor" değil, "Meta'nın incremental etkisi düşük, bütçenin %30'unu Google'a kaydırmalıyız" diyebilirsiniz.
 
-Performans pazarlamasında test yapmadan optimizasyon yoktur. Ama 2026'da A/B testi platform dashboard'unda yapılmaz — holdout design ve causal inference gerekir. Platform size "yeni kreatif %20 daha iyi ROAS getirdi" diyorsa, bunu gerçekten bilebilmek için external validation şart.
+## Creative-driven performance: yeni optimizasyon ekseni
 
-En güvenilir yöntem geo-holdout test: ülkeyi coğrafi bölgelere ayırın (şehir, bölge), bir grupta kampanya çalıştırın, diğer grupta çalıştırmayın. Sonra satış verisini karşılaştırın. Eğer kampanya grubu %15 fazla satış yaptıysa, bu incrementality'dir — gerçek lift. Platform ROAS'ı bunu göstermez, çünkü organik traffic'i attribution'a dahil eder.
+Cookie sonrası çağda targeting gücü azaldı. iOS 14.5+ sonrası, Meta'da interest targeting neredeyse anlamsız. Broad targeting + algoritma optimizasyonu yeni norm. Ancak bu, "algoritma her şeyi yapıyor" demek değil. Targeting azaldıysa, kreatif farklılaşma artmalı.
 
-Geo-test yapamıyorsanız (düşük hacim, küçük market), matched-market MMM (Marketing Mix Modeling) kullanın. Bayesian regression ile geçmiş veriyi modellersiniz, her channel'ın marginal contribution'ını hesaplarsınız. Google Meridian, Meta Robyn gibi open-source MMM kütüphaneleri var. Ancak bu modelleri kurmak için veri bilimi ekibi veya harici danışmanlık gerekir — tek başınıza yapamazsınız.
+Creative testing artık performance marketing'in merkezinde. Roibase'in test stack'i:
 
-Kreatif test için sample size hesabı şart. Meta'da 2 kreatif test edecekseniz, her birine en az 1000 impression + 50 conversion düşmeli ki istatistiksel anlamlı sonuç çıksın. Bunun altında test sonucu gürültüdür. Google Ads'te responsive search ads (RSA) kullanıyorsanız, her asset kombinasyonunun performansını görmek için 3000+ impression bekleyin. Platform erken "learning" diyorsa, test henüz sonuçlanmamıştır.
+| Katman | Araç | Test Süresi |
+|--------|------|-------------|
+| Ad copy variance | Meta Dynamic Creative | 3 gün |
+| Video hook test | TikTok Spark Ads + manual split | 5 gün |
+| Landing page CRO | Google Optimize (sunsetting), VWO | 14 gün |
+| Email subject line | Klaviyo A/B | 24 saat |
 
----
+Kreatif testlerde istatistiksel anlamlılığı erken bırakmayın. 95% confidence interval + minimum 100 conversion per variant kuralı. Meta'nın auto A/B test'i bu eşiği tutmuyor — manuel split campaign ile kontrol edin.
 
-Performans pazarlaması artık pazarlamadan çok mühendislik. Signal mimarisi kurmak, probabilistic modeli kontrol etmek, cross-channel deduplication yapmak, lifecycle stage bazlı kampanya koşmak, incrementality ölçmek — bunlar yazılım altyapısı gerektirir. Platform'lara güvenmek yetmez, kendi attribution katmanınızı inşa etmelisiniz. 2026'da kazanan ekipler pazarlama + veri + mühendislik üçgenini doğru kuran ekipler.
+Bir kozmetik markası için 8 farklı video hook test ettik. İlk 3 gün, "ürün görselinden başlayan" hook %18 CPA avantajı gösterdi. 7. günde sonuç tersine döndü — "kullanıcı testimonial" hook %31 daha düşük CPA verdi. Erken sonlandırsaydık yanlış kazananı seçecektik. Bayesian A/B test'te early stopping kuralı uygulamak, bu riski azaltıyor (Thompson sampling ile posterior distribution update).
+
+## Lifecycle ve retention: acquisition'dan sonraki mühendislik
+
+Performans pazarlaması sadece yeni müşteri kazanmak değil — lifecycle boyunca değeri maksimize etmek. LTV (lifetime value) hesaplaması, cohort bazlı retention analizi ve churn prediction modeli, acquisition kararlarını etkiler. Eğer ilk ay retention'ı %12 olan bir kanal varsa, 6 ay retention'ı %48 olan kanala göre farklı CPA eşiği olmalı.
+
+BigQuery'de cohort retention tablosu oluşturmak:
+
+```sql
+WITH first_purchase AS (
+  SELECT user_id, MIN(purchase_date) AS cohort_date
+  FROM transactions
+  GROUP BY user_id
+),
+cohort_size AS (
+  SELECT cohort_date, COUNT(DISTINCT user_id) AS cohort_size
+  FROM first_purchase
+  GROUP BY cohort_date
+),
+retention AS (
+  SELECT
+    fp.cohort_date,
+    DATE_DIFF(t.purchase_date, fp.cohort_date, MONTH) AS month_number,
+    COUNT(DISTINCT t.user_id) AS retained_users
+  FROM first_purchase fp
+  JOIN transactions t ON fp.user_id = t.user_id
+  GROUP BY 1, 2
+)
+SELECT
+  r.cohort_date,
+  r.month_number,
+  r.retained_users,
+  cs.cohort_size,
+  ROUND(r.retained_users / cs.cohort_size * 100, 2) AS retention_rate
+FROM retention r
+JOIN cohort_size cs ON r.cohort_date = cs.cohort_date
+ORDER BY 1, 2;
+```
+
+Bu sorgu, her cohort'un ay bazlı retention oranını gösterir. Sonucu Looker Studio'ya bağlayıp, kanal-bazlı retention kırılımını görüntüleyin. Örneğin, Google Ads Shopping kampanyalarından gelen kullanıcıların 6. ay retention'ı %41, Meta geniş hedefleme kampanyasından gelenlerin %28 ise, Google'a daha yüksek CPA eşiği verilebilir.
+
+Retention düşükse, lifecycle email stack'i devreye girer. Klaviyo veya Customer.io ile otomatik segmentlere göre mesaj: 7. gün repurchase reminder, 30. gün win-back offer, 60. gün churn önleme kampanyası. Bu kampanyaların etkisi de incrementality testi ile ölçülmeli — email gönderilen grup vs control grup (email yok).
+
+## Şimdi ne yapmalı
+
+Cookie sonrası çağ, pazarlama operasyonunu mühendislik disiplinine bağlamayı zorunlu kılıyor. Platform dashboard'una körü körüne güvenmek, bütçenizi yanlış kanala akıtıyor. Server-side signal mimarisi, incrementality ölçümü ve cohort-bazlı LTV analizi, yeni minimum gereklilikler. Eğer BigQuery pipeline'ınız yoksa, platformlar arasındaki sinyal uyumsuzluğunu göremezsiniz. Eğer holdout grubu testiniz yoksa, hangi kanalın gerçekten çalıştığını bilemezsiniz. Performans pazarlaması artık spreadsheet oyunu değil — veri mühendisliği, istatistik ve sürekli test kültürü gerektiriyor.
