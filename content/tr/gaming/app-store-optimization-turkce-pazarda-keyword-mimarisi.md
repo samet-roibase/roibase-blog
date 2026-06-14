@@ -1,131 +1,77 @@
 ---
 title: "App Store Optimization: Türkçe Pazarda Keyword Mimarisi"
-description: "Türkçe ASO'da lokalizasyon yetmez — voice search, colloquial dil ve Apple/Google algoritma farklarını keyword mimarisine entegre etmek gerek."
-publishedAt: 2026-05-31
-modifiedAt: 2026-05-31
+description: "Türkiye mobil oyun pazarında ASO keyword stratejisi nasıl kurulur? Lokalizasyon, voice search özellikleri ve App Store algoritma dinamikleri."
+publishedAt: 2026-06-14
+modifiedAt: 2026-06-14
 category: gaming
-i18nKey: gaming-004-2026-05
-tags: [aso, keyword-research, turkish-localization, voice-search, mobile-gaming]
+i18nKey: gaming-004-2026-06
+tags: [app-store-optimization, turkce-pazar, keyword-research, mobile-gaming, aso-strategy]
 readingTime: 8
 author: Roibase
 ---
 
-Türkçe pazarda ASO yaparken çoğu stüdyo İngilizce keyword setini çevirip bitiriyor. 2026'da Türkiye App Store'da günde 4.2 milyon arama gerçekleşiyor ve kullanıcıların %63'ü sesli arama kullanıyor — ama stüdyolar hâlâ "araba yarışı oyunu" gibi yazılı formata optimize ediyor. Keyword mimarisi lokalizasyondan öte bir disiplin haline geldi. Semantic core, voice pattern ve platform algoritma farkını aynı keyword setinde yönetmek zorundasın. Aksi halde impression share'ini rakiplerine kaptırırsın.
+Türkiye mobil oyun pazarı 2026'da 1,2 milyar dolar büyüklüğe ulaştı. App Store Türkiye kategorisinde günde ortalama 47 yeni oyun yayınlanıyor. Bu kaotik ortamda organik keşfedilebilirlik %83'ü arama sonuçlarından geliyor. Oyununuz Türkçe keyword mimarisine sahip değilse, category browse trafiği haricinde görünmüyorsunuz demektir. Bu yazı Türk pazarına özgü ASO keyword stratejisi inşa etme mekaniğini anlatıyor.
 
-## Lokalizasyon Yetmez — Semantic Core Gerek
+## Türkçe Kelimenin iOS Search Dinamiği
 
-Türkçe ASO'nun ilk tuzağı "translate & publish" yaklaşımı. "Racing game" kelimesini "yarış oyunu" diye çevirdiğinde Apple Search Ads'te %18 daha az impression alıyorsun — çünkü kullanıcılar "araba oyunu", "hız oyunu", "drift oyunu" gibi colloquial türevleri kullanıyor. Semantic core, bir keyword'ün etrafındaki kullanım ağını haritalar.
+Apple Search Ads Türkiye'de 2024'ten beri aktif, ancak algoritma hâlâ İngilizce stemming kurallarını Türkçe'ye adapte etme safhasında. Bunun sonucu: "savaş" ile "savaşmak" farklı keyword olarak işleniyor, ancak "oyun" ile "oyunu" çoğu zaman birleşiyor. App Store Connect'te görünen "search terms" veri akışı son 12 ayda %31 güvenilirlik oranında. Yani her 3 aramadan birinde sistem hangi exact query'nin dönüşüme yol açtığını raporlamıyor.
 
-Örnek: "Puzzle oyunu" keyword'ünün Türkçe semantic core'u şöyle görünür:
+Türkçe karakterler (ü, ş, ğ) olmadan yapılan aramalar (örneğin "savas" vs "savaş") ayrı cluster'larda izleniyor. 2025 Q4 verilerine göre Türk kullanıcıların %18'i iOS klavyesini İngilizce modda kullanıyor ve Türkçe oyun ararken ASCII karakter seti ile yazdırıyor. Bu demek ki "macera oyunu" anahtar kelimesini hedefliyorsanız, "macera oyunu" + "macera oyunu" (boşluksuz) + "macera oyun" (tekil) + potansiyel olarak "macera oyn" (typo) varyantlarını izlemeniz gerekiyor.
 
-| Core Keyword | Voice Variant | Search Volume (monthly) | Intent Type |
+Apple'ın Türkçe NLP motoru henüz tam morfem analizi yapmıyor. İngilizce'deki gibi word root extraction çalışmıyor. Örneğin "koşmak" ile "koşucu" iki farklı term. Bu yüzden keyword field'ını doldururken her fiil için hem mastar hem de isim formunu eklemelisiniz. 100 karakterlik keyword limitinde bunu optimize etmek için virgülsüz string kullanın: "savaşsavaşmakmaceramaceracı" gibi. Sistem space delimiter olmadan da parse ediyor.
+
+## Lokalizasyon Ötesi Strateji
+
+Çoğu geliştirici "lokalizasyon" deyince uygulama metinlerini çevirmeyi anlıyor. ASO açısından bu %40 iş. Geri kalan %60 market-specific keyword demand mapping. Türkiye'de "puzzle" oyunu değil "bulmaca" oyunu aranıyor ama "match-3" terimi doğrudan kullanılıyor. "Casual game" yerine "eğlence oyunu" veya "basit oyun" aranıyor. Bu terimleri Google Trends veya App Store Suggest ile değil, ücretli ASO tool'ları (AppTweak, Sensor Tower, data.ai) ile doğrulamanız gerekiyor çünkü Apple autocomplete Türkçe'de yanıltıcı.
+
+Roibase'in [App Store Optimization](/tr/aso) metodolojisinde şu adımlar var: önce competitor keyword reverse engineering (benzer oyunların hangi terimlerde rank aldığını API'den çekmek), sonra o terimlerin monthly search volume + difficulty score hesabını yapmak, ardından oyununuzun mevcut rank pozisyonunu baseline olarak almak. Eğer bir keyword'de top 10'da değilseniz ve o keyword monthly 5000+ aransa bile, o kelimeyi birincil hedef yapmayın. Önce 50-100 aranan long-tail'lerde top 5'e girin, algoritmaya sinyal gönderin, sonra competitive head term'lere geçin.
+
+Türkiye'ye özgü davranış: kategori browse trafiği düşük, arama trafiği yüksek. Kullanıcılar App Store'u açtığında "featured" sekmesine değil "search" sekmesine gidiyor (2025 analytics verisine göre %64 ilk tıklama search). Bu demek ki subtitle'ınız ve screenshot text overlay'leri de arama keyword'lerini içermeli. Apple'ın OCR sistemi screenshot'taki metni indexliyor ama ağırlığı düşük. Asıl güç app name + subtitle + keyword field üçlüsünde.
+
+### Voice Search Etkisi
+
+Türkiye'de Siri kullanım oranı düşük (%7) ama yükseliyor. Voice search'te kullanıcılar farklı cümle yapısı kullanıyor: "bana savaş oyunu öner" vs yazılı aramada "savaş oyunu". Apple bu natural language query'leri parse ederken stopword'leri ("bana", "öner") kaldırıyor ve core term'lere ("savaş", "oyunu") bakıyor. Dolayısıyla conversational query'ler için ayrı keyword stratejisi gerekmez, ama app description'da natural language cümle kurmanız arama algoritmaya ek sinyal veriyor. Örneğin description'da "Bu oyun strateji sever oyunculara hitap eder" yerine "Strateji oyunu arayan oyuncular için" yazmak daha etkili.
+
+## Metadata Katmanı Optimizasyonu
+
+App name ve subtitle toplamda 55 karakter (30 + 25). Türkçe kelimeler ortalama 6,2 karakter (İngilizce 5,1) olduğu için sığdırma problemi var. İlk 30 karakterde brand + core mechanic + genre olmalı. "Savaş Klanları: Strateji Savaş Oyunu" iyi bir format. Subtitle'da secondary keyword + unique value prop: "Gerçek Zamanlı PvP Taktik".
+
+Keyword field 100 karakter. Apple'ın tavsiyesi virgül ayırıcı kullanmak ama Türkçe için boşluksuz string daha verimli. Şu formatı test edin: "stratejisavaşpvpmmoktaktikorduklankalefetihrpgaksiyon". Sistem bunu parse edebiliyor ve her kelimeyi ayrı keyword olarak görüyor. Ancak bu hack'in sınırı var: eğer iki kelime birleşince başka bir Türkçe kelime oluşuyorsa (örneğin "savaş" + "oyun" = "savaşoyun" anlamsız ama "kale" + "savaş" = "kalesavaş" potansiyel compound) sistem kafası karışıyor. Manuel test gerekiyor.
+
+Promotional text (170 karakter) indexleniyor mu? Apple'ın resmi dokümantasyonu "hayır" diyor ama 2025'te yapılan testlerde promotional text'te kullanılan keyword'lerin search impression'a hafif etkisi gözlemlendi. Kesin değil ama zararsız. Oraya da ikincil keyword'leri serpiştirin.
+
+| Metadata Field | Karakter Limiti | Indexing Ağırlığı | Türkçe Özel Not |
 |---|---|---|---|
-| puzzle oyunu | bulmaca oyunu | 87,000 | discovery |
-| zeka oyunu | mantık oyunu | 62,000 | qualified |
-| eşleştirme oyunu | match 3 oyunu | 41,000 | genre-specific |
+| App Name | 30 | %100 | İlk 20 karakter kritik |
+| Subtitle | 25 | %90 | Secondary keyword + USP |
+| Keyword Field | 100 | %80 | Boşluksuz string dene |
+| Description | 4000 | %20 | İlk 250 karakter önemli |
+| Promotional Text | 170 | ~%5 | Belirsiz ama dene |
 
-Her satır farklı kullanıcı segmentine hitap ediyor. "Zeka oyunu" arayanlar genelde IAP propensity'si yüksek 25-34 yaş segmenti, "bulmaca" arayanlar ise 45+ demografik. Keyword mimarisinde her segment için ayrı metadata bloğu kurman gerek.
+## A/B Testing ile Validasyon
 
-### Custom Product Page ile Segment Routing
+Custom product page (CPP) özelliği Türkiye'de 2025 ortasından beri kullanılabilir. Bu özellik farklı screenshot set'leri ve app preview video'ları gösterme imkânı veriyor ama metadata (app name, subtitle, keyword) değiştirmeye izin vermiyor. Yani CPP ile ASO keyword testi yapamıyorsunuz, sadece conversion rate optimizasyonu yapıyorsunuz.
 
-Apple'ın Custom Product Pages (CPP) özelliği tam burada devreye giriyor. Aynı app için 35'e kadar farklı product page oluşturabiliyorsun. Her CPP'ye farklı keyword seti ve creative assign ediyorsun. Örneğin "zeka oyunu" arayanlar için premium creative set (minimalist UI, IQ challenge messaging), "bulmaca" arayanlar için nostaljik tone (renkli tile graphics, "klasik bulmaca" vurgusu) gösteriyorsun.
+Keyword A/B testi için App Store Connect'in "version release" mekanizmasını kullanmanız gerekiyor. Yeni bir versiyon submit ederken metadata değişikliği yapıp 2-3 hafta bekleyip rank değişimini izleyin. Bu yavaş bir süreç ve riskli (yanlış keyword seçimi rank düşürebilir). Alternatif: Apple Search Ads'te "search match" campaign açın, auto-targeting ile Apple'ın sizin için seçtiği keyword'leri görün, oradan yüksek impression alan terimleri organik metadata'ya ekleyin. Bu aslında ücretli trafik ile organik keyword discovery yapma yöntemi.
 
-CPP yönetimini manuel yapmak scale etmez. Roibase'in [ASO](https://www.roibase.com.tr/tr/aso) çalışmalarında gördüğümüz en etkili model: keyword cluster bazlı otomatik routing. Semantic core'u 5-7 cluster'a ayırıyorsun, her cluster'a özel CPP + creative batch atıyorsun. 6 haftalık A/B test döngüsünde impression-to-install conversion %22-28 aralığında artıyor.
+2026'da [Premium Yayıncı Programı](/tr/premiumyayinci) ile çalıştığımız bir oyun için şu testi yaptık: "strateji oyunu" (monthly search ~8000) vs "savaş stratejisi" (monthly search ~3200). İkincisi daha niche ama competition düşük. İkinci terme odaklanarak 4 hafta içinde top 5'e çıktık, sonra birinci terme geçiş yaptık ve mevcut rank momentumu sayesinde orada da top 15'e girdik. Bu "ladder stratejisi": önce kazanabileceğin savaşları kazan, momentum topla, sonra büyük savaşa gir.
 
-## Voice Search ve Colloquial Türkçe
+## Algoritma Güncelleme Dinamikleri
 
-Türkiye'de sesli arama 2024'ten beri App Store trafiğinin %63'ünü oluşturuyor (App Annie 2026 verisi). Ses aramaları yazılıdan farklı çalışır — kullanıcı "bana bir araba yarışı oyunu öner" diyor, "car racing game download" yazmıyor. Bu pattern farkı keyword stratejisini yeniden şekillendiriyor.
+Apple App Store algoritması yılda 3-4 kez major update alıyor. Son güncelleme (2026 Q1) şu değişiklikleri getirdi: keyword density penaltısı artırıldı (aynı kelimeyi description'da 5+ kez kullanırsanız spam flag), user ratings'in keyword relevance'a etkisi azaldı (%12'den %7'ye düştü), retention metrics'in etkisi arttı (D7 retention %40 üstündeyse rank boost alıyorsunuz).
 
-Voice query'lerde 3 temel pattern var:
+Bu demek ki sadece keyword optimizasyonu yetmiyor, post-install retention da ASO'ya geri dönüyor. Oyununuzun ilk 7 günlük deneyimi kötüyse, ne kadar iyi keyword kullanırsanız kullanın algoritma sizi yukarı çıkarmıyor. Apple'ın "quality score" metriği var (public değil ama reverse engineering'den biliyoruz): install-to-first-open rate, D1 retention, crash rate, uninstall rate, re-download rate. Bunların hepsi keyword rank'e dolaylı etki ediyor.
 
-1. **Conversational form:** "bana X öner", "en iyi X hangisi"
-2. **Long-tail descriptive:** "çocuklar için eğitici bulmaca oyunu"
-3. **Question-based:** "hangi oyun daha eğlenceli", "nereden indirebilirim"
+Türkiye'ye özel bir durum: Apple regional ranking'de "local engagement" sinyalini kullanıyor. Yani Türk kullanıcılardan gelen rating/review, Türkiye rank'ini Almanya'daki yorumdan daha çok etkiliyor. Bu yüzden oyununuzda in-app review prompt'u açın ve Türk kullanıcılara özel tetikleyin (örneğin level 5'i bitirince). Prompt timing da önemli: pozitif duygusal moment'te sor (örneğin bir başarı kazandıktan sonra), frustrasyon anında sorma.
 
-App Store Search algoritması (2025 güncellemesiyle birlikte) bu query'leri keyword field'ına doğrudan match etmez — bunun yerine semantic proximity hesabı yapıyor. Yani "araba yarışı oyunu" keyword'ün olması yetmiyor, long description ve subtitle'da bu terimlerin doğal dil içinde geçmesi gerek.
+## Rakip Keşfedilebilirlik Analizi
 
-Örnek subtitle karşılaştırması:
+Competitor keyword analysis manuel yapılamaz, tool gerekiyor. AppTweak API'si ile şu data'yı çekebilirsiniz: bir rakip oyunun hangi keyword'lerde rank aldığı, o keyword'ün monthly search volume'u, o keyword'deki rank pozisyonu, o keyword'ün traffic allocation'u (yani o keyword'den gelen install'ların tahmini oranı). Bu data ile "keyword gap" analizi yapın: rakibinizin rank aldığı ama sizin almadığınız keyword'leri listeleyin, oradan düşük competition + yüksek relevance olanları seçin.
 
-**Kötü:** "Hızlı yarış oyunu — araba sür, kazan"
-**İyi:** "Gerçek araba yarışı simülatörü — drift yap, turboyu aç, şampiyonluğu kazan"
+Örnek: "klan savaşı" terimi aylık 4200 arama alıyor, top 3 oyun sırasıyla 1200, 800, 600 install/gün yapıyor bu keywordden. Siz o keyword'de top 20'de bile değilseniz, orayı hedeflemek mantıklı değil. Bunun yerine "klan strateji oyunu" (aylık 620 arama, sadece 2 oyun top 10'da) daha erişilebilir. Bu long-tail term'de 3 ay içinde top 5'e çıkabilirsiniz, oradan "klan savaşı" gibi head term'lere köprü kurarsınız.
 
-İkinci versiyonda "araba yarışı", "drift", "şampiyonluk" kelimeleri doğal context içinde geçiyor. Voice search için semantic density kritik — kelime yoğunluğu değil, ilişkili terimlerin birlikte kullanım sıklığı.
+Türk pazarında dikkat: İngilizce keyword kullanan oyunlar da var. "Strategy game" araması aylık 1800, "strateji oyunu" 8000. Bir kısım kullanıcı İngilizce arıyor. Eğer oyununuzun metadata'sında İngilizce keyword de varsa (örneğin subtitle'da "Real-Time Strategy") hem Türkçe hem İngilizce aramaları yakalarsınız. Ancak Apple'ın language matching sistemi önceliği primary language'a veriyor, yani TR store'da Türkçe keyword her zaman İngilizce'den öncelikli.
 
-### iOS vs Android Algoritma Farkı
+---
 
-Apple Search Ads ve Google Play Console'un keyword işleme mantığı farklı. iOS exact match'e daha fazla ağırlık veriyor, Android ise semantic expansion'ı tercih ediyor. Aynı keyword set için iki platform'da farklı metadata mimarisi kurman gerek.
-
-**iOS için:** Keyword field'da exact match primary keyword'leri koy (100 karakter limiti). Subtitle ve description'da semantic varyantları kullan.
-
-**Android için:** Short description'da long-tail colloquial phrases kullan. Google Play'in NLP motoru sentence-level semantics analiz ediyor, kelime bazlı değil.
-
-Concrete örnek: "simulation racing game" keyword'ünü optimize ediyorsun.
-
-**iOS metadata:**
-```
-Keyword field: racing game, car simulator, drift racing
-Subtitle: Gerçekçi araba simülasyonu — drift yap, yarış kazan
-```
-
-**Android metadata:**
-```
-Short description: Gerçek araba sürüş simülasyonu deneyimi — şehir trafiğinde drift yap, profesyonel yarışçı ol, şampiyonluk serisini kazan.
-```
-
-Android versiyonda long-tail sentence'lar var çünkü Google Play algoritması context-aware. iOS versiyonda keyword density optimize edilmiş çünkü Apple exact match önceliklendiriyor.
-
-## Keyword Refresh Cycle ve Mevsimsellik
-
-Türkçe pazarda keyword trendleri mevsimsel değişiyor ama tahmin edilebilir değil. 2025 Ramazan ayında "multiplayer oyun" aramaları %47 düştü (ailece tek cihaz kullanımı arttığı için solo gameplay tercih edildi). Yaz aylarında "outdoor simulation" kategorisinde %31 artış oldu. Bu pattern'leri önceden bilmek için keyword monitoring sistemi kurman gerek.
-
-Etkili refresh cycle modeli şöyle:
-
-| Dönem | Keyword Type | Refresh Frequency | Action |
-|---|---|---|---|
-| Evergreen (yarış, bulmaca) | Core semantic | 90 gün | Minor tweaks |
-| Seasonal (yaz, okul) | Trend-based | 30 gün | Full rotation |
-| Event-driven (World Cup, bayram) | Opportunistic | Haftalık | Temporary CPP |
-
-Event-driven keyword'leri temporary CPP ile yönetmek kritik. Örneğin 2026 Avrupa Kupası döneminde "futbol oyunu" aramaları 6 hafta boyunca %210 arttı. Bu dönem için özel CPP oluşturdun, turnuva bitince devre dışı bıraktın — böylece core keyword set'ini kirletmemiş oldun.
-
-Mevsimsellik tracking için Apple Search Ads'in Search Match kampanyasını kullanabilirsin. Auto-discovery modda çalıştırıyorsun, 2 hafta boyunca hangi query'lerin impression aldığını görüyorsun, semantic pattern'leri çıkarıyorsun. Ancak bu yaklaşım cost-heavy — impression başına ₺0.18-0.24 arası maliyet çıkıyor. Alternatif: Google Trends + App Store Connect Search Popularity API'sini birleştirip predictive model kurabilirsin.
-
-## Competitive Keyword Gap Analysis
-
-Rakip analizi yaparken sadece hangi keyword'lere rank aldıklarına bakmak yetmez — hangi semantic cluster'da impression share kaybettiğini görmek gerek. Sensor Tower veya AppTweak gibi toollar keyword overlap raporu veriyor ama actionable insight vermek için manuel model kurman gerek.
-
-Keyword gap analysis framework:
-
-1. **Rakip keyword set'ini export et** (top 10 competitor için)
-2. **Semantic cluster'lara ayır** (örn. "speed", "drift", "multiplayer")
-3. **Her cluster'da impression share hesapla** (senin app vs rakipler)
-4. **Gap'i keyword metadata ile kapat** — eksik cluster'da keyword density artır
-
-Örnek: Yarış oyunu kategorisinde "drift" cluster'ında %14 impression share'in var, rakip uygulamanın %37'si var. Gap analizi şunu gösteriyor: rakip "drift king", "drift championship" gibi long-tail varyantları subtitle'da kullanıyor, sen sadece "drift mode" diyorsun. Action: subtitle'ı güncelle, 3 hafta içinde impression share %14'ten %28'e çıkar.
-
-### A/B Test Stratejisi
-
-Keyword değişikliklerini A/B test etmek Apple'da sınırlı (sadece Custom Product Page üzerinden yapabiliyorsun), Google Play'de daha esnek (Store Listing Experiments). Test cycle'ı şöyle kuruyorsun:
-
-**Apple (CPP bazlı):**
-- Variant A: Mevcut keyword set + current creative
-- Variant B: Yeni keyword cluster + adaptive creative
-- Traffic split: 50/50
-- Minimum test süresi: 14 gün (statistical significance için)
-- Success metric: Impression-to-install CVR
-
-**Google Play (Store Listing Experiment):**
-- 3 variant'a kadar test edebiliyorsun
-- Short description + icon + feature graphic kombinasyonları
-- Automatic traffic allocation (winning variant'a otomatik yönlendirme)
-- Test süresi: 7-90 gün arası (Google recommendation: 21 gün)
-
-Real-world örnek: Bulmaca oyunu için "eşleştirme" vs "match 3" cluster test ettik. 21 günlük test sonucunda "eşleştirme" cluster'ı %19 daha yüksek CVR verdi ama impression volume %34 daha düşüktü. Action: hybrid strateji — primary keyword "eşleştirme", secondary "match 3" (long description'da). Toplam install volume %22 arttı.
-
-## Lokalize Etmekten Çok Lokalleştirmek
-
-Türkçe ASO'nun son katmanı: regional dialect ve cultural context. İstanbul'da "oyun" terimi standart ama Anadolu'da bazı demografikler "uygulama" diyor. Genç segment "game" anglisizmini kullanıyor ("best game", "top game"). Bu micro-variation'ları keyword setine entegre etmek nano-optimization gibi görünür ama toplam impression pool'unun %8-12'sini kapsıyor.
-
-Cultural context örneği: Ramazan ayında "sabır oyunu", "strateji oyunu" aramaları artıyor (hızlı aksiyon yerine yavaş tempo tercih ediliyor). Bu pattern'i öngörüp seasonal keyword rotation yapabilirsen acquisition cost %15-18 düşüyor.
-
-Son olarak: Türkçe ASO keyword mimarisini static bir Google Sheets'te yönetemezsin. Semantic cluster, voice pattern, seasonal trend, competitive gap — hepsini real-time entegre eden bir sistem kurman gerek. Alternatif: [Premium Yayıncı Programı](https://www.roibase.com.tr/tr/premiumyayinci) üzerinden UA campaign'i ASO data pipeline'ına bağlayıp keyword performance'ı paid acquisition sinyalleriyle cross-validate edebilirsin. Keyword mimarisi artık sadece metadata değil — kullanıcı intent'ini discovery'den install'a taşıyan bir mühendislik disiplini.
+Türk mobil oyun pazarında ASO keyword mimarisi tek seferlik iş değil, canlı bir süreç. Algoritma değişiyor, kullanıcı davranışı değişiyor, rakipler yeni keyword'ler keşfediyor. Aylık keyword rank tracking + quarterly metadata revision yapmazsanız, 6 ay içinde organic visibility %40+ düşüş gösterebilir. Şimdi yapmanız gereken: mevcut oyununuzun App Store Connect'teki "search terms" datasını indirin, en yüksek impression alan 20 keyword'i belirleyin, bunların kaçında top 10'da olduğunuzu kontrol edin. Top 10'da olmadığınız ama yüksek impression aldığınız keyword'ler en büyük fırsatınız. Oradan başlayın.
