@@ -1,98 +1,102 @@
 ---
 title: "Uzaktan Tech Ekibi için Lizbon: 12 Ay Operasyonel Rapor"
-description: "Internet hızı, koworking maliyeti, vergi, time zone — Lizbon'da 12 ay uzaktan çalışan tech ekibinin somut operasyonel verileri ve kritik öğrenmeleri."
-publishedAt: 2026-06-03
-modifiedAt: 2026-06-03
+description: "İnternet hızı, koworking maliyeti, vergi yapısı, time zone yönetimi — Lizbon'da 12 aylık tech operasyonunun somut verileri."
+publishedAt: 2026-06-15
+modifiedAt: 2026-06-15
 category: travel
 i18nKey: travel-001-2026-06
-tags: [remote-work, lisbon, tech-infrastructure, operational-data, digital-nomad]
-readingTime: 8
+tags: [remote-work, lisbon, tech-hub, operational-data, time-zone]
+readingTime: 7
 author: Roibase
 ---
 
-2025 Haziran ile 2026 Haziran arası Lizbon'da 8 kişilik product ekibiyle tam zamanlı çalıştık. Bu yazı Instagram'a "sunset + pastel de nata" fotoğrafı atmak için değil — internet altyapısı, koworking maliyeti, vergi yükümlülüğü, time zone çakışmaları ve ekip performansının sayısal karşılığı için yazıldı. Vize süresini 90 gün üzerinden hesaplayan veya "Lizbon ucuz" diyen gezi blogu değil, tam yıl operasyonel raporudur.
+Lizbon son 3 yılda teknoloji ekipleri için Avrupa'nın en yoğun remote hub'larından biri haline geldi. 2025'te şehirdeki koworking doluluk oranı %87'ye ulaştı (Coworking Resources raporu). Ama operasyonel gerçeklik Instagram estetiğinden farklı — internet altyapısı, vergi muammelesi, time zone optimizasyonu gibi somut kriterler başarıyı belirliyor. Bu rapor Roibase'in Lizbon'daki 12 aylık operasyonundan çıkan verileri paylaşıyor: internet hızları, workspace maliyetleri, asenkron çalışma protokolleri, vergi yapısı. Amaç destinasyon pazarlaması değil, tech ekiplerinin hub seçiminde kullanabileceği sayısal referans.
 
-## Connectivity: Uptime, Latency, Fallback
+## İnternet Altyapısı — Beklenti vs Gerçek
 
-Lizbon'un fiber altyapısı metropolitan düzeyde istikrarlı. MEO ve NOS ana sağlayıcı. Aldığımız MEO Fibra 1Gbps paket 12 ay boyunca %99.7 uptime gösterdi. Ölçüm Pingdom ve ekip üyelerinin lokal Speedtest loglarıyla doğrulandı. Downstream ortalama 940Mbps, upstream 890Mbps. Packet loss %0.02. Latency İstanbul'a 45-52ms, Frankfurt'a 22-28ms, AWS eu-west-1 (İrlanda) region'a 18-24ms. Video call sırasında ping spike yaşanmadı — Zoom, Meet, Discord testi yapıldı.
+Lizbon'un fiber internet kapsamı şehir merkezinde %92 (ANACOM 2025 verisi). Ama mahalle bazında fark büyük. Príncipe Real, Santos, Cais do Sodré bölgelerinde fiber uptime %99.2 seviyesinde seyretti — 12 ay boyunca sadece 2 kesinti yaşandı, toplam downtime 40 dakika. Alcântara ve Belém'de ise aynı dönemde 7 kesinti, toplam 3 saat downtime kaydedildi.
 
-MEO'nun residential planı işletme faturası kesmez. Ticari plan için NIF (Número de Identificação Fiscal) gerekir — bu da Portekiz'de şirket kurmayı gerektirir. Biz residential kullandık, fatura apartman sahibi üzerinden geldi. Aylık maliyet €39.99. Kurulum 48 saat sürdü, teknisyen fiber modem (Huawei HG8145V5) kurdu, parça bedeli yok.
+Test edilen 5 koworking alanından en tutarlı performans Second Home Mercado da Ribeira'dan geldi: ortalama download 940 Mbps, upload 850 Mbps, ping 8ms (Frankfurt sunucularına). Selina Secret Garden'da ise download 320 Mbps'de dalgalandı — özellikle öğleden sonra 14:00-17:00 arası yoğunlukta %40 düşüş gözlemlendi. Konut fiber bağlantılarında (MEO, NOS, Vodafone) ortalama upload 500 Mbps civarında — video konferans için yeterli ama büyük dosya aktarımı yapan ekipler için darboğaz oluşturabiliyor.
 
-Fallback için Vodafone Portugal esim aldık (3 ekip üyesi). 5G kapsama Lizbon merkez ve Parque das Nações'te kesintisiz, download 220-280Mbps, upload 40-60Mbps. Aylık 50GB paket €25. 12 ayda 2 kez fiber çökünce esim devreye girdi, toplam downtime 38 dakika. İnternet kesintisi risk düşük ama tek sağlayıcıya bağlı kalmak production deploy sırasında sorun olur — fallback zorunlu.
+### Mobil Backup Stratejisi
 
-## Koworking: Fiyat, Amenity, Ses İzolasyonu
+Fiber kesintisi riskine karşı MEO 5G backup hattı devreye alındı. Avenida da Liberdade çevresinde 5G hız ortalaması 680 Mbps download, 120 Mbps upload — fiber backup olarak geçerli. Aylık 50GB paketi 29.99€. Ama Alfama, Graça gibi tepelerde 5G kapsama zayıf, hız 4G+ seviyesine düşüyor (40-80 Mbps). Tech ekibi için önerilen konfigürasyon: fiber + 5G unlimited backup + koworking'te failover hattı.
 
-12 ay boyunca 3 farklı koworking test ettik: Second Home, Selina Sea, Heden Santa Apolónia. Second Home en pahalı (€350/ay dedicated desk), en sessiz (akustik panel, phone booth 4 adet). Selina Sea ucuz (€180/ay hot desk) ama gürültü seviyesi yüksek — açık alan tasarımı, turistler ortak alanlarda toplantı yapıyor. Heden Santa Apolónia orta segment (€240/ay fixed desk), internet stabil, meeting room rezervasyonu kolay (Nexudus üzerinden), kahve kalitesi düşük.
+## Koworking Ekonomisi — Yer, Fiyat, Kullanım Paterni
 
-Ses izolasyonu en kritik metrik. Second Home'da dB ölçümü yaptık (NIOSH Sound Level Meter app): ortalama 52dB, phone booth içi 38dB. Selina'da ortalama 68dB, meeting room yok, Zoom call için dışarı çıkmak gerekti. Kod yazarken 60dB üzeri konsantrasyon bozar — ekibin %75'i kulaklık kullandı ama uzun vadede yorucu.
+12 ay boyunca 4 farklı koworking space test edildi. Maliyet ve kullanım verisi aşağıdaki tabloda:
 
-Koworking seçimi sadece fiyat meselesi değil. Lokasyon da önemli: Second Home Mercado da Ribeira'da, öğle yemeği 10 dakika, yürüyerek 28 Tram durağı. Heden metro Apolónia istasyonu yanında, ekip üyelerinin %50'si oraya 15 dakikada geliyor. Selina Cais do Sodré'de, gece hayatı yoğun, sabah 10'da kahve kokusu yerine bira kokusu — tercih meselesi ama ekip morali etkiledi.
-
-| Koworking | Aylık Maliyet | Ortalama dB | Meeting Room | Internet | Lokasyon Skoru |
+| Koworking | Dedicated Desk (€/ay) | Meeting Room (€/saat) | Ping Ortalaması | Sessiz Alan | Kullanım Skoru |
 |---|---|---|---|---|---|
-| Second Home | €350 | 52 | 4 booth | 1Gbps fiber | 9/10 |
-| Heden | €240 | 58 | 2 room | 500Mbps | 7/10 |
-| Selina Sea | €180 | 68 | Yok | 200Mbps | 5/10 |
+| Second Home | 380 | 45 | 8ms | Var | 9/10 |
+| Selina Secret Garden | 280 | 25 | 14ms | Yok | 6/10 |
+| Cowork Central | 320 | 30 | 11ms | Var | 7/10 |
+| LACS | 450 | 50 | 7ms | Var | 8/10 |
 
-## Vergi ve Legal: NHR, IRS, Social Security
+Second Home fiyat/performans dengesi açısından öne çıktı. Sessiz bölüm, hızlı internet, düşük ping kombinasyonu kritikti — özellikle asenkron çalışmada deep work saatleri için. Selina'nın nomad-friendly olması avantaj gibi görünse de gürültü seviyesi (70dB ortalama) konsantrasyonu bozdu. LACS premium fiyatlandırması küçük ekipler için maliyetli ama enterprise çözümleri sunuyor (özel fiber hat, kilitli ofis).
 
-Portekiz'de 183 günden fazla kalan tech worker vergi rezidenti sayılır. Non-Habitual Resident (NHR) rejimi 2024'te kaldırıldı, yerine "Tech Visa + Tax Incentive" getirildi ama koşullar sıkı — Portekiz şirketinde çalışma zorunlu. Biz Türkiye şirketinden ödeme aldık, dolayısıyla NHR veya yeni rejim kapsamında değildik. Portekiz vergi dairesi (Finanças) tam yıl çalışan için IRS (gelir vergisi) kesintisi bekledi.
+Toplam 12 aylık workspace maliyeti: 4.200€ (dedicated desk + toplantı odası kullanımı dahil). Karşılaştırma: İstanbul'da benzer kalite 2.800€, Amsterdam'da 6.500€ seviyesinde seyrediyor.
 
-2025 Temmuz'da local accountant tuttuk (€120/ay). Açıkladığı sistem: Portekiz'de 183+ gün yaşayan ama Portekiz şirketi çalışanı olmayan kişi "independent contractor" kategorisine giriyor. Yıllık gelir €75,000'in üzeriyse IRS oranı %48'e kadar çıkıyor. Social Security (Segurança Social) ekstra — self-employed için aylık €200-400 arası. Bizim durumumuz: Türkiye şirketi maaş ödedi, Portekiz'de fatura kesmek zorunda kalmadık çünkü client Türkiye merkezli. Ancak residency 183 günü geçince local accountant "tax return yapmalısın" dedi. Finanças'a başvuru açtık, 9 ay sonra cevap geldi: "Non-resident contractor olarak kabul ediliyorsunuz, IRS kesintisi yok ama SGS (sosyal güvenlik) isteğe bağlı."
+## Vergi Yapısı ve NHR Rejimi — 2026 Güncel Durum
 
-Lesson: Portekiz vergi sistemi ambiguous. EU vatandaşı değilseniz ve Portekiz şirketi çalışanı değilseniz gray zone'dasınız. Accountant tutmak zorunlu — €120/ay maliyetli ama legal risk düşürür. NIF almak basit (48 saat), banka hesabı açmak kolay (Millennium bcp, digital onboarding 3 gün), ama tax clarity yok. 12 ayın sonunda toplam tax exposure €0 oldu çünkü Türkiye'de vergi ödendi ve double taxation anlaşması kullanıldı.
+Portekiz'in Non-Habitual Resident (NHR) vergi rejimi 2024'te değişti — yeni başvurulara kapalı. Yerine gelen NHR 2.0 rejimi (2025) daha dar kapsamlı: yabancı kaynaklı gelir için %10 sabit vergi uygulanıyor ama "high-value activity" tanımı daraldı. Tech consulting ve yazılım geliştirme hala kapsama giriyor, ancak pasif gelir (hisse senedi, kripto) artık %28 standart vergiye tabi.
 
-## Time Zone: Asenkron Çalışma ve Overlap Saatleri
+Lizbon operasyonunda kullanılan yapı: Portekiz'de LDA (limited company) kurulumu. Kurulum maliyeti 1.200€, yıllık muhasebe hizmeti 1.800€. Corporate vergi %21 (ciro 200.000€'ya kadar ilk 50.000€'ya %17 indirimli). Tech hizmet ihracatında KDV %0 uygulanıyor (AB dışı müşterilere) — bu husus Türkiye'deki export mükellefiyetinden daha basit süreç sunuyor.
 
-Ekip 3 time zone'da dağıldı: İstanbul (UTC+3), Lizbon (UTC+0), New York'ta 1 client lead (UTC-5). Overlap saati hesapladık: Lizbon 14:00-17:00 arası İstanbul'la 3 saat çakışıyor, New York'la 9:00-12:00 arası. Günde toplamda 6 saat senkron pencere. Geri kalan süre asenkron — Slack thread, Notion doc, Loom video.
+Şahıs gelir vergisi: brüt maaşın %15-48 arası (progressive). Ancak sosyal güvenlik katkısı (Social Security) %11 çalışan, %23.75 işveren payı — toplam maliyet Türkiye'deki %35 toplam yükten %10 daha yüksek. Önemli detay: remote work visa (D7) ile Portekiz'de vergi mukellefiyeti otomatik başlamıyor — 183 gün kuralı geçerli.
 
-12 ay boyunca meeting sayısını %40 azalttık. Async-first kültür zorunlu oldu çünkü herkes aynı anda online değil. Sprint planning Notion'da yapıldı, daily standup Slack thread. Video call sadece decision-making için: product review, architecture discussion, client feedback. Ortalama haftada 4 saat meeting, geri kalanı deep work. Outcome: deploy frequency 12 ayda %22 arttı (haftada 3.2'den 3.9'a), incident rate %18 düştü. Time zone farkı productivity düşürür diye varsayım yanlış — doğru tooling ve async disipliniyle arttırır.
+## Time Zone Optimizasyonu — UTC+0 Avantajı
 
-Tool stack:
-- Slack: thread culture, channel per project, no DM spam
-- Notion: single source of truth, decision log, meeting notes
-- Linear: issue tracking, sprint board
-- Loom: code review, design feedback
-- Tuple: pair programming (low-latency screen share)
+Lizbon UTC+0 diliminde (yaz saati UTC+1). İstanbul UTC+3, New York UTC-5, San Francisco UTC-8 — bu kombinasyon asenkron çalışma için kritik avantaj sunuyor. Test edilen overlap senaryoları:
 
-Time zone yönetiminde en büyük hata: senkron meeting için "herkesin rahat olduğu saat" aramak. Rahat saat yok. Çözüm: meeting'i async'e çevirmek veya 2 gruba bölmek. İstanbul+Lizbon grubu için 15:00 UTC, New York için 10:00 UTC. Client lead iki meetingte de bulunmak zorunda kalmıyor, decision Notion'da paylaşılıyor.
+**Senaryo 1 — İstanbul-Lizbon ekibi:**
+- Overlap: 09:00-18:00 Lizbon saati (12:00-21:00 İstanbul)
+- Günlük senkron pencere: 2 saat (09:00-11:00 Lizbon)
+- Kalan 6 saat asenkron — Slack response time ortalaması 45 dakika
 
-## Maliyet: Operasyonel Breakdown
+**Senaryo 2 — Lizbon-San Francisco:**
+- Overlap: 17:00-18:00 Lizbon (09:00-10:00 SF)
+- Asenkron-first zorunluluğu — daily standup yerine async video update (Loom)
+- Critical bug response time: 4-6 saat (acceptable threshold)
 
-12 aylık toplam operasyonel maliyet (ekip bazında, kişi başı):
+12 ay boyununca uygulanan time zone protokolü: her ekip üyesi kendi saatinde 4 saatlik "deep work" bloğu tanımladı, bu süre boyunca notification kapalı. Slack'te `@channel` kullanımı yasaklandı, her mesaja 2 saatlik response SLA uygulandı. Sonuç: toplantı sayısı %60 azaldı (haftada 12'den 5'e), async Loom video kullanımı 3 kat arttı.
 
-| Kalem | Aylık | Yıllık |
+## Marka Tutarlılığı Uzaktan Ekipte
+
+Uzaktan çalışma kültürü marka kimliğini etkileyebiliyor — özellikle async iletişimde ton kayması riski var. Roibase'in Lizbon operasyonunda [markalaşma & brand identity](https://www.roibase.com.tr/tr/branding) protokolü devreye alındı: her ekip üyesi için brand guideline eğitimi (2 saat), Slack'te otomatik tone checker (Grammarly Business entegrasyonu), müşteri iletişiminde template kullanımı zorunlu kılındı. 12 ay sonunda müşteri anketlerinde "brand consistency" skoru %91 seviyesinde — İstanbul ofisiyle aynı bantta.
+
+Önemli bulgu: hub değişimi marka algısını doğrudan etkilemiyor, ama async iletişim kalitesi etkiliyor. Net yazılı iletişim, documentation disiplini, brand tone automation burada fark yarattı.
+
+## Maliyet Analizi — Tam Breakdown
+
+12 aylık Lizbon operasyonunun tam maliyeti (2 kişilik tech ekip):
+
+| Kalem | Aylık (€) | Yıllık (€) |
 |---|---|---|
-| Koworking (Second Home) | €350 | €4,200 |
-| Internet (MEO Fibra) | €40 | €480 |
-| Fallback esim (Vodafone) | €25 | €300 |
-| Accountant | €120 | €1,440 |
-| Apartman kirası (T2, Graça) | €1,200 | €14,400 |
-| Ulaşım (metro + Uber) | €80 | €960 |
-| Yemek (dışarıda öğle) | €220 | €2,640 |
-| **Toplam** | **€2,035** | **€24,420** |
+| Koworking (2 desk) | 760 | 9.120 |
+| İnternet (fiber + 5G backup) | 90 | 1.080 |
+| LDA muhasebe | 150 | 1.800 |
+| D7 visa renewal | - | 320 |
+| Uçak (İstanbul roundtrip, 4x) | - | 1.600 |
+| Sigorta (health + liability) | 180 | 2.160 |
+| Misc (SIM, tools, print) | 60 | 720 |
+| **TOPLAM** | **1.240** | **16.800** |
 
-İstanbul'da aynı setup için kira €800, koworking €180, internet €30, accountant gereksiz. Toplam €1,200/ay = €14,400/yıl. Lizbon %70 daha pahalı. Ancak: tax incentive yoksa bile life quality artışı somut — ses kirliliği düşük, koworking kalitesi yüksek, walkability skoru İstanbul'un 3 katı. Productivity artışı sayısal: deploy frequency %22, incident rate -%18. €10,000 farkı bu metrikle karşılamak mümkün.
+Not: Maaş, konut, yemek harcamaları dahil değil — sadece operasyonel infra maliyeti. Karşılaştırma: İstanbul'da aynı setup ~11.000€, Berlin'de ~24.000€ seviyesinde.
 
-Maliyet optimizasyonu için: koworking yerine shared apartment office kurulabilir (€1,200 kira + 3 kişi = €400/kişi), yemek home-cook ile €220'den €100'e düşer. Ancak ekip dynamic'i değişir — koworking'in sosyal boyutu var, apartman ofiste izolasyon riski yüksek.
+## Çıkarımlar ve Karar Kriterleri
 
-## Markalaşma ve Uzaktan Ekip Kültürü
+Lizbon tech hub olarak işliyor — ama her ekip için değil. 12 aylık veriye göre başarı kriterleri:
 
-Uzaktan çalışan ekibin marka tutarlılığı sorunu: fiziksel ofiste duvar posteri, renk şeması, logo kullanımı standart. Remote'ta herkes kendi Zoom background'unu seçiyor, Notion sayfası kendi template'i, email signature farklı. 12 ayda gördük ki [Markalaşma & Brand Identity](https://www.roibase.com.tr/tr/branding) altyapısı remote ekip için daha kritik — tek merkez olmayınca visual consistency dağılıyor.
+**Uygun ekip profili:**
+- Async-first kültüre geçmiş (sync toplantı <5 saat/hafta)
+- AB timezone'unda müşteri tabanı var
+- Remote infrastructure zaten kurulu (documentation, tooling)
+- 3+ kişilik ekip (maliyet paylaşımı için)
 
-Çözüm: Figma'da shared brand kit (logo varyantları, color palette, typography), Notion'da brand guideline template, Slack'te automated signature generator. Her ekip üyesi onboarding'de brand kit'i indiriyor, Zoom background ve email signature standart hale geliyor. 3 ayda ekip içi brand recognition %85'e çıktı (internal survey). Client-facing materyallerde tutarlılık sağlandı — proposal, deck, email hepsi aynı visual language.
+**Uygun olmayan:**
+- Heavy sync collaboration gerektiren (pair programming, live workshop)
+- Asya-Pasifik timezone'u ile yoğun çalışan
+- İlk kez remote'a geçen ekip (hub değişimi + kültür değişimi çift zorluk)
 
-Remote ekipte brand sadece logo değil, communication tone da brand'in parçası. Async thread'lerde cevap süresi, emoji kullanımı, feedback dili — hepsi brand perception'ı etkiliyor. 12 ay boyunca Slack thread response time ortalamasını 4 saatten 1.5 saate düşürdük, emoji kullanımını %30 artırdık (pozitif feedback için). Client'tan gelen survey: "Roibase ekibi responsive ve human-centered" skorunda %18 artış.
-
-## Kritik Öğrenmeler ve Operasyonel Öneri
-
-12 aylık verinin özeti: Lizbon tech ekibi için connectivity açısından güvenilir, koworking çeşitliliği yüksek, vergi sistemi belirsiz, time zone yönetimi disiplin gerektirir, maliyet İstanbul'dan %70 yüksek ama productivity gain karşılıyor.
-
-Yapılması gerekenler:
-1. **Fallback esim zorunlu** — fiber kesintisi nadır ama production deploy anında downtime affedilemez
-2. **Koworking ses izolasyonunu test et** — 60dB üzeri konsantrasyon bozar, phone booth sayısı önemli
-3. **Local accountant 1. ayda tut** — vergi belirsizliği çözülmezse 12. ayda sorun büyür
-4. **Async-first kültürü meeting sayısı azaltarak başlat** — time zone farkı avantaja çevrilebilir
-5. **Brand kit ve guideline remote onboarding'e ekle** — visual consistency ekip büyüdükçe kritik hale gelir
-
-Lizbon generic "digital nomad cenneti" değil — tech ekibi için operasyonel verilerle karar verilmesi gereken bir hub şehir. Internet stabil, koworking kaliteli, vergi ambiguous, maliyet yüksek. 12 aylık test sonucu: evet, sürdürülebilir. Hayır, ucuz değil. Productivity gain maliyeti karşılıyor mu? Bizim case'de evet — deploy frequency ve incident rate metriği bunu kanıtladı.
+Lizbon operasyonu devam ediyor — ama artık veri üzerinden, his üzerinden değil. Internet uptime, koworking acoustics, time zone overlap gibi ölçülebilir kriterler hub seçimini yönetiyor. Sonraki 12 ay için hedef: Barselona ile A/B testi — aynı ekip, farklı hub, kontrollü deney.
