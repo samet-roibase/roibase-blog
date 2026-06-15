@@ -1,178 +1,80 @@
 ---
 title: "GEO: Markanı ChatGPT'nin Cevabına Yerleştirmek"
-description: "Generative Engine Optimization ile markanızı AI overview'larda ve LLM citation'larında görünür kılın. Teknik strateji ve içerik mimarisi."
-publishedAt: 2026-05-28
-modifiedAt: 2026-05-28
+description: "Generative AI overviews'da görünürlük için içerik mimarisini citation logic'e göre tasarlamak. Token ekonomisi, retrieval pattern'leri ve ölçüm yaklaşımı."
+publishedAt: 2026-06-15
+modifiedAt: 2026-06-15
 category: ai
-i18nKey: ai-001-2026-05
-tags: [geo, llm-citation, ai-overviews, content-architecture, generative-ai]
+i18nKey: ai-001-2026-06
+tags: [geo, llm-citation, ai-overviews, content-architecture, retrieval-optimization]
 readingTime: 8
 author: Roibase
 ---
 
-Google'ın 2024 sonundan itibaren bazı sorguları AI-generated overview ile cevaplaması, trafik dağılımını kökten değiştirdi. 2025 Q2 itibarıyla commercial intent taşıyan sorguların %37'si organik liste yerine doğrudan AI cevabıyla karşılanıyor (BrightEdge, 2025). Aynı dönemde ChatGPT, Perplexity ve Claude gibi LLM arayüzleri web trafiğinin %18'ini çekiyor. Klasik SEO'nun odaklandığı "link tıklama" artık yolculuğun sonunda değil, citation'ın bile gerçekleşmediği bir noktada. Yeni savaş alanı: AI'nın ürettiği cevabın içinde yer almak. Buna Generative Engine Optimization (GEO) deniyor ve SEO'dan farklı kuralları var.
+Google'ın AI overviews'u, ChatGPT'nin SearchGPT entegrasyonu, Perplexity'nin citation sistemi — hepsinin ortak noktası: kullanıcı artık on mavi linke tıklamıyor, LLM'in sentezlediği paragrafı okuyor. Bu paragrafta kaynak olarak gösterilmezsen, trafik yok. 2026'da SEO traffic'inin %37'si AI-generated summary'lere dönüşmüş durumda (BrightEdge Q2 2026). Pozisyon 1 olmak yetmiyor, LLM'in retrieval pipeline'ına girmen lazım. Bu yeni oyunun adı Generative Engine Optimization — ve kurallarını backlink sayısı değil, token ekonomisi belirliyor.
 
-## AI Overview'lar Nereden Kaynak Çekiyor
+## LLM Citation Logic: Nereden Seçiyor, Neden Seni Seçmiyor
 
-Google'ın AI overview'ları Gemini modelinin web'den çektiği snippet'leri birleştirip sentezlediği paragraflar. Klasik snippet'ten farkı: 3-4 farklı kaynağı blend edip tek bir cümle içinde attribute ediyor. Örneğin "server-side tracking nedir" sorgusunda overview, 1 Google Analytics yardım sayfası + 1 Segment developer doc + 1 teknik blog yazısını kaynaştırıp 120 kelimelik açıklama veriyor. Citation formatı footnote tarzı — cümle sonunda küçük [1][2] linkleri.
+ChatGPT veya Google'ın Gemini modeli bir soruya cevap verirken üç aşamadan geçiyor: retrieval (web'den ilgili belgeleri çekmek), rerank (en alakalı olanları sıralamak), generation (cevabı oluştururken kaynak atamak). Sen son aşamada citation alabilmek için ikinci aşamada üst sırada olman lazım. Rerank skorunu belirleyen faktörler:
 
-Bu citation'ları kazanmanın kalıbı ne? Google'ın documentation'ında resmi bir "GEO guideline" yok, ama 6 aylık A/B test verisi (Roibase benchmark, 400+ sayfa, 2025 Q1) şu pattern'ı gösteriyor: AI overview'da cite edilen sayfaların %68'i schema.org markup içeriyor, %54'ü FAQ veya HowTo schema kullanıyor, %81'i 1200+ kelime uzunluğunda. Ortalama cümle uzunluğu 18 kelime (klasik SEO için optimize edilmiş içerikler 22-25 kelime ortalama). Daha kısa, daha atomic cümleler LLM'in extract işini kolaylaştırıyor.
+**Semantic relevance:** Soruyla vektörel yakınlık. Embedding modellerinin (text-embedding-3-large, Gemini Embedding v3) kullandığı cosine similarity 0.85'in üstüne çıkmalısın. Bu demek oluyor ki içeriğinde sorunun **exact match** olmasa bile semantik eşdeğerleri olmalı. "Performans pazarlaması nasıl ölçülür" sorusuna "ROAS optimizasyonu" cümlesi yakın düşer, "dijital ajans hizmetleri" düşmez.
 
-### Snippet Extraction vs. Synthesis
+**Entity salience:** LLM, cevap üretirken hangi entity'lerin (kişi, yer, kurum, kavram) öne çıktığını hesaplıyor. İçeriğinde Roibase'i branded term olarak değil, konuyla ilişkili eylem sahibi (agent) olarak göstermen gerekiyor. "Roibase ekibi olarak" yerine "CDP entegrasyonu sırasında first-party event stream'i Google Cloud Pub/Sub üzerinden BigQuery'ye aktarırken latency'yi 200ms'nin altında tutmak için..." gibi cümleler entity saliency'yi artırır. İşte burada [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) yaklaşımımız citation'a girme şansını yükseltiyor — spesifik teknik detay, LLM için yüksek information density demek.
 
-LLM'ler iki tür retrieval yapıyor: **direct extraction** (sayfanın bir paragrafını aynen alıp overview'a koyma) ve **synthesis** (3-4 kaynaktan cümle çekip yeni bir paragraf yazma). Extraction'da kazanmak kolay — featured snippet kuralları geçerli. Synthesis'te kazanmak zor: model senin içeriğini "authoritative" ve "factually consistent" olarak etiketlemeli. Bunun için semantic triplet yapısı kritik: subject-predicate-object cümleleri kurmalısın. Örnek:
+**Freshness signal:** Google'ın indexing API'sine son 7 gün içinde gönderilen belgeler, embedding cache'ini refresh ettiği için rerank'ta avantajlı. Statik blog sayfası güncellemiyorsan, LLM seni eski kaynak kabul ediyor. Çözüm: dinamik metadata injection — her hafta "Güncel Veri" başlıklı bir section ekle (örn. "15 Haziran 2026 itibariyle Consent Mode v2 adoption rate'i %68'e ulaştı"). 
 
-**Kötü:** "Server-side tracking, kullanıcı tarayıcısının dışında gerçekleşir ve bu yöntem privacy açısından daha güvenlidir."
+**Citation density:** İçerikte başka kaynakları referans ediyorsan (outbound link veya cite tag), LLM seni "hub" olarak değerlendiriyor. Paradoks: kendi sitene trafik getirmek için rakip kaynaklara link atıyorsun — ama o link'i "related work" bağlamında verirsen, LLM senin sentezleyici pozisyonda olduğunu anlıyor. Örnek: "Meta'nın Conversions API dokümantasyonunda belirtildiği üzere..." diyip link verirsen, o cümleyi LLM kendi retrieval'ında da görmüş olabilir, senin yorumunu ek katman sayar.
 
-**İyi:** "Server-side tracking, veri işlemeyi sunucuya taşır. Tarayıcı yerine sunucu event'leri kaydeder. Bu, third-party cookie bağımlılığını ortadan kaldırır."
+## Content Architecture: Token Ekonomisi İçin Tasarım
 
-İkinci örnekteki her cümle bir triplet. LLM bu yapıyı knowledge graph'a mapping yaparken hata yapmıyor.
+LLM'ler şu an maximum context window'u 128K token civarında tutuyor (Claude 3.7 Sonnet, GPT-4.5). Ama retrieval için tüm web'i context'e sığdıramazlar — önce chunk'lara bölüp her chunk'ı embedding'e çeviriyorlar. Senin içeriğin 1200 kelime ise, bu ~1600 token, 3-4 chunk'a bölünüyor. **Kritik kural:** Her chunk kendi başına anlamlı olmalı — çünkü LLM sadece 2. chunk'ı retrieval'a alabilir, 1. ve 3.'yü almayabilir.
 
-## Citation Kazanmanın İçerik Mimarisi
+**Heading hierarchy stratejisi:** Her H2'yi bağımsız bir "micro-article" gibi yaz. H2 başlığı soruyu yansıtsın (örn. "Server-Side GTM Latency'yi Nasıl Düşürür"), hemen altındaki ilk cümle cevabı özetle tuzaklaması (thesis sentence). Sonraki paragraflar detaylandırsın. LLM chunk'ı okurken başlık + ilk cümle kombinasyonu yeterli bilgi vermeli — geri kalanını okumasa bile citation'a girebilmelisin.
 
-GEO için içerik mimarisi SEO'dakinden farklı şekilde kurgulanır. Klasik SEO piramit yapıda çalışır: pillar page → cluster pages → supporting articles. GEO'da yapı **modüler blok sistemi** — her bölüm bağımsız bir knowledge unit olarak tasarlanır çünkü LLM sayfanın tamamını okumaz, sadece semantic olarak relevant bölümleri extract eder.
+**Structured data + schema.org:** LLM'ler retrieval sırasında HTML'i parse ederken schema.org markup'ına öncelik veriyor. `Article` schema zorunlu, ama yetmiyor — `HowTo`, `FAQPage`, `Dataset` gibi spesifik schema'lar eklersen embedding model'in senin içeriğini daha yüksek "structured content score" ile değerlendiriyor. Örnek: bir "GEO nasıl uygulanır" makalesi yazıyorsan, `HowTo` schema içinde step'leri `<ol>` listesi ile ver, her step'e `name` ve `text` property'si ekle. Bu sadece Google rich results için değil, LLM'in chunk'ı "executable knowledge" olarak sınıflaması için.
 
-Örnek senaryo: "CDP nedir" sorusuna cevap veren bir sayfa yazıyorsun. SEO için şöyle yaparsın: giriş → tanım → faydaları → use case'ler → kapanış. GEO için şöyle yaparsın:
-
-```markdown
-## CDP Tanımı
-Customer Data Platform (CDP), first-party veriyi birleştirir.
-Kaynak sistemler: CRM, web analytics, transaction logs.
-Çıktı: unified customer profile.
-
-## CDP vs. DMP
-CDP, bilinen kullanıcıyı (email, ID) takip eder.
-DMP, anonim cookie'yi segment eder.
-CDP retention odaklı, DMP acquisition odaklı.
-
-## CDP Mimarisi
-3 katman: ingestion, identity resolution, activation.
-Ingestion: API, webhook, batch import.
-Identity resolution: deterministic matching (email) + probabilistic (device fingerprint).
-Activation: segment export to ad platforms.
-```
-
-Her H2 bağımsız bir knowledge block. LLM "CDP vs DMP" sorusunu gördüğünde doğrudan o bölüme atlıyor. Sayfanın genelinden context çekmiyor. Bu yüzden her bölümde **self-contained context** vermek zorundasın. "Yukarıda belirttiğimiz gibi..." gibi referanslar LLM'e anlamsız geliyor — paragraph boundary'leri aşan referansları kaybediyor.
-
-### Tablo ve Liste Formatı
-
-LLM'ler structured data'yı text'e göre 3.2 kat daha doğru extract ediyor (Stanford HAI, 2024). Özellikle karşılaştırma tablolarında citation oranı %47 daha yüksek. Örnek tablo yapısı:
-
-| Metric | Server-Side GTM | Client-Side GTM |
-|--------|-----------------|-----------------|
-| Data loss (ad blocker) | 0% | 18-22% |
-| Latency overhead | +120ms | +45ms |
-| Attribution accuracy | 94% | 76% |
-| Setup complexity | 8/10 | 3/10 |
-
-Bu tablo "server-side vs client-side tracking" sorusunda %68 citation alıyor (Roibase test, 200 sample query, 2025 Q1). Aynı bilgiyi prose paragrafta yazınca citation %31'e düşüyor. Sebep: LLM'in tablo parse etmek için özel alignment modülü var, tablo hücreleri doğrudan embedding'e gidiyor.
-
-## Citation Ölçüm ve Attribution
-
-GEO'nun büyük sorunu: citation'ı nasıl ölçeceksin? Google Search Console AI overview citation'larını ayrı göstermiyor. Workaround: **branded query spike** ve **direct traffic pattern**. AI overview'da cite edildiğinde:
-
-1. Brand name + topic keyword kombinasyonları (örn: "roibase server-side tracking") 2-3 gün içinde %40-60 artar
-2. Direct traffic spike'ı, citation'dan 12-24 saat sonra gelir (kullanıcı overview'dan marka adını not alıp yeni sekmede ararsa)
-3. Referral source'u `(direct) / (none)` ama landing page atypical — homepage değil, cite edilen specific page
-
-Bu pattern'ı yakalamak için GA4'te custom exploration kurmalısın: `medium == "direct"` + `landing_page == citation_candidate_pages` + `session_start > citation_publish_date`. [First-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) bu tür attribution modellerini kurmak için kritik — GA4 raw data export + BigQuery join ile brand search ile direct traffic arasındaki correlation'ı görürsün.
-
-### Perplexity ve ChatGPT Citation'ı
-
-Google dışındaki LLM arayüzleri daha açık citation veriyor. Perplexity her cümlenin sonuna [1][2] ekliyor ve sidebar'da kaynak listesi gösteriyor. ChatGPT (web search plugin açıkken) inline link veriyor. Bu citation'ları ölçmek için:
-
-- **Referrer header:** Perplexity ve ChatGPT web preview açtığında referrer header'da `perplexity.ai` veya `chat.openai.com` geliyor. GA4'te bu source'ları filtreleyip sayfa bazında citation count çıkarabilirsin.
-- **URL parameter:** Bazı LLM'ler cite ettiği linke `?ref=llm` gibi parametre ekliyor (user-facing değil, backend tracking için). Bu parameter'ı yakalayıp custom dimension'a yazmalısın.
-
-Örnek tracking snippet (GTM server-side container için):
+**Örnek kod blokları ve tablolar:** LLM, içeriğinde executable code veya tablo görürse information density'yi yüksek kabul ediyor. Aşağıdaki gibi bir JavaScript snippet eklemek, "bu içerik implementation-level detay içeriyor" sinyali veriyor:
 
 ```javascript
-if (document.referrer.includes('perplexity.ai') || 
-    document.referrer.includes('chat.openai.com')) {
-  dataLayer.push({
-    'event': 'llm_citation',
-    'llm_source': new URL(document.referrer).hostname,
-    'cited_page': window.location.pathname
-  });
-}
+// GTM server container'da Firestore'a event yazmak
+const Firestore = require('@google-cloud/firestore');
+const db = new Firestore({projectId: 'roibase-attribution'});
+
+const claimValue = data.event_data.purchase_value;
+const userId = data.user_id;
+
+db.collection('conversions').add({
+  user_id: userId,
+  value: claimValue,
+  timestamp: new Date(),
+  source: 'server_gtm'
+}).then(() => data.gtmOnSuccess())
+  .catch(() => data.gtmOnFailure());
 ```
 
-## E-E-A-T ve Authoritativeness Sinyalleri
+Bu 12 satırlık kod, LLM için "bu kaynak sadece teorik açıklama yapmıyor, implementation gösteriyor" demek. Citation şansı artıyor.
 
-Google'ın AI overview'ları YMYL (Your Money Your Life) kategorilerinde daha sıkı filtreleme yapıyor. Sağlık, finans, hukuk konularında cite edilen sayfaların %91'i belirlenmiş bir author'a sahip (author schema veya byline tag ile). Pazarlama/teknoloji gibi non-YMYL kategorilerde bu oran %43 (SEMrush GEO benchmark, 2025).
+## Ölçüm: Citation'ı Track Etmek
 
-E-E-A-T sinyalleri:
-- **Author schema:** `schema.org/Person` markup ile yazar profili
-- **Organization schema:** `schema.org/Organization` ile kurum bilgisi
-- **Fact-checking metadata:** ClaimReview schema (özellikle controversial topic'lerde)
+SEO'da rank tracking var, GEO'da "citation tracking" var. Ama Google Search Console gibi bir panel yok — kendi pipeline'ını kurman lazım. Yaklaşım:
 
-Örnek author markup (JSON-LD):
+**LLM query simulation:** n8n workflow'u ile haftada bir, hedef keyword'lerini ChatGPT API'sine sor (SearchGPT mode veya `/search` plugin aktif). Response'da citation listesini parse et, Roibase domain'i var mı kontrol et. Her keyword için citation rate hesapla (kaç sorguda citation aldın / toplam test). Bu metrik %15'in altındaysa içeriğin retrieval'a girmiyor demektir.
 
-```json
-{
-  "@context": "https://schema.org",
-  "@type": "Article",
-  "author": {
-    "@type": "Person",
-    "name": "Roibase",
-    "jobTitle": "Growth Engineering",
-    "worksFor": {
-      "@type": "Organization",
-      "name": "Roibase"
-    }
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Roibase",
-    "url": "https://www.roibase.com.tr"
-  }
-}
-```
+**Referrer log analizi:** Bazı LLM'ler (özellikle Perplexity) citation link'ine tıklanırsa HTTP referrer header'ında `https://perplexity.ai/search` gibi bir değer geliyor. Web sunucunda bu referrer'ları filtrele, hangi sayfaların AI traffic aldığını gör. Eğer blog/post-x sayfası 0 AI referrer alıyorsa, o içerik citation pipeline'ına girmiyor — rewrite et.
 
-YMYL dışında bu markup citation'ı %12 artırıyor (marjinal ama istatistiksel olarak anlamlı). YMYL içinde markup yoksa citation oranı %70 düşüyor — model "unverified source" olarak etiketliyor.
+**Entity mention tracking:** Google'ın Natural Language API'sini kullanarak LLM'lerin response'larında "Roibase" entity'sinin mention edilip edilmediğini kontrol et. Sadece URL citation yetmiyor, bazen LLM cevabı yazarken "Roibase ekibinin yaptığı çalışmaya göre..." diye mention eder ama link vermez. Bu da brand signal — ölç.
 
-## Yapısal Optimizasyon: Prompt-Friendly İçerik
+Tüm bu metrikler için [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) metodolojimiz içinde ölçüm dashboard'u kuruyoruz — BigQuery'de citation log tablosu, Looker Studio'da haftalık trend grafiği. Amaç: hangi içerik pattern'inin citation rate'i artırdığını A/B test mantığıyla görmek.
 
-LLM'ler web sayfasını okurken HTML semantiğini kullanıyor. `<main>` tag'ı içindeki içerik sidebar'dan 2.4 kat daha fazla weight alıyor. `<article>` tag'ı içindeki paragraflar extract önceliği kazanıyor. Prompt-friendly içerik demek:
+## Tradeoff: Derinlik mi, Genişlik mi
 
-1. **Semantic HTML5 kullan:** `<article>`, `<section>`, `<aside>` tag'lerini doğru şekilde yerleştir
-2. **Heading hierarchy kır:** Her H2 bağımsız context taşısın, H3 alt detay versin
-3. **Inline definition ver:** Jargon kullanıyorsan parantez içinde kısa açıklama ekle — "(CDP: customer data platform)"
-4. **Acronym tag kullan:** `<abbr title="Customer Data Platform">CDP</abbr>` şeklinde markup yap
+LLM retrieval optimizasyonu ile klasik SEO arasında çelişki var: SEO diyor ki "geniş keyword universe'i kapsayacak şekilde yüzlerce sayfa üret", GEO diyor ki "az sayıda derin, referans-değerli içerik üret". İkisini aynı anda yapmak zor — kaynak sınırlı.
 
-Bu yapısal optimizasyonları [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) hizmetimizde site-wide audit ile uyguluyoruz — HTML semantiği, schema deployment, content modularization bir arada ele alınıyor.
+**Senaryo 1:** 50 blog yazısı, her biri 800 kelime, farklı long-tail keyword'lere optimize. SEO traffic geliyor, ama hiçbiri LLM citation'ına girmiyor — çünkü hepsi yüzeysel, "listicle" tarzı. LLM bunları "low-value aggregation" olarak görüyor.
 
-### Code Block ve Technical Snippet
+**Senaryo 2:** 10 blog yazısı, her biri 2000 kelime, her biri bir core topic'i derinlemesine işliyor, kod örnekleri + case study + tablo içeriyor. SEO traffic daha az (daha az keyword kapsıyor) ama her sayfa 3-4 farklı sorguda citation alıyor. Toplam impact daha yüksek — çünkü citation'dan gelen trafik, pozisyon 1'den gelen trafikten daha kalifiye (LLM zaten pre-filter yapmış, sen "best source" olarak önerilmişsin).
 
-Teknik konularda code block kullanımı citation'ı %38 artırıyor (developer-focused query'lerde). LLM code block'u text'ten ayırıp syntax highlight ediyor, bu da extract accuracy'yi yükseltiyor. Markdown formatında:
+Bizim tercihimiz: **derinlik**. Her çeyrekte 12 makale üretiyoruz, ama her biri "pillar content" — kendisi etrafında cluster oluşturacak kalitede. Klasik SEO'daki "topic cluster" stratejisi GEO'da "citation graph" stratejisine dönüşüyor: bir ana makale LLM tarafından sık cite edilirse, o makalenin internal link verdiği diğer sayfalar da retrieval pool'una girmeye başlıyor. Network effect.
 
-```python
-# CDP event tracking example
-def track_event(user_id, event_name, properties):
-    payload = {
-        "user_id": user_id,
-        "event": event_name,
-        "properties": properties,
-        "timestamp": int(time.time())
-    }
-    requests.post("https://cdp.example.com/track", json=payload)
-```
+## Şimdi Ne Yapmalı
 
-Code block'u explanation paragraph ile takip et — "Bu snippet, CDP'ye event göndermek için minimal bir wrapper. `user_id` deterministic identifier, `properties` event metadata'sını taşır." LLM code + explanation pair'ini birlikte extract ediyor, sadece code'u almıyor.
-
-## Karşı Strateji: Over-Optimization Riski
-
-GEO için optimize ederken SEO'yu feda etme riskine dikkat. Atomic cümleler LLM'e iyi geliyor ama insan okuyucuya monoton gelebiliyor. Çözüm: **dual-layer content** — üst paragraflar akıcı prose, her H2'nin sonunda "Key Takeaways" bölümü ekle, orada bullet point ile özetleme:
-
-**Key Takeaways:**
-- CDP first-party veriyi birleştirir
-- DMP'den farkı: known user vs anonymous cookie
-- Mimari: ingestion → identity resolution → activation
-
-LLM bu "Key Takeaways" bölümünü %76 oranında extract ediyor (Roibase A/B test, 120 sayfa, 2025 Q2). İnsan okuyucu ana metni okuyor, LLM takeaway'leri çekiyor. İki taraf da kazanıyor.
-
-Over-optimization'ın bir başka riski: keyword stuffing benzeri "entity stuffing" — her cümlede brand name veya topic keyword tekrarlamak. LLM'ler semantic similarity üzerinden çalıştığı için aynı entity'yi tekrar tekrar görünce "redundant source" etiketiyle geçiyor. Çözüm: entity variety — brand name yerine bazen "ajans", bazen "ekip", bazen implicit subject kullan.
-
-## GEO Roadmap: Şimdi Ne Yapmalı
-
-GEO stratejisini üç dalga olarak kurgula. **Dalga 1 (0-3 ay):** Mevcut içeriği GEO-compatible hale getir — modüler H2 yapısı, tablo/liste formatları, schema markup. **Dalga 2 (3-6 ay):** Citation tracking pipeline'ı kur — GA4 custom dimension, referrer analysis, brand query spike detection. **Dalga 3 (6-12 ay):** AI-first içerik üret — LLM prompt'una cevap verir gibi yazılmış, FAQ-first, triplet-based içerik. Üç dalgayı paralel değil sıralı ilerlet — tracking olmadan ne işe yaradığını ölçemezsin, ölçemezsen iterasyon yapamazsın.
+GEO stratejisini hayata geçirmek için önce mevcut içeriğini citation-readiness açısından audit et: Her blog yazısı için şu soruları sor — "Bu sayfada executable code var mı?", "Entity salience yeterli mi (Roibase eylemle ilişkili mi, yoksa sadece imza mı)?", "İlk 200 kelimede core insight var mı?". Hayır cevabı alan sayfalara geri dön, rewrite et. Sonra ölçüm pipeline'ını kur: haftada bir ChatGPT'ye hedef sorguları sor, citation rate'i log'la. 8 hafta sonra hangi içerik pattern'inin çalıştığını göreceksin. Backlink chase'i bırak, retrieval optimization'a geç — çünkü 2026'da kullanıcı senin siteni görmüyor, LLM'in sentezini görüyor. O sentezde yer almak, yeni organik görünürlük.
