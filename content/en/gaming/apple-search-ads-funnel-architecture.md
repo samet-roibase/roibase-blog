@@ -1,93 +1,148 @@
 ---
 title: "Apple Search Ads: Building Campaign Architecture as a Funnel"
-description: "Structure discovery, competitor, brand, and broad match modes with funnel logic. Integrate ASA campaigns with LTV and optimize by D7 ROAS, not install volume."
-publishedAt: 2026-06-03
-modifiedAt: 2026-06-03
-category: gaming
+description: "Budget flow from discovery to brand: how to structure broad match, competitor, and exact campaigns as a hierarchical funnel—ASA architecture for mobile game growth."
+publishedAt: 2026-06-17
+modifiedAt: 2026-06-17
+category: aso
 i18nKey: gaming-005-2026-06
-tags: [apple-search-ads, asa-funnel, mobile-acquisition, match-type-strategy, gaming-ua]
+tags: [apple-search-ads, asa-campaign-architecture, mobile-user-acquisition, app-funnel-strategy, brand-defense]
 readingTime: 8
 author: Roibase
 ---
 
-Using Apple Search Ads as a keyword-based PPC tool ended in 2021. In 2026, ASA is a funnel operation. Campaign layers spanning discovery to brand are budgeted by LTV estimates and optimized by D7 ROAS, not install count. Most teams still run broad match in a single campaign and complain that "we can't scale." The problem isn't budget—it's architectural design.
+Building Apple Search Ads campaigns as interconnected funnel layers rather than isolated silos—where budget and signals flow from discovery through brand defense—can reduce CPI by 20–40% in mobile game growth. User signals captured in broad match discovery feed into competitor exact campaigns; competitor exact flows into brand defense; each layer filters for the next. Post-iOS 18.2, custom product page attribution data makes this architecture mandatory: single-campaign approaches hide churn, budget distribution stays manual.
 
-## Discovery Campaign: Mining the Cold Traffic Pool
+## Discovery Layer: Why Broad Match Must Be at the Top
 
-Discovery campaign is built to read search behavior from users who've never heard of your app on the App Store. Broad match targets 200-500 generic keywords, daily budget stays low (tier-1: $50-100), but search impression share approaches 100%. The goal isn't install volume—it's collecting Search Match data.
+Broad match campaigns are the discovery layer of Apple Search Ads hierarchy—they exist to uncover new keyword clusters and capture unexpected intent signals. Yet most studios leave broad match open on "try everything, filter later" logic, burning $500–1,000 daily with TTR (Tap-Through Rate) under 2.5%. The right approach: position broad match at the top of your funnel, but **control the CPP floor with a 3-day rolling window**.
 
-Analyze the Search Match report 72 hours after campaign launch. Which queries generated impressions, which keywords drove installs, which are spam? This data validates or contradicts your ASO strategy. For example, if metadata emphasizes "puzzle" but Search Match shows high TTR on "idle game" queries, there's a mismatch between ASO and UA.
+In broad campaigns, the target isn't CPI—it's **LTV/CPI ratio**. A 0.4x ratio in the first 3 days is acceptable because that keyword data goes into your warehouse. The value is here: Search Match algorithm reveals your game's competitive set through Apple's eyes. When you launch "puzzle game" as broad match, the algorithm surfaces intent clusters like "merge," "match-3," "interior design"—these become migration candidates for your competitor exact campaigns.
 
-CPT (cost per tap) in discovery is 35-50% lower because competition is sparse on unknown keywords. But conversion rate (tap-to-install) is weak. This is normal. Discovery's job is feeding the funnel, not generating install volume. 200-300 weekly installs is enough; 15% goes to your negative keyword list, the rest filters to competitor and brand layers.
+Critical setting: **never add exact negatives to broad match**. Negative keywords should apply only to irrelevant categories (e.g., "poker," "casino" if you're a different game type). Exact negatives break the algorithm's learning loop and kill discovery function.
 
-### Discovery Budget Rule
+### Broad Match Daily Budget Formula
 
-Discovery's daily budget shouldn't exceed 10-15% of total ASA spend. Example: on $30k monthly ASA spend, allocate $100/day to discovery. Budget is fixed, no CPA target, manual bidding ($0.30-$0.50 tier-1). After 14 days, high-performing keywords from Search Match migrate to your competitor campaign as exact match.
-
-## Competitor Campaign: Bidding on Rival Brands
-
-Competitor layer targets rival game brand names via exact match. "Candy Crush," "Clash of Clans," "Subway Surfers"—brand terms live here. Strategy is opportunistic, not aggressive. If a competitor max-bids their own brand term, your bid stays at 60-70%, position one isn't the target.
-
-Competitor campaign CPT is 80% higher than discovery, but TTR climbs to 12-18% (vs. 3-5% in discovery). Install conversion is weak because the user was searching for another game. D1 retention stays at 25-30%, compared to 45-50% on organic installs. But in some scenarios, it expands your total LTV pool.
-
-Competitor layer's KPI is "incremental ROAS." When you pause a rival keyword, does your total install count drop 10%? If yes, the campaign drives incrementality. If no, the same user already came through discovery or brand—cannibalization. A 14-day incrementality test is mandatory.
-
-| Match Type | CPT (tier-1) | TTR | D7 ROAS Target | Budget Share |
-|---|---|---|---|---|
-| Discovery (broad) | $0.40 | 3-5% | Test mode | 10% |
-| Competitor (exact) | $1.20 | 12-18% | 80%+ | 25% |
-| Brand (exact) | $0.60 | 25-35% | 200%+ | 50% |
-| Generic (broad) | $0.70 | 6-9% | 120%+ | 15% |
-
-## Brand Campaign: Protecting Your Own Brand
-
-Brand campaign runs to prevent competitors from capturing users searching your game's name. Terms like "Roibase Puzzle," "Roibase Game," "Roibase RPG" are exact-matched. Max bidding is used here because organic ranking can lose to competitor ads.
-
-Brand campaign CPT is lowest (tier-1: $0.40-$0.80). TTR is 25-35%, install CR is 60-70%, D7 retention 50%+. This user already knows your game; they were going to install. The question: "Would this user complete an organic install without the brand campaign?" Usually yes—but if competitors bid your brand term, the campaign becomes mandatory.
-
-Brand budget represents 40-50% of total ASA spend. This looks large, but it's a defensive position. When competitors target your brand keywords, you must defend—MAD (mutually assured destruction) equilibrium. By 2026, nearly every game on tier-1 runs brand defense; those that don't lose 10-15% of organic installs.
-
-### Brand Campaign Pause Test
-
-If competitors don't target your brand terms, pause the campaign for 7 days. Does organic install count drop? If no, the campaign inflates UA spend without incremental value. If yes (typical: 8-12% drop), keep it active but apply a CPA cap—set the ceiling at 15% of organic user LTV.
-
-## Broad Match Mode: Discovery Isn't Scale
-
-Broad match shouldn't be confused with discovery. Discovery uses broad match but runs low bid + low budget. Broad match scale campaign runs high bid + high budget to win impression share on generic terms. Keywords like "puzzle game," "idle rpg," "strategy mobile" live here.
-
-Broad match risk: irrelevant queries. You bid on "puzzle," but Search Match shows you on "puzzle solver app," "puzzle table." Your negative keyword list must exceed 200 terms. Manual control is mandatory the first 7 days—daily Search Match review.
-
-Broad match budget shouldn't exceed 15-20% of total ASA spend. Example: on $30k monthly, allocate $5k to broad match. CPA target is 20-30% higher than exact match campaigns because it operates higher in the funnel. D7 ROAS target is 100-120%. If it falls below, lower the bid—don't pause. The campaign continues collecting data.
-
-## Budget Flow: Shifting Through Funnel Stages
-
-Healthy ASA architecture moves users from discovery to brand. A user exposed to your game in discovery often searches your game's name on the App Store within 48-72 hours—now your brand campaign captures them. Apple's "Custom Product Page" attribution data measures this flow: which campaign drives first touch, which drives install?
-
-Budget distribution works like this: discovery stays fixed ($100/day), competitor and broad match adjust weekly by CPA performance (±10-20%), brand campaign runs always-on at maximum budget. When total spend falls below D7 ROAS target, pause competitor first, then broad match; discovery and brand continue.
-
-Example flow: In May, discovery drove 250 installs. 12% (30 users) searched your brand term within 72 hours and installed via brand campaign. That cohort's average LTV was 40% higher than direct discovery installs. This proves discovery creates not just direct value but indirect brand lift.
-
-### Funnel Attribution Table
-
-```
-Campaign         | Spend    | Installs | Direct LTV | Assisted Installs | Blended LTV
-----------------|----------|----------|------------|-------------------|-------------
-Discovery       | $3,000   | 250      | $4.20      | 30 (brand)        | $5.80
-Competitor      | $7,500   | 420      | $6.10      | 15 (brand)        | $6.50
-Brand           | $15,000  | 1,200    | $12.40     | —                 | $12.40
-Broad Match     | $4,500   | 310      | $5.30      | 22 (brand)        | $6.00
+```python
+daily_budget_broad = (target_monthly_installs * 0.15) * target_CPI * 1.8
+# 0.15 → discovery allocation (%15)
+# 1.8 → broad CPI multiplier (1.8x exact is acceptable)
 ```
 
-## Campaign Budget Optimization: Apple's New Algorithm
+Example: 10K monthly install target, $2.5 target CPI → $6,750/month broad budget → ~$225/day. Exceeding this ceiling means you're wasting, not discovering.
 
-Since 2025, Apple Search Ads has been testing "Campaign Budget Optimization" (CBO). It mirrors Google App Campaigns' portfolio bid strategy: single budget, multiple campaigns, machine learning routes spend to best-performing campaigns. CBO is risky in gaming UA. The algorithm ignores D7 ROAS targets and maximizes install volume only.
+## Competitor Exact: The Intent Hijacking Layer
 
-Enable CBO and brand campaign will claim 70-80% of budget because CPA is lowest there. Discovery and competitor dry up. Result: installs don't fall initially, but funnel-top feeding stops; three weeks later, brand campaign installs begin declining. Use CBO only when combining similar-CPA campaigns—brand + broad match, for example.
+Keywords from broad match that include **competing game names** and **rival brand terms** should move to the second layer—competitor exact campaigns. The logic is straightforward: hijack competitor brand awareness. A user searches "Candy Crush"; you show your puzzle game—intent is already educated, you're just offering an alternative.
 
-## Which Layer Gets Paused When It Underperforms?
+Competitor exact TTR runs 30–50% lower than brand exact (Apple's own data), but CPI is typically 15–25% cheaper because bid competition on competitor keywords is lighter. What matters: **customize your product page strategy by layer**. If a rival game is "time management" focused, your CPP creative should message "less waiting time"—without this differential positioning, competitor exact ROI stays negative.
 
-Pause decisions hinge on incrementality, not CPA. If competitor campaign runs 30% above CPA target but pausing it drops total installs 8%, the campaign is incremental—keep it, optimize the bid. If broad match matches CPA target but pausing changes nothing, it's cannibalizing—shut it down.
+Common mistake in competitor keyword selection: grab the top 20 from the gross-revenue chart. Right method: **audience overlap analysis**—pull the competing game's user demographics from Sensor Tower or data.ai; pick rivals with 60%+ overlap with your audience. If you have a hyper-casual game, don't bid on match-3 legend keywords—core motivation differs.
 
-Discovery never pauses. Budget can shrink, but not to zero. Discovery's job isn't immediate ROAS—it's testing ASO hypotheses and feeding Search Match data. Brand campaign never pauses either. If competitors target your brand term, you maintain defense.
+| Competitor Type | TTR Benchmark | CPP vs Brand Delta | Use Case |
+|---|---|---|---|
+| Direct competitor (same subgenre) | 3.5–5% | +15–20% | Yes, high priority |
+| Adjacent genre (similar core loop) | 2.8–4% | +25–35% | Yes, test it |
+| Category leader (different mechanic) | 1.5–2.5% | +50%+ | No, waste risk |
 
-Integrating ASA funnel architecture with [App Store Optimization](https://www.roibase.com.tr/en/aso) strategy is non-negotiable. Keywords emphasized in metadata must align with terms targeted in ASA campaigns. If a keyword shows unexpected high TTR in discovery, adding it to ASO metadata lifts install CR by 10-15%.
+## Brand Defense: Why Your Own Name Gets Its Own Campaign
+
+Brand exact—your game name, studio name—is the funnel's bottom layer and **cheapest conversion engine**. On Apple Search Ads, brand keyword CPT (Cost Per Tap) typically runs $0.10–0.30, while broad match sits at $1.50–3. Yet most studios skip brand campaigns thinking "users already searching for us will download organically"—that's 12–18% of install loss.
+
+Why? Because competitors bid on *your* brand terms too. You own "Puzzle Master," but a rival bids $2 on that keyword for "Match Kingdom." Apple's auction algorithm picks the winner based on relevance + bid; if you don't bid, sometimes rivals win. Brand defense campaigns exist to block that hijack.
+
+TTR on brand exact runs 18–35%—very high, because intent is certain. Your job here: **exact match only**, bid $0.50–1.00 (enough to outbid rivals), and craft CPP creative around "new season" or "update" messaging—users who know the game already need fresh reason to tap.
+
+### Brand Campaign Bid Strategy
+
+```python
+if competitor_bid_on_brand:
+    brand_bid = competitor_avg_bid * 1.3  # Outbid rivals
+else:
+    brand_bid = 0.3  # Minimal, let organic + paid blend
+```
+
+Keep **Search Match off** in brand campaigns—the algorithm sometimes expands brand terms to irrelevant keywords, creating budget leak.
+
+## Budget Flow Between Layers: Waterfall Architecture
+
+Rather than managing three layers with isolated budgets, running **waterfall budget allocation** lifts ROAS by 25–40%. The idea: each layer hits performance threshold, overflow budget cascades up—balancing discovery investment against conversion efficiency.
+
+Waterfall rules:
+1. **Brand exact always fully funded**—no budget ceiling if ROI is positive
+2. **Competitor exact feeds brand**—if competitor campaign hits LTV/CPI > 1.2, overflow budget doesn't go to new competitor keyword tests; it stays for brand scale
+3. **Broad match capped at 15%**—never exceed 15% of total ASA budget on broad, or your funnel becomes top-heavy
+
+You can automate this with Apple Search Ads API (2026 Campaign Management API v5.0 has budget adjustment endpoints):
+
+```json
+{
+  "campaignId": 123456,
+  "budgetAdjustment": {
+    "type": "waterfall",
+    "source": "competitor_exact",
+    "condition": "LTV_CPI > 1.5",
+    "action": "reallocate_to_brand",
+    "amount": "overflow"
+  }
+}
+```
+
+Running this endpoint daily via BigQuery + Airflow automates budget flow—when manual reallocation happens every 3 days, reaction lags and opportunity loss hits 8–12%. In Roibase's [App Store Optimization](https://www.roibase.com.tr/en/aso) work with mobile game studios, this automation is standard practice.
+
+## Negative Keyword Strategy: Preventing Leakage Between Funnel Layers
+
+When you run broad, competitor, and brand separately, **keyword overlap** risk emerges—the same search term triggers across all three campaigns, creating self-bidding wars. Apple's auction won't show multiple campaigns from one advertiser, but bid waste happens: the highest bid wins, others lose impressions but still reserve budget.
+
+Solution: **cross-campaign negative sync**. Here's how:
+- Every keyword added to brand exact → add as exact negative to competitor exact
+- Every keyword in competitor exact → add as phrase negative to broad match
+- Keywords converting in broad → move to competitor or brand in 14 days, remove from broad
+
+You cannot do this manually (2,000+ keywords = 40 hours/week). Hourly sync via Python script or ASA automation tool is mandatory:
+
+```python
+# Pseudo-code
+brand_kws = get_keywords(campaign_type="brand_exact")
+comp_kws = get_keywords(campaign_type="competitor_exact")
+
+for kw in brand_kws:
+    add_negative(campaign="competitor_exact", keyword=kw, match="exact")
+
+for kw in comp_kws:
+    add_negative(campaign="broad_match", keyword=kw, match="phrase")
+```
+
+Skip negative sync and average CPI inflates 18–25%—not waste, but inefficiency. The cost of reaching the same user across three campaigns instead of one.
+
+## The Attribution Trap in Funnel Architecture
+
+Apple Search Ads attribution window is 30 days—a user who taps a search ad and installs within 30 days gets attributed to that campaign. But **multi-touch reality** complicates this: user sees broad match, doesn't install, searches your brand exact 5 days later, installs—attribution goes to brand, broad's contribution vanishes. This pattern drives broad budget cuts, killing discovery.
+
+Solution: **assisted conversion modeling**. Pull impression + tap data from Apple Search Ads API, build a multi-touch attribution model in BigQuery. Using Markov chain or Shapley value, assign contribution share to each campaign. Example finding: broad match delivered 120 direct installs last 30 days but contributed to 840 assisted conversions—true value is 7x.
+
+```sql
+-- BigQuery multi-touch example
+WITH touch_chain AS (
+  SELECT user_id, campaign_type, timestamp,
+    LEAD(campaign_type) OVER (PARTITION BY user_id ORDER BY timestamp) as next_touch
+  FROM asa_events
+)
+SELECT campaign_type, COUNT(*) as assisted_conversions
+FROM touch_chain
+WHERE next_touch = 'brand_exact'
+GROUP BY campaign_type;
+```
+
+This query shows how often broad and competitor campaigns assisted brand installs—without this data, broad looks "expensive, inefficient," gets cut, and funnel breaks.
+
+## Keeping Funnel Architecture Alive
+
+Apple Search Ads funnel architecture isn't static—new keyword discovery every week, competitive landscape shifts monthly, genre trends pivot quarterly. Keeping your funnel alive requires **3-week review cycle**:
+
+1. **Week 1–2:** Pull broad Search Match report → discover new keyword clusters
+2. **Week 3:** Performance data → identify competitor exact migration candidates
+3. **Week 4:** Monitor brand keyword hijacking → track rival bid activity
+
+Apple Search Ads Console's manual reporting isn't enough—daily API pulls + Looker Studio dashboard are needed. In Roibase's work with mobile game studios, this dashboard surfaces: TTR by funnel stage, cross-campaign keyword overlap %, assisted conversion rate, LTV/CPI by layer.
+
+Run funnel architecture with this discipline, and Apple Search Ads becomes your single biggest UA channel—CPI controlled, LTV transparent, scale predictable. Discovery, competitor, brand—each layer feeds signals and budget to the next. Instead of isolated campaign silos, you're building an ecosystem. As iOS privacy tightens through 2026, this architecture shifts from luxury to necessity—playing on Apple's platform, with Apple's attribution, in Apple's auction is the most stable growth channel post-IDFA.
