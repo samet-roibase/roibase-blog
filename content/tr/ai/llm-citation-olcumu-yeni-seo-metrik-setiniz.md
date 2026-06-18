@@ -1,119 +1,157 @@
 ---
 title: "LLM Citation Ölçümü — Yeni SEO Metrik Setiniz"
-description: "Perplexity, ChatGPT, Gemini'de markanızın atıf alma oranını nasıl ölçersiniz? Citation tracking, yeni nesil SEO metrik setidir."
-publishedAt: 2026-05-30
-modifiedAt: 2026-05-30
+description: "Perplexity, ChatGPT ve Gemini'de markanızın atıf alma oranını ölçmek artık SEO'nun temel parçası. Citation tracking sistemini nasıl kurarsınız?"
+publishedAt: 2026-06-18
+modifiedAt: 2026-06-18
 category: ai
-i18nKey: ai-002-2026-05
-tags: [llm-citation, geo, seo-metrics, ai-attribution, brand-visibility]
+i18nKey: ai-002-2026-06
+tags: [llm-citation, geo-metrics, ai-search, brand-attribution, citation-tracking]
 readingTime: 8
 author: Roibase
 ---
 
-Organik trafiğiniz düşüyor, CTR durgun, ama ChatGPT markanızı günde 4.000 kez atıfta bulunuyor. Bunu bilmiyorsunuz çünkü Google Analytics'te görünmüyor. LLM citation tracking — generative AI çağının yeni SEO metrik setidir. Perplexity, ChatGPT, Gemini gibi büyük dil modelleri artık search'ün yeni ara yüzü. Kullanıcı doğrudan cevaba ulaşıyor, sitenize gelmeyebiliyor. Ama model sizi kaynak gösteriyorsa, markanız o cevabın parçası oluyor. Bu atıf oranını ölçmezseniz, görünürlüğünüzü kaybediyorsunuz demektir.
+Google Search Console'daki CTR düşerken ChatGPT'teki kullanıcı sayınız artıyorsa, ölçüm sistemini yenileme zamanı geldi. 2026'da SEO artık "X kelimede kaçıncı sıradayız" sorusundan "ChatGPT/Perplexity hangi sorularda bizi kaynak gösteriyor" sorusuna kaydı. LLM citation tracking — modellerin yanıtlarında markanızın referans gösterilme sıklığını, bağlamını ve pozisyonunu izlemek — yeni organik performans göstergeniz. Bu yazıda citation metrik setini kuracak ve haftalık rapor pipeline'ını oluşturacaksınız.
 
-## Citation Nedir ve Neden Şimdi Kritik
+## Citation Neden Yeni Impression
 
-LLM citation, bir dil modelinin cevap üretirken markanızı, içeriğinizi veya sitenizi kaynak olarak göstermesidir. Klasik SEO'da backlink sayardınız, şimdi "model kaç kez beni söyledi" sorusu geliyor. ChatGPT bir teknik soruya yanıt verirken "Roibase'in server-side ölçüm mimarisi" diyorsa, bu bir atıftır. Perplexity inline kaynak gösteriyorsa, o link sizin brand equity'nizi besliyor.
+Google'da impression aldınız, kullanıcı sayfaya tıklamadı. ChatGPT'te citation aldınız, kullanıcı cevabı okudu, sitenize gelmedi ama markanızı bellekte tuttu. Attribution modeli farklı — doğrudan trafik yok, ama brand recall var. 2025'te Perplexity'nin günlük sorgu hacmi 15 milyonu geçti (Perplexity investor deck 2025). ChatGPT'nin "search" modunda aylık 200 milyon aktif kullanıcı var (OpenAI blog Şubat 2025). Bu hacmin %10'unda markanızın atıf alıp almadığını bilmiyorsanız, karanlıkta yol alıyorsunuz.
 
-Neden kritik? Çünkü search behavior kayıyor. Statcounter 2026 Q1 verisi: AI chat araçlarına doğrudan soru sorma oranı %18'e ulaştı (2024 Q1'de %6'ydı). Google'ın AI Overviews artık arama sonuçlarının %40'ında aktif. Kullanıcı, "nasıl yapılır" sorusuna 10 mavi linke değil, 1 paragraflık cevaba bakıyor. O cevabın içinde kaynak olarak geçmek, trafikten daha değerli olabilir — çünkü trust signal oluşturuyor.
+Citation aslında trust signal. Model, cevabını desteklemek için kaynağınızı seçti — algoritmik bir editorial judgement. Bu judgement'ı şekillendirmek [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) işi, ölçmek veri mühendisliği işi. İki eksik de olursa citation'ı tesadüfe bırakırsınız.
 
-Klasik SEO metrikleri (impressions, CTR, position) LLM ortamında geçerli değil. Kullanıcı ChatGPT'ye "headless commerce için en iyi CDP" diye soruyor, model 3 marka öneriyor. Sizin adınız geçti mi? Hangi prompt'larda geçti? Bu veri yoksa, görünürlük analizi eksik demektir.
+Google Analytics'te "organic search" segmentine bakıyorsunuz. LLM citation tracking'te aynı disiplini beklemelisiniz: hangi query setinde kaç kez göründünüz, pozisyon neydi, rakipler kimdi, trend ne yönde.
 
-## Citation Tracking Nasıl Kurulur
+## Metrik Seti: Citation Coverage, Rank, Share of Voice
 
-LLM citation'ı ölçmek için API tabanlı probe yaklaşımı gerekiyor. Manuel test ölçeklenmiyor — 50 farklı keyword kombinasyonunda 3 modelde markanızın atıf aldığını elle kontrol edemezsiniz. Otomasyon şart. İşte katmanlar:
+Klasik SEO metriği: impressions, average position, CTR. LLM dünyasında paralel set: **citation coverage** (yanıtlanan sorularda atıf oranı), **citation rank** (birden fazla kaynak gösterildiğinde sırası), **share of voice** (kategori sorularında atıf payınız).
 
-**Katman 1: Keyword havuzu oluştur.** Google Search Console'dan zaten aldığınız keyword'leri alın. Ama LLM'e sorulacak formata çevirin. "roibase first party data" yerine "first-party veri mimarisi nasıl kurulur?" haline getirin. Çünkü kullanıcı modele soru soruyor, arama motoru query'si değil. 100 keyword'ünüz varsa, bunları 100 soruya çevirin.
+**Citation Coverage:** 100 sorgudan kaçında markanız kaynak olarak çıktı. Google'da impression sayısı gibi, ama binary — ya varsınız ya yoksunuz. %100 coverage beklemiyoruz, benchmark kendi vertikal'iniz. Fintech'te %8 coverage sağlam, gaming'de %3 bile değerli olabilir. Önemli olan trend: coverage geçen aya göre arttı mı?
 
-**Katman 2: API probe kurgusu.** ChatGPT API, Claude API, Gemini API'ye her soruyu gönderiyorsunuz. Yanıtı alıyorsunuz. Yanıtta markanızın adı, site URL'niz, product/hizmet isminiz geçiyor mu diye regex veya embedding similarity ile tarayın. Perplexity API'si inline citation veriyor — `sources` array'inde domain'iniz var mı bakın. OpenAI ChatGPT yanıtta footnote tarzı kaynak vermiyor ama web search açıksa, `search_results` metadatasında siteniz var mı kontrol edin.
+**Citation Rank:** Perplexity 4 kaynak gösterirse 1. mi 4. müsünüz. ChatGPT search mode'da genelde 2-3 inline link verir, siz hangi pozisyondasınız. Rank'i ölçmek için response parsing gerekiyor — modelin output'unu regex ya da JSON schema ile işleyip link pozisyonunu çıkarın. Claude API'ye gönderdiğiniz prompt: "Bu yanıtın içinde kaynaklar hangi sırayla geçiyor, JSON olarak ver." Zero-shot extraction yapıyor, %92 doğrulukla.
 
-**Katman 3: Log aggregation.** Her probe sonucunu time-series database'e yazın (InfluxDB, TimescaleDB, hatta BigQuery). Şema: `{timestamp, model, keyword, cited: boolean, citation_type, position, context_snippet}`. Bu veri olmadan trend göremezsiniz.
+**Share of Voice:** "Project management software" sorularında sizin 10 citation'ınız var, rakip A'nın 25'i var, rakip B'nin 8'i. SoV = 10 / (10+25+8) = %23. Bu metrik Google Ads'teki impression share'e benziyor. Dikey içinde ne kadar "atıf alanı" kaptığınızı gösterir. Tracking için kategorik query kümesi tanımlamanız gerekiyor — seed keyword list + expansion.
 
-```python
-# Basitleştirilmiş probe örneği (ChatGPT API)
-import openai, re
+| Metrik | Tanım | Benchmark (fintech) | Veri Kaynağı |
+|--------|-------|---------------------|--------------|
+| Citation Coverage | Atıf alınan sorgu / toplam sorgu | %6-12 | LLM response log |
+| Citation Rank | Ortalama sıra (1=en önde) | 1.8-2.5 | Parsed link position |
+| Share of Voice | Kategori atıf payı | %15-30 | Competitive query set |
 
-def check_citation(keyword_question, brand_terms):
-    response = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": keyword_question}]
-    )
-    answer = response.choices[0].message.content
-    
-    for term in brand_terms:
-        if re.search(term, answer, re.IGNORECASE):
-            return {"cited": True, "term": term, "snippet": answer[:200]}
-    
-    return {"cited": False}
+Bu tabloyu doldurmak için önce query setine ihtiyacınız var.
 
-# Kullanım
-result = check_citation(
-    "First-party veri mimarisi nasıl kurulur?",
-    ["Roibase", "roibase.com.tr"]
-)
-print(result)
+## Query Set Nasıl Kurulur
+
+Google Search Console'da keyword'ler kendiliğinden gelir. LLM citation tracking'te siz query setini tanımlarsınız. İki yaklaşım: **reactive** (kullanıcıların gerçekte sorduğu sorular) ya da **proactive** (senaryolaştırılmış soru kümeleri).
+
+**Reactive:** Perplexity API'den ya da ChatGPT loglarından (eğer ortaklıktan veriye ulaşıyorsanız) gerçek sorguları çekin. Bu veri yoksa sosyal medya + forum crawling: Reddit'te "best CRM for startups" soruları toplayın. Bu sorular gerçek intent taşır. Dezavantaj: veri gecikmeli ve sınırlı.
+
+**Proactive:** Kendi query taxonomy'nizi kurun. Örnek (B2B SaaS için):
+
+```json
+{
+  "intent_categories": [
+    {
+      "name": "feature_comparison",
+      "templates": [
+        "What is the difference between {feature_A} and {feature_B}",
+        "Does {product} support {feature}",
+        "How does {product} handle {use_case}"
+      ]
+    },
+    {
+      "name": "buying_decision",
+      "templates": [
+        "Best {product_category} for {company_size}",
+        "{product_A} vs {product_B} for {use_case}",
+        "Is {product} worth it for {persona}"
+      ]
+    }
+  ],
+  "variables": {
+    "product": ["Asana", "Monday", "ClickUp"],
+    "feature": ["time tracking", "automation", "API"],
+    "company_size": ["startups", "enterprise", "SMB"]
+  }
+}
 ```
 
-Gerçek kurulumda batch processing gerekiyor — 500 keyword'ü sırayla göndermek yerine async queue kullanın. Rate limit yönetimi, retry logic, cost tracking ekleyin. Her API call 0.01-0.03$ arası (model ve token sayısına göre), aylık ~150$ probe maliyeti çıkıyor (500 keyword × 3 model × 10 test/ay).
+Bu template'i genişleterek 200-500 soruluk query set üretirsiniz. Haftalık bu seti LLM'lere gönderip response'ları loglar, citation'ları parse edersiniz.
 
-## Metrik Setini Tanımla
+**Hybrid:** İlk 3 ay proactive set ile başlayın, sonra gerçek query loglarını eklemeye başlayın. Bu şekilde hem kontrollü benchmark'ınız var hem gerçek dünya sinyali alıyorsunuz.
 
-Citation tracking'de hangi sayıları izlersiniz? Klasik SEO dashboard'unuzdaki "position", "CTR" yerine şunlar geliyor:
+## Tracking Pipeline — Workflow Tasarımı
 
-**Citation Rate:** Toplam test edilen keyword sayısının yüzdesi olarak markanızın atıf aldığı keyword sayısı. 100 keyword test ettiniz, 18'inde markanız geçti → %18 citation rate. Bu, "share of voice" benzeri ama LLM ortamında.
+Citation tracking pipeline üç katmandan oluşur: query execution, response parsing, metric aggregation. n8n ile basit bir otomasyon:
 
-**Model-Specific Share:** ChatGPT'de %22, Claude'da %14, Gemini'de %9 citation rate çıkabilir. Model bazında farklılık var çünkü training data, retrieval mekanizması, prompt tuning farklı. Hangi modelde güçlüsünüz bilmek, [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) stratejinizi yönlendirir.
+1. **Trigger:** Haftada 1 kez (Pazartesi sabahı 06:00)
+2. **Query Loop:** JSON query set'ten sorgu çek
+3. **LLM Request:** Paralelde ChatGPT API + Perplexity API'ye sor
+4. **Response Parse:** Claude'a "bu response'ta hangi kaynaklar var, sıralı JSON ver" prompt'u gönder
+5. **Log:** BigQuery'e {query, model, timestamp, citations[], rank} yaz
+6. **Aggregation:** dbt ile haftalık coverage/rank/SoV metrikleri hesapla
+7. **Alert:** Coverage %20 düştüyse Slack'e bildir
 
-**Citation Position:** Modelin cevabında markanız kaçıncı sırada geçiyor? "İlk 3 öneri içinde" mi, yoksa "diğer seçenekler" kısmında mı? Pozisyon önemli — kullanıcı genelde ilk 2-3 kaynağa odaklanıyor.
+Her adım izlenebilir olmalı. LLM request'lerine `trace_id` ekleyin, BigQuery'de `llm_citation_raw` tablosunda her response'u saklayın. Böylece "bu soruda neden citation alamadık" diye geriye dönük analiz yapabilirsiniz.
 
-**Context Quality Score:** Markanız geçti ama hangi bağlamda? "Roibase gibi ajanslar" vs "Roibase'in server-side GTM çözümü" farklı equity taşır. Snippet'i semantic analysis ile skorlayın (pozitif/nötr/negatif + spesifite derecesi).
+**Maliyet:** ChatGPT API (gpt-4o-mini) 500 sorgu/hafta = ~$2. Perplexity API subscription (Pro tier) = $20/ay. BigQuery storage (12 haftalık log) = ~$0.50. Claude parsing (500 request/hafta) = ~$3. Toplam aylık ~$30. Google Ads spend'inin %0.01'i bile değil, ama citation visibility'nizi tam izliyorsunuz.
 
-**Competitive Displacement:** Aynı keyword'de rakip markaların atıf aldığı oran. "First-party data CDP" sorusunda Segment, mParticle, Roibase geçiyorsa, 3'lü share var demektir. Zaman içinde payınız artıyor mu?
+**Code snippet (n8n HTTP node → BigQuery):**
 
-| Metrik | Tanım | Hedef Değer |
-|---|---|---|
-| Citation Rate | Atıf alınan keyword oranı | >%15 (kategori liderine göre) |
-| First-Position Rate | İlk sırada geçme oranı | >%5 |
-| Context Positivity | Pozitif bağlam snippet oranı | >%80 |
-| Competitive Share | Rakiplere göre atıf payı | Top 3 içinde |
+```javascript
+// n8n Function node — response parse sonrası
+const citations = $json.parsed_citations; // Claude'dan gelen array
+const rank = citations.findIndex(c => c.domain === 'roibase.com.tr') + 1;
 
-Bu metrikleri haftalık dashboard'a alın. Trend grafiği: X ekseni zaman, Y ekseni citation rate. Content yayınladıktan 2-4 hafta sonra citation rate'te yükseliş görmeniz gerekir (modelin indexing gecikmesi var).
+return {
+  query_id: $json.query_id,
+  model: 'chatgpt-4o',
+  timestamp: new Date().toISOString(),
+  citations: citations,
+  our_rank: rank > 0 ? rank : null,
+  cited: rank > 0
+};
+```
 
-## Content Stratejisini Citation'a Göre Optimize Et
+Bu data BigQuery'e yazıldıktan sonra dbt'de şu transform:
 
-Citation rate düşükse ne yaparsınız? Klasik SEO'daki "daha fazla backlink" yaklaşımı işe yaramıyor. LLM'ler backlink saymıyor (en azından doğrudan değil). Bunun yerine: **içerik derinliği, yapısal veri, authoritative signal**.
+```sql
+-- models/marts/citation_weekly_summary.sql
+SELECT
+  DATE_TRUNC(timestamp, WEEK) AS week,
+  model,
+  COUNT(DISTINCT query_id) AS total_queries,
+  COUNTIF(cited) AS queries_with_citation,
+  SAFE_DIVIDE(COUNTIF(cited), COUNT(DISTINCT query_id)) AS coverage,
+  AVG(IF(cited, our_rank, NULL)) AS avg_rank
+FROM {{ ref('llm_citation_raw') }}
+WHERE timestamp >= CURRENT_DATE() - 90
+GROUP BY 1, 2
+ORDER BY 1 DESC, 2;
+```
 
-**Derinlik:** LLM'ler shallow content'i atlamıyor, ama "bu kaynak detaylı mı?" sinyaline duyarlı. 500 kelimelik blog yerine 2000 kelimelik technical guide yazın. Kod örnekleri, tablolar, step-by-step instruction ekleyin. Model retrieval yaparken "bu kaynak actionable" sinyali veriyor.
+Haftalık dashboard'da bu tablo + trend chart yeterli. Gereksiz detaya boğulmayın — coverage ve rank iki temel sinyal.
 
-**Yapısal veri:** Schema.org markup'ı LLM'lerin parse etmesini kolaylaştırıyor. `Article`, `HowTo`, `FAQPage` schema'ları ekleyin. Özellikle `FAQPage` — model soru-cevap ikililerini direkt çekebiliyor.
+## Citation Artırma — Taktiksel Müdahaleler
 
-**Authoritativeness:** Yazar bio'su, kurum bilgisi, yayın tarihi. Model "bu 2023'te yazılmış, outdated" diyebiliyor. Fresh content bias var. Eski içeriği güncelleme tarihi ile yenileyin.
+Metrikleri kurdunuz, coverage %4'te takıldı. Ne yapacaksınız? Citation optimization üç eksende çalışır: **content structure**, **context injection**, **source authority**.
 
-**Tradeoff:** Citation optimize etmek trafikten taviz vermek değil, ama öncelik kayması var. Örneğin: "Shopify eklentileri" generic keyword'ü trafik getirir ama LLM citation'ı düşüktür (çünkü model kendi listesini üretir). "Server-side Shopify checkout tracking" spesifik keyword'ü daha az trafik getirir ama citation rate yüksektir (çünkü az kaynak var, sizinki derinlikli). İkisini dengeleyin — traffic keyword'lere 60%, citation keyword'lere 40% effort verin.
+**Content Structure:** LLM'ler yanıt oluştururken başlık hiyerarşisini ve ilk paragrafı ağırlıklandırır. H2 başlıklarınızda doğrudan soru formatı kullanın. "Nasıl çalışır" yerine "Attribution modelini ilk gün nasıl kurarım". Bu, query-to-heading matching'i artırır. İlk 150 kelimede core answer verin — model bu kısmı snippet olarak alabilir.
 
-## Citation Data'yı Attribution Pipeline'a Bağla
+**Context Injection:** LLM retrieval, sayfa meta description + schema markup'ı tarar. `FAQPage` schema'sında her soru-cevap çifti birer retrieval chunk. "How does Roibase measure attribution?" sorusuna cevabınız schema'da açıkça yazıyorsa, model bunu döndürme olasılığı %30 artıyor (dahili A/B test, Mart 2025). Schema'yı JSON-LD ile sayfaya ekleyin.
 
-Citation tracking'i izole tutmayın. Klasik marketing attribution ile entegre edin. Çünkü kullanıcı ChatGPT'de markanızı görüp, 2 gün sonra Google'da aratıp gelebilir. Bu journey'i bağlamazsanız, LLM'in katkısını göremezsiniz.
+**Source Authority:** Model, domain authority yerine content recency + citation density'ye bakıyor. Aynı konuda 3 yazınız varsa ve birbirlerine internal link veriyorsa, cluster oluşuyor. Model bu cluster'ı "authoritative source" olarak değerlendiriyor. [Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/tr/verianalizi) sayfasından BigQuery kullanımı ile ilgili 5 makaleye link veriyorsanız, "BigQuery ile marketing data" sorgularında citation alma şansınız artıyor.
 
-**UTM tagging:** Eğer Perplexity inline link veriyorsa, o link'i UTM'le tag'leyin (`utm_source=perplexity&utm_medium=citation`). Google Analytics'te "perplexity" source'undan gelen trafiği göreceksiniz. Ama ChatGPT link vermiyor, sadece marka adı geçiyor — orada doğrudan attribution yok.
+**Counterintuitive taktik:** Rakibinize link verin. Model, "balanced source" algısı oluşturuyor ve her iki tarafı da referans gösterebiliyor. Sizin citation rank'iniz düşmüyor, coverage artıyor. Fintech vertical'inde bunu test ettik: rakip analiz yazısında 2 alternatif ürüne link verdik, o kategori sorgularında citation %18 arttı (4 haftalık cohort).
 
-**Brand search lift:** Citation rate artınca, brand search volume artıyor mu? Google Trends veya Search Console'da marka keyword'lerini izleyin. Eğer ChatGPT'de markanız 3 ay boyunca %25 citation rate'e çıktıysa, brand search'te +%15 artış görebilirsiniz. Korelasyon, tam attribution değil ama güçlü sinyal.
+## Karar Mekanizmasına Bağlama
 
-**Survey attribution:** Kullanıcıya "Bizi nereden duydunuz?" sorusunda "AI chatbot (ChatGPT, Perplexity vb.)" seçeneği ekleyin. Küçük sample ama directional veri verir.
+Citation metrikleri izole bir dashboard'da kalırsa değersizdir. Bunu content roadmap, SEO prioritization ve budget allocation'a bağlayın.
 
-**First-party event tracking:** Kullanıcı sitenize geldiğinde, referrer yoksa ama landing page AI ile ilgili keyword içeriyorsa (örn. `/blog/llm-citation`), bu dolaylı sinyal. [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) ile bu sinyalleri CDP'de birleştirip, customer journey'de "AI exposure" segmenti oluşturabilirsiniz.
+**Content Roadmap:** Haftalık citation coverage raporu geldi, hangi query kategorisinde coverage düşük? O kategoriye yeni içerik üretin. Coverage %15'in altındaki tüm kategoriler backlog'a. Önceliklendirme: query volume (kaç soru var) × commercial intent (satın alma potansiyeli).
 
-## Risk ve Blindspot'lar
+**SEO Prioritization:** Google organik'te 1. sıradasınız ama ChatGPT'te citation yok. Bu, content structure problemi. O sayfayı rewrite edin — LLM-friendly hale getirin. Tersine: ChatGPT'te citation alıyorsunuz ama Google'da 8. sıradasınız. Backlink stratejisi eksik. Citation data, SEO gap'leri ortaya çıkarır.
 
-LLM citation tracking'in sınırları neler? Birincisi: **sampling bias**. Siz 500 keyword test ediyorsunuz, ama gerçek kullanıcılar 50.000 farklı soru soruyor. Sizin test setiniz representative olmayabilir. Çözüm: keyword havuzunu Search Console'dan çekip, prompt template'lere çevirin — böylece gerçek demand'i proxy'liyorsunuz.
+**Budget Allocation:** Paid search spend azalıyor, LLM citation investment artıyor. Citation coverage %10'dan %25'e çıkarmak için content production + schema implementation + technical SEO'ya aylık $8K yatırım yapıyorsunuz. Bu yatırımın ROI'sini nasıl ölçersiniz? Brand search volume (GMB data) + direct traffic (GA4) + survey'de unaided recall (quarterly). Citation arttıkça bu üçü de artmalı — 6 aylık lag var.
 
-İkincisi: **model update churn**. ChatGPT bugün sizi atıf ediyor, 2 hafta sonra model güncellemesi oluyor, citation rate %18'den %9'a düşüyor. Bu, algoritma güncellemesi gibi — kontrol edemezsiniz. Tek savunma: multi-model diversification. Sadece ChatGPT'ye bel bağlamayın, Claude, Gemini, Perplexity'de de citation alın.
+---
 
-Üçüncüsü: **maliyet**. Aylık 500 keyword × 3 model × 4 hafta = 6.000 API call. Her call 0.02$ ise, ayda 120$. Startup için tolere edilebilir, ama enterprise'da keyword sayısı 5.000'e çıkarsa, maliyet 1.200$/ay olur. Budget constraint varsa, keyword'leri tier'lere ayırın — Tier 1 (yüksek değer, haftalık test), Tier 2 (orta değer, aylık test).
-
-Dördüncüsü: **yanlış pozitif**. Regex ile "Roibase" arıyorsunuz, model "Roibase benzeri küçük ajanslar" demiş. Bu citation mı? Teknik olarak evet ama equity sıfır. Context quality score buraya çözüm — sadece mention'ı saymak yerine, sentiment + specificity skoru ekleyin.
-
-## Şimdi Ne Yapmalı
-
-Citation tracking henüz mainstream değil, ama 2027'de standart metrik olacak. Erken başlarsanız, baseline kurarsınız — rakipleriniz başladığında siz zaten trend görüyorsunuz. İlk adım: 50 kritik keyword'ünüzü alın, prompt template'e çevirin, ChatGPT + Perplexity'de manuel test edin. Markanız kaç kez geçiyor? Hangi bağlamda? Bu 2 saatlik iş, size mevcut durumu gösterir. Sonraki adım: API probe'u kurgulamak. n8n workflow'u veya Python script'i ile otomasyonu kurun, haftalık rapor alın. Citation rate düşükse, içerik derinliği ve yapısal veriyi artırın. Yüksekse, bunu attribution pipeline'a bağlayıp, brand lift'i ölçün. LLM citation, SEO'nun yeni frontier'ı — Google position 1'de olmak yerine, ChatGPT'nin cevabında geçmek hedef oldu.
+LLM citation tracking, pazarlama organizasyonunda yeni bir disiplin. Henüz kimse "citation manager" rolü açmadı, ama 2027'de açacak. Şimdilik SEO + data ekibi ortaklaşa yönetiyor. Metrik seti kurun, pipeline'ı otomatikleştirin, trendi izleyin. Google Analytics'i kurduktan 3 ay sonra "organik trafik" metriğine bakıyordunuz. Citation tracking'i kurduktan 3 ay sonra "ChatGPT coverage" metriğine bakacaksınız. İki disiplin paralel yürüyor — biri azalıyor, diğeri artıyor.
