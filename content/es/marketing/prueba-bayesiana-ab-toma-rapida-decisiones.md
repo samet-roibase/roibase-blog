@@ -1,114 +1,113 @@
 ---
-title: "Prueba Bayesiana A/B: Toma Rápida de Decisiones"
-description: "Supera la trampa del tamaño de muestra frequentista. El enfoque Bayesiano con monitoreo secuencial y parada temprana reduce ciclos de prueba entre 40-60%."
-publishedAt: 2026-05-30
-modifiedAt: 2026-05-30
+title: "Test A/B Bayesiano: Toma de Decisiones Rápida"
+description: "Reemplaza las reglas rígidas de tamaño muestral frequentista con enfoque Bayesiano para pruebas secuenciales. Actualiza distribuciones de probabilidad en tiempo real y detén antes."
+publishedAt: 2026-06-18
+modifiedAt: 2026-06-18
 category: marketing
-i18nKey: marketing-002-2026-05
-tags: [ab-testing, estadistica-bayesiana, experimentacion, optimizacion-conversion, inferencia-estadistica]
+i18nKey: marketing-002-2026-06
+tags: [ab-testing, estadistica-bayesiana, optimizacion-conversion, prueba-secuencial, performance-marketing]
 readingTime: 8
 author: Roibase
 ---
 
-En marketing de rendimiento, la prueba A/B es la columna vertebral de la toma de decisiones basada en datos, no en hipótesis. Pero la mayoría de equipos siguen atrapados en el dogma frequentista del tamaño de muestra fijo: "No mires hasta alcanzar el número calculado, si lo haces temprano creas sesgo." Este enfoque estira innecesariamente los ciclos de prueba a 3-4 semanas. La prueba Bayesiana A/B permite monitoreo secuencial con probabilidad posterior. Lees los datos diariamente, los combinas con conocimiento previo, y detienes la prueba cuando alcanzas un umbral de confianza específico (por ejemplo, 95% de probabilidad de ser el mejor). Resultado: tomar decisiones con la misma solidez estadística, pero 40-60% más rápido.
+El test A/B clásico depende de un tamaño muestral fijo. Esperas a alcanzar N usuarios, ejecutas un t-test, controlas el p-value. Pero la realidad del mercado es implacable: si la variante B pierde claramente cada día, quemar tráfico durante 2 semanas más es desperdicio. El enfoque Bayesiano resuelve esto — actualiza la distribución posterior cada día y afirmas "la probabilidad de que la variante A gane es 94%". Defines el umbral de decisión, no estás atrapado en la rigidez frequentista de p<0.05.
 
-## Las Limitaciones Estructurales del Enfoque Frequentista
+## Las Limitaciones Estructurales del Test Frequentista
 
-La prueba A/B frequentista se construye sobre p-valores e intervalos de confianza. Pruebas la significancia de la hipótesis nula — intentas rechazar el supuesto "no hay diferencia entre la variante A y B." Los problemas fundamentales de este enfoque:
+El test A/B tradicional se basa en el marco Neyman-Pearson. Defines la hipótesis nula (H₀: sin diferencia entre variantes), estableces el nivel alpha (típicamente 0.05), determinas el efecto detectable mínimo (MDE), realizas análisis de potencia (80%), y esperas hasta alcanzar el tamaño muestral resultante. Hacer un peek antes de terminar el test infla el error Tipo I — por eso el "peeking" está prohibido.
 
-**La obligación del tamaño de muestra fijo.** Realizas un análisis de poder: conversion rate base 2%, lift mínimo detectable (MDE) 10% relativo, alpha 0.05, poder 0.80. Debes mantener la prueba hasta alcanzar el tamaño de muestra calculado (por ejemplo, 15.000 vistas por variante). Si miras temprano y decides detenerla, entra en juego el problema de comparaciones múltiples — la tasa de falsos positivos supera tu valor alpha (0.05). En la práctica: ves un lift del 25% el día 2, pero esperas 3 semanas más porque "los datos no son suficientes."
+El problema: en campañas digitales, el tráfico cuesta dinero cada día. Si el cálculo de tamaño muestral dice 12.000 usuarios y recibes 800 diarios, esperas 15 días. Pero en el día 5, la tasa de conversión de la variante B cae de 2.1% a 1.3% y aún quemas 10 días más. La metodología frequentista lo justifica porque "detención temprana = sesgo". En realidad, el escenario de prueba no es estático — presupuesto limitado, estacionalidad, competencia que se mueve. Las reglas rígidas de tamaño muestral no dejan espacio para flexibilidad.
 
-**Incapacidad de expresar la incertidumbre posterior.** El p-valor te dice "la probabilidad de observar este resultado o uno más extremo bajo la hipótesis nula." Pero lo que realmente quieres responder es: "¿Cuál es la probabilidad de que la variante B sea genuinamente mejor?" El framework frequentista no responde directamente — p < 0.05 es solo un umbral para rechazar la nula, no expresa la probabilidad de superioridad de B.
+Hay otro problema: el p-value solo dice "si H₀ fuera cierta, ¿cuál es la probabilidad de ver estos datos?". No te dice la probabilidad de que la variante A sea realmente mejor. Si p=0.03, rechazas H₀, pero no puedes afirmar "A tiene 97% de probabilidad de vencer a B". El lenguaje frequentista solo te da "significancia estadística" — insuficiente para decidir en negocio.
 
-**Mecanismo de decisión binario.** Un p-value de 0.049 es "significativo", 0.051 es "no significativo." La incertidumbre en el mundo real no es tan tajante. Un p-value de 0.06 debería interpretarse como "hay evidencia marginal, probablemente alargues la prueba," pero no puedes hacerlo — o rechazas o aceptas.
+## La Lógica del Enfoque Bayesiano
 
-Estas limitaciones estructurales ralentizan la velocidad de prueba, especialmente en procesos de [Optimización de Tasa de Conversión](https://www.roibase.com.tr/es/cro). En lugar de iterar con 2-3 hipótesis por semana, te quedas atrapado en reglas de tamaño de muestra.
+El marco Bayesiano convierte información anterior en distribución posterior. **Prior**: tu creencia sobre la tasa de conversión antes de la prueba. Conforme llegan datos, el teorema de Bayes actualiza el prior. **Posterior**: la distribución probable de la tasa de conversión según los datos acumulados.
 
-## Prueba Bayesiana: Probabilidad Posterior y Monitoreo Secuencial
+Fórmula:  
+**P(θ | data) ∝ P(data | θ) × P(θ)**
 
-El enfoque Bayesiano trata el parámetro (tasa de conversión) no como un número fijo, sino como una distribución de probabilidad. Creencia previa (prior) + datos observados → distribución posterior (creencia actualizada). Detalle matemático:
+θ = tasa de conversión, data = conversiones y no-conversiones observadas. Likelihood (probabilidad de datos) × prior → posterior. La distribución Beta es el prior conjugado, así que el cálculo es simple: si la variante A muestra α conversiones y β no-conversiones, posterior = Beta(α+1, β+1).
 
-**Distribución previa:** Tu creencia previa sobre la tasa de conversión base. Sin conocimiento, usas una prior no informativa (Beta(1,1)) — probabilidad igual para todos los valores. Si sabes de pruebas pasadas que "la tasa de conversión típicamente está entre 1.5-2.5%," defines una prior informativa (Beta(15, 985)).
+Cada día actualizas el posterior con datos nuevos. La ventaja crítica de la prueba secuencial es esta: comparas las distribuciones posteriores y calculas "la probabilidad de que la tasa de conversión de A sea superior a la de B" mediante simulación Monte Carlo. Si supera 95%, decides. No es "alcanza N, luego mira" como en frequentista, sino "mira cada día, decide cuando cruzas el umbral".
 
-**Verosimilitud:** Los datos que observas — 1000 vistas, 25 conversiones, por ejemplo.
-
-**Posterior:** La distribución actualizada mediante el teorema de Bayes. Usando el par conjugado Beta-binomial, el posterior se resuelve analíticamente: `Beta(alpha + conversiones, beta + no_conversiones)`.
-
-**Regla de decisión:** Simulación de Monte Carlo en las distribuciones posteriores de A y B (por ejemplo, 100.000 iteraciones). En cada iteración, cuentas cuántas veces B supera a A. Esta proporción es "la probabilidad de que B gane" (P(B > A)). Si esta probabilidad supera el 95%, detienes la prueba y seleccionas B.
-
-**Monitoreo secuencial:** El framework Bayesiano permite recalcular la posterior cada día. No hay problema de "peeking" frequentista — la actualización posterior es parte natural de la inferencia Bayesiana. Cada mañana abres el dashboard y ves P(B > A) actualizado: 65% → 78% → 89% → 94% → 96%. Cuando supera el 95%, cierras la prueba.
-
-En la práctica: conversion rate base 2%, objetivo de lift 10% relativo (es decir, 2.2%), umbral de confianza 95%. Una prueba frequentist demanda 15.000 muestras por variante (aproximadamente 21 días). Una prueba Bayesiana alcanza el mismo umbral en 9-12 días — porque el conocimiento previo permite que la posterior sea más nítida con menos datos.
-
-### Ejemplo de Código de Simulación (Python)
+### Ejemplo de Cálculo Posterior
 
 ```python
 import numpy as np
 from scipy.stats import beta
 
-# Prior: Beta(1, 1) — no informativa
-alpha_a, beta_a = 1, 1
-alpha_b, beta_b = 1, 1
+# Variante A: 120 conversiones, 1200 impresiones
+alpha_A = 120 + 1  # +1 para prior uniforme
+beta_A = (1200 - 120) + 1
 
-# Datos observados (día 5)
-views_a, conv_a = 5000, 95
-views_b, conv_b = 5000, 112
+# Variante B: 95 conversiones, 1150 impresiones
+alpha_B = 95 + 1
+beta_B = (1150 - 95) + 1
 
-# Posterior
-post_a = beta(alpha_a + conv_a, beta_a + views_a - conv_a)
-post_b = beta(alpha_b + conv_b, beta_b + views_b - conv_b)
+# Monte Carlo: extrae 10,000 muestras
+samples_A = beta.rvs(alpha_A, beta_A, size=10000)
+samples_B = beta.rvs(alpha_B, beta_B, size=10000)
 
-# Monte Carlo: P(B > A)
-samples_a = post_a.rvs(100000)
-samples_b = post_b.rvs(100000)
-prob_b_wins = (samples_b > samples_a).mean()
-
-print(f"P(B > A) = {prob_b_wins:.3f}")
-# Ejemplo de output: P(B > A) = 0.923 → aún bajo 95%, continúa la prueba
+# Probabilidad de que A > B
+prob_A_wins = (samples_A > samples_B).mean()
+print(f"P(A > B) = {prob_A_wins:.3f}")
 ```
 
-## Dinámica del Tamaño de Muestra y Criterios de Parada Temprana
+Salida de ejemplo: `P(A > B) = 0.983` — A gana con 98.3% de confianza. El t-test frequentista con los mismos datos podría dar p=0.06 (no significativo), pero Bayesiano dice 98%. ¿Cuál es más relevante para decidir en negocio?
 
-La ventaja de velocidad de la prueba Bayesiana viene del tamaño de muestra dinámico. En lugar de un objetivo de N fijo, vinculas la regla de parada a la confianza posterior. Dos criterios comunes:
+## Pruebas Secuenciales y Detención Temprana
 
-**Umbral de probabilidad:** P(B > A) ≥ 0.95, entonces detén. Significa "la probabilidad de que B sea genuinamente mejor es 95%." Algunos equipos usan 99% (más conservador), otros 90% (más agresivo — para mayor velocidad de prueba).
+El test Bayesiano está diseñado para ser secuencial. Actualiza el posterior cada día, verifica el umbral de decisión. Cuando "Probability to be best" supera 95%, detén la prueba e implementa el ganador. Esta detención temprana no infla el error Tipo I como en frequentista, porque el criterio de decisión es probabilidad posterior — no p-value.
 
-**Pérdida esperada:** Si seleccionas B pero A es realmente mejor, ¿cuál es tu pérdida? Expected loss = E[max(0, A - B)]. Si esta pérdida cae por debajo de un nivel aceptable (por ejemplo, < 0.0001 diferencia absoluta en tasa de conversión), detienes la prueba. Esta métrica proporciona gestión de riesgo desde la perspectiva de "costo de decisión incorrecta."
+Implementación práctica:  
+1. Define el prior (típicamente Beta(1,1) uniforme)  
+2. Acumula datos de conversión diarios  
+3. Calcula el posterior  
+4. Calcula P(A > B) y P(B > A)  
+5. Si cualquiera supera 95%, detén la prueba  
+6. Si después de 14 días no alcanzas 95%, finaliza como "no concluyente" (datos insuficientes)
 
-**Piso mínimo de muestra:** Para evitar detenciones completamente prematuras, estableces una regla como "recolecta mínimo 3000 muestras, luego aplica la regla de parada Bayesiana." Esto evita que la prior sea demasiado dominante.
+Este enfoque es crítico en procesos de [optimización de tasa de conversión](https://www.roibase.com.tr/es/cro). En una prueba de landing page donde la variante B muestra 30% menor CTR en CTA durante los primeros 3 días, el posterior Bayesiano dice "96% B es peor". La regla frequentist de tamaño muestral te obligaría a esperar 10 días más, pero tú detienes en el día 3, redirige tráfico a A. Menor costo de oportunidad.
 
-Escenario de ejemplo: Prueba de color CTA en e-commerce (verde vs naranja). Conversion rate base 3.2%. Semana 1: 8000 vistas, P(naranja > verde) = 87%. Semana 2: 16.000 vistas, P = 94%. Día 2 de la semana 3 (18.500 vistas totales), P = 96%. Una regla frequentist exigiría 25.000 vistas (aproximadamente 18 días), tú paras en el día 10. Redujiste el ciclo de prueba 44%.
+### Dinámicas de Tamaño Muestral
 
-Trade-off: La parada temprana puede aumentar el riesgo de seleccionar una variante que comenzó bien por casualidad pero que regresa. Para mitigarlo: (1) establece un piso de muestra, (2) si el tamaño de efecto es pequeño (por ejemplo, 5% de lift relativo), sube el umbral a 99%, (3) monitorea la desviación estándar posterior — si sigue siendo amplia (alta incertidumbre), acumula más datos.
+Bayesiano no requiere tamaño muestral fijo, pero puedes estimar el "tamaño muestral esperado". Depende de cuán informativo sea el prior. Si la tasa de conversión histórica es 10%, informas el prior con Beta(10,90) y necesitas menos datos. Con prior no-informativo tardará más, pero aún más rápido que frequentist.
 
-## Selección de Prior y Acumulación de Información
+Tabla de simulación (ejemplo):
 
-El poder de la prueba Bayesiana viene de formalizar el conocimiento previo. Pero una prior incorrecta crea sesgo. Dos extremos:
+| Verdadero Δ | N Frequentista | Expected N Bayesiano | N Bayesiano percentil 90 |
+|---|---|---|---|
+| +10% | 4,800 | 3,200 | 5,100 |
+| +20% | 1,200 | 800 | 1,400 |
+| +5% | 19,200 | 14,000 | 22,000 |
 
-**Prior no informativa (Beta(1,1)):** Supuesto de cero conocimiento previo. Cada prueba comienza de cero. Ventaja: imparcial. Desventaja: la posterior requiere más datos para ser nítida — tamaños de muestra cercanos al frequentista.
+En lifts pequeños, Bayesiano también tarda pero no es tan rígido. En lifts grandes, 30-40% más rápido.
 
-**Prior informativa (Beta(α, β)):** Llevas información de pruebas pasadas, benchmarks de industria o baseline. Ejemplo: "las pruebas de botones CTA generalmente tienen tasas de conversión de 2-4%, promedio 2.8%" → defines Beta(28, 972) como prior (media 2.8%, varianza apropiada).
+## Contraargumentos y Tradeoffs
 
-Usar una prior informativa acelera la prueba porque prior + nuevo dato converge más rápidamente. Pero el riesgo: si la prior es incorrecta (por ejemplo, la copiaste de un vertical antiguo, tu nuevo segmento es diferente), la posterior sesgada. Dos protecciones:
+**1. La elección del prior es subjetiva:** Cierto, introduces creencia previa. Pero con prior no-informativo (Beta(1,1)) minimizas este sesgo. Con suficientes datos, el likelihood domina y el prior se diluye. Frequentista parece "objetivo" pero las elecciones de alpha, power y MDE también son subjetivas.
 
-**Análisis de sensibilidad de prior:** Ejecuta la prueba con diferentes priors (débil, medio, fuerte informativa) y verifica si los resultados cambian. Si la conclusión varía drásticamente entre priors (por ejemplo, 60% de probabilidad de ganar con prior débil vs 98% con prior fuerte), la prueba es muy sensible — alargala, deja que el dato override la prior.
+**2. Costo computacional:** Test Bayesiano requiere actualización posterior diaria + muestreo Monte Carlo. T-test frequentista es cálculo único. Pero las herramientas modernas (pymc, Stan, Google Optimize Bayesiano) lo automatizan. Extraer 10.000 muestras toma milisegundos — no es obstáculo.
 
-**Prior jerárquica:** Si pruebas en múltiples segmentos (mobile vs desktop, país por país), usa un modelo Bayesiano jerárquico. Cada segmento tiene su propia tasa de conversión, pero todos se contraen hacia una media poblacional global. Esto reduce el overfitting a nivel de segmento.
+**3. Conformidad regulatoria:** En ensayos farmacéuticos con aprobación FDA, frequentist es estándar. En marketing digital, no hay restricción. Plataformas como Optimizely, VWO y AB Tasty ofrecen opciones Bayesianas.
 
-Recomendación práctica: Ejecuta las primeras 5-10 pruebas con prior no informativa, acumula resultados, calcula media y varianza, y usa eso como prior informativa en pruebas futuras. Este enfoque de "meta-learning" preserva la información acumulada en tu memoria de pruebas.
+**4. Confusión con multi-armed bandits:** Prueba Bayesiana y algoritmos bandit (Thompson sampling) se confunden. Los bandits optimizan exploración-explotación, asignando más tráfico a variantes ganadoras durante la prueba. El test Bayesiano usa split fijo y usa posterior para decidir. Son casos de uso diferentes — bandit para campañas de alta velocidad, Bayesiano para cambios de producto de ciclo largo.
 
-## Integración Organizacional y Protocolo de Decisión
+## Escenario Real: Prueba de Creative en Meta Ads
 
-Integrar la prueba Bayesiana A/B en la cultura del equipo es un desafío organizacional, no técnico. Cuando dices a un equipo acostumbrado a frequentist "ahora pueden revisar cada día," la reacción inicial es mixta: "¿Dónde está el p-value?" Dos pasos:
+Pruebas 3 variantes de creative en Meta Ads (A, B, C). Presupuesto diario $500, CPA objetivo $25. Frequentist requiere 1,000 conversiones por creative (poder 80%, MDE 15%). Con 60 conversiones diarias, esperas 50 días. Pero en el día 10, el CPA de C sube a $40 — obviamente malo.
 
-**Capacitación + incorporación:** Explica qué significa P(B > A). Enséñales a decir con soltura "95% de probabilidad de que B sea mejor." En lugar de la indirección frequentista "p < 0.05, entonces rechazamos nulo," es lenguaje de decisión directo. En las primeras 2-3 pruebas, ejecuta análisis paralelo — ambos frequentista y Bayesiano. Cuando el equipo ve la diferencia, la adopción acelera.
+Con Bayesiano:  
+- Acumula diario: spend, conversiones por creative  
+- Calcula distribución posterior de CPA (usa likelihood Gamma, CPA es positivo continuo)  
+- Calcula P(CPA_C > $30) = 92%  
+- Pausa C en el día 10, redistribuye presupuesto a A y B  
 
-**Estandardización del umbral de decisión:** ¿A qué probabilidad detienes la prueba? ¿95% o 99%? Esto depende de tolerancia al riesgo. Alto tráfico + decisiones bajo riesgo (por ejemplo, línea de asunto de email) → 90% es suficiente. Tráfico bajo + decisiones de alto riesgo (por ejemplo, rediseño de página de precios) → 99%. Documenta estos umbrales en tu playbook de pruebas.
+En el día 20, P(CPA_A < CPA_B) = 96%. Declares A ganador. Decidiste en 20 días en lugar de 30. Ahorras $5,000 + 10 días ejecutando CPA mejor.
 
-**Monitoreo post-prueba:** Detienes la prueba, declaras ganador a B, haces rollout completo. Pero dos semanas después del rollout, la tasa de conversión de B cae — regresión a la media o factor externo (campaña, estacionalidad). La prueba Bayesiana reduce este riesgo, pero no lo elimina. Solución: monitorea 1 semana post-rollout. Si la media posterior cae > 10%, desactiva el cambio.
-
-**Stack tecnológico:** Google Optimize ofrece modo Bayesiano pero limitado. VWO y Optimizely lo soportan parcialmente. Para custom stack: Python (PyMC3, ArviZ) + BigQuery + dashboard Looker. Un job Airflow diario actualiza los posteriores, Looker muestra P(B > A), alertas Slack cuando se alcanza el umbral.
+Este tipo de decisión dinámica es crítica post-iOS14. La pérdida de señal debilitó la confiabilidad de pruebas — el posterior Bayesiano muestra incertidumbre explícitamente. "Los datos son insuficientes, la distribución es muy ancha" — el p-value frequentista no comunica esto.
 
 ---
 
-La prueba Bayesiana A/B acelera la velocidad de prueba, pero requiere disciplina estadística. Superas la obligación de tamaño de muestra mediante monitoreo secuencial, pero debes definir cuidadosamente la selección de prior y la regla de parada. Adopta Bayesian en tu organización gradualmente — las primeras 10 pruebas con prior no informativa en paralelo, y cuando el equipo confíe, migra a prior informativa + parada temprana. Resultado: mismo rigor, iteración 40-60% más rápida, mayor volumen de aprendizaje.
+La prueba A/B Bayesiana resuelve los problemas de rigidez de tamaño muestral y restricción de "peeking" del enfoque frequentista. Con testing secuencial, mides poder de decisión diario y detiene cuando alcanzan confianza suficiente — antes. La elección del prior introduce subjetividad pero prior no-informativo + abundancia de datos lo mitigua. En performance marketing, si necesitas flexibilidad de campaña, eficiencia presupuestaria y velocidad de decisión, el marco Bayesiano es correcto. Construye tu infraestructura de prueba alrededor de actualización posterior dinámica, no cálculo estático de N.
