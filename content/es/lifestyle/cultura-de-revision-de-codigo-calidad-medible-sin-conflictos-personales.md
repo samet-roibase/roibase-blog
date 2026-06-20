@@ -1,63 +1,144 @@
 ---
 title: "Cultura de Revisión de Código: Calidad Medible, Sin Conflictos Personales"
-description: "Implementa time-to-review, comment density y PR size rules para hacer el proceso de code review medible. Diseña sistemas, no gestures personales."
-publishedAt: 2026-05-27
-modifiedAt: 2026-05-27
+description: "Construir calidad de equipo sobre criterios numéricos con time-to-review, comment density y reglas de PR size — disciplina sistémica en lugar de juicio personal."
+publishedAt: 2026-06-20
+modifiedAt: 2026-06-20
 category: lifestyle
-i18nKey: lifestyle-003-2026-05
-tags: [code-review, engineering-culture, pr-metrics, team-workflow, async-collaboration]
-readingTime: 7
+i18nKey: lifestyle-003-2026-06
+tags: [code-review, engineering-culture, pr-metrics, team-workflow, async-first]
+readingTime: 8
 author: Roibase
 ---
 
-La revisión de código es tanto un mecanismo de control de calidad para equipos de software como una prueba de estrés cultural. Un proceso de review mal definido lleva a que los comentarios se vuelvan personales, a que los PR's esperen durante días y a comunicación pasivo-agresiva dentro del equipo. La realidad que hemos experimentado en Roibase durante 8+ años en equipos altamente disciplinados es esta: la cultura de review debe basarse en reglas medibles, no en sensibilidades personales. Cuando se definen métricas como time-to-review, comment density y PR size, el proceso funciona independientemente de las personalidades. En este artículo exploraremos tres reglas fundamentales que transforman la revisión de código en una práctica ingenieril sistemática.
+Los procesos de revisión de código suelen comenzar como "control de calidad" y terminan como "guerra de egos". A medida que el equipo crece, dos trampas se hacen evidentes: los PR quedan en espera durante semanas o cada comentario se interpreta como una crítica personal. Ambas provienen del mismo problema raíz — normas que no son medibles. En Roibase, después de 8 años trabajando con más de 15 personas de disciplinas diferentes, aprendimos algo simple: a menos que ancles la cultura de revisión en criterios numéricos, el juicio personal se vuelve inevitable. Cuando conviertes métricas como time-to-review, comment density y PR size en sistema, la calidad sube y los conflictos bajan.
 
-## Time-to-Review: Fija el Tiempo de Primera Respuesta
+## Velocidad de Revisión: SLA de Time-to-Review
 
-El retraso en la revisión es el ralentizador más oculto de la velocity ingenieril. Si no llega el primer comentario dentro de 24 horas después de abrir un PR, la persona que escribió pierde el contexto e inicia la siguiente tarea. Cuando el PR finalmente se fusiona, se gastan 15-20 minutos reconstruyendo ese contexto. En un equipo de 10 personas que abre 5 PR's diarios, si el time-to-review promedio es de 48 horas, entonces 50 PR's × 20 minutos = 16.6 horas de pérdida de contexto a la semana.
+Cada PR tiene un ciclo de vida. El tiempo que tarda desde que se abre hasta el primer comentario — time-to-first-review — es el primer indicador de disciplina del equipo. En Roibase, limitamos este tiempo a un máximo de 4 horas (dentro del horario laboral). ¿Por qué 4 horas? Es el punto dulce entre proteger bloques de deep work y acelerar el ciclo de retroalimentación en un modelo de trabajo asincrónico.
 
-La regla que aplicamos en Roibase es: **primera respuesta máximo en 4 horas**. No importa si el comentario es "LGTM" o si se solicita un cambio detallado — lo importante es que el autor reciba la señal de que su PR fue visto. Configuramos un recordatorio automático con GitHub Actions: 3 horas después de abrir un PR se envía un mention en Slack al reviewer asignado. Los PR's que superen las 4 horas se marcan como "blocker" en el standup diario.
+La regla es clara: algún reviewer debe revisar el PR dentro de 4 horas de su apertura. El mecanismo de enforcement no es una notificación de Slack — es un flujo de trabajo de GitHub Actions. Cuando se abre un PR, se etiqueta automáticamente, y después de 4 horas se menciona en Slack a los reviewers asignados. Este recordatorio suave elimina las revisiones "olvidadas".
 
-El efecto secundario de esta regla es reforzar la disciplina de trabajo asincrónico. En equipos remotos con diferentes zonas horarias, la estrategia de asignación de reviewers se diseña en consecuencia. Por ejemplo, un PR de un developer en UTC+3 no se asigna a un reviewer en UTC-5 — se prefiere otro developer en esa zona horaria. La métrica time-to-review se sigue semanalmente en Linear o GitHub Insights. Los developers con promedios por encima del umbral tienen 1-on-1's; el problema generalmente no es personal sino de planificación de carga de trabajo.
+La métrica time-to-merge es más crítica. El tiempo desde la apertura del PR hasta el merge en la rama principal — por ejemplo, para cambios en backend, que no excedan 24 horas. Para cambios en frontend, 48 horas. ¿Por qué esta diferencia? Los merges en backend generalmente requieren menos validación visual y se pueden desplegar detrás de feature flags. En frontend, las fases de QA de diseño y pruebas multidispositivo toman más tiempo.
 
-### Sistema de Etiquetado por Prioridad
+### Dashboard de Métricas: Integración Linear
 
-Cada PR recibe automáticamente una etiqueta `priority`: `P0` (hotfix, fusión mismo día), `P1` (feature, primera respuesta en 4 horas), `P2` (refactor, 8 horas). La etiqueta se calcula según el tamaño del PR y su distancia a ramas como `main` o `staging`. De esta manera, el reviewer sabe qué PR revisar primero — no hay "me parece que esto es urgente" subjetivo.
+Integramos Linear con GitHub, vinculando automáticamente cada PR a un ticket de Linear. El estado del ticket se actualiza según el ciclo de vida del PR. Al final del sprint, la métrica que revisamos es: time-to-merge promedio. Si el promedio del equipo supera las 36 horas, hay un problema que debe discutirse en la retrospectiva — generalmente relacionado con el tamaño del PR o la carga del reviewer.
 
-## Comment Density: Comentarios Pocos y Precisos
+## Tamaño del PR: La Regla de 400 Líneas
 
-La calidad de un comentario de review es inversamente proporcional a su cantidad. Si un cambio de 50 líneas genera 12 comentarios, o el PR está genuinamente mal escrito, o el reviewer está haciendo nitpicking. Ambos escenarios dañan la dinámica del equipo. En el primer caso, el PR debería haberse dividido en piezas más pequeñas; en el segundo, los comentarios deben separarse entre "blocker" y "sugerencia".
+Los PR grandes no se pueden revisar. Este es el consenso más común en la industria, pero rara vez se convierte en una regla medible. El estándar de Roibase: **máximo 400 líneas de cambios** (sumas de adiciones y eliminaciones). ¿De dónde viene este número? Es la cantidad de líneas que un reviewer puede mantener racionalmente en su mente durante una revisión enfocada de 30 minutos.
 
-La regla de **comment density** en Roibase es: máximo 5 comentarios por 100 líneas de cambio. Si se van a hacer más comentarios que esto, el PR recibe la etiqueta "too large" y se pide al autor que lo divida en partes más pequeñas. Los comentarios se categorizan en tres tipos: `blocker` (no se puede fusionar), `suggestion` (se puede fusionar pero mejora), `question` (para entender). La característica "Request Changes" de GitHub se usa solo en casos blocker — las sugerencias pueden abrirse como issues después de la fusión.
+Para enforcing la regla, usamos una regla de protección de rama de GitHub: los PR que superan 400 líneas reciben automáticamente la etiqueta "needs-split" y no se pueden hacer merge. Hay excepciones — actualizaciones de dependencias, scripts de migración. Pero incluso esos requieren un override manual con justificación en un comentario de GitHub.
 
-Esta regla va acompañada del incentivo de escribir "summary comment" en lugar de comentarios inline. En lugar de 3-4 comentarios pequeños, el reviewer escribe un párrafo que discute el enfoque general. Por ejemplo: "La validación de este endpoint debe ocurrir en la capa de servicio, el controlador solo parsea la solicitud HTTP. La misma validación se repite en 5 archivos diferentes." Este enfoque previene que el autor se ponga a la defensiva y lo obliga a pensar el problema a nivel arquitectónico.
+¿Cómo se hacen refactores grandes? PR apilados. El primer PR: cambio de interfaz; el segundo: implementación; el tercero: eliminación de código antiguo. Cada uno bajo 400 líneas, cada uno revisable independientemente. ¿Toma más tiempo? Sí. ¿Aumenta el riesgo de conflictos de merge? Un poco. Pero la calidad de revisión mejora exponencialmente — porque el reviewer tiene la capacidad mental para pensar en cada cambio.
 
-## Reglas de PR Size: Rechazo Automático por Encima de 200 Líneas
+```yaml
+# GitHub Actions — PR size check
+name: PR Size Check
+on: pull_request
 
-Los PR's grandes son el enemigo principal del proceso de review. Examinar un cambio de 500 líneas requiere 40-50 minutos, y el reviewer, por miedo a perder detalles, o bien hace una revisión superficial o hace comentarios demasiado severos. Ambos escenarios degrada la calidad.
+jobs:
+  size_check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR size
+        run: |
+          ADDITIONS=$(jq '.pull_request.additions' "$GITHUB_EVENT_PATH")
+          DELETIONS=$(jq '.pull_request.deletions' "$GITHUB_EVENT_PATH")
+          TOTAL=$((ADDITIONS + DELETIONS))
+          if [ $TOTAL -gt 400 ]; then
+            echo "PR too large: $TOTAL lines"
+            gh pr edit --add-label needs-split
+            exit 1
+          fi
+```
 
-La automatización que aplicamos en Roibase es: **los PR's que exceden 200 líneas reciben automáticamente la etiqueta "needs split" y no pueden fusionarse**. Esta regla se implementa con GitHub Actions. Las líneas de código se cuentan como "logical lines of code" (LLOC), excluyendo espacios en blanco y comentarios. 200 líneas corresponden a 10-12 minutos de revisión — el umbral donde la concentración del reviewer no se dispersa.
+## Densidad de Comentarios: El Límite del Nitpick
 
-Hay excepciones: scripts de migración, código generado, archivos de configuración y cambios mecánicos están fuera de esta regla. En estos casos, la descripción del PR incluye la etiqueta "bulk change - no logic" y el reviewer solo hace control estructural.
+No todos los comentarios tienen el mismo peso. Hay una diferencia crítica entre "esto podría refactorizarse" y "esto causa una excepción de null pointer". La plantilla de revisión de Roibase requiere categorizar los comentarios:
 
-Mantener los PR's pequeños tiene un efecto secundario en la estrategia de desarrollo de features. Los developers dividen features grandes con el enfoque "incremental merge": primero el modelo de datos, luego la capa de servicio, después el endpoint API, finalmente la integración con UI. De esta manera cada PR es independientemente testeable. El enfoque iterativo que usamos en trabajos de [Branding & Identidad de Marca](https://www.roibase.com.tr/es/branding) muestra paralelismo con el desarrollo de software — el cambio grande se divide en pasos pequeños.
+| Categoría | Etiqueta | Ejemplo |
+|---|---|---|
+| **Blocker** | `🔴 BLOCKER` | Vulnerabilidad de seguridad, crash en runtime |
+| **Major** | `🟠 MAJOR` | Regresión de rendimiento, error lógico |
+| **Minor** | `🟡 MINOR` | Convención de nombres, cobertura de test |
+| **Nitpick** | `🔵 NITPICK` | Cuestión de preferencia, subjetivo |
 
-### CODEOWNERS para Revisión Obligatoria
+La regla: **la proporción de nitpick no debe exceder el 30%**. Si un PR tiene 10 comentarios, 3 pueden ser nitpick, el resto debe ser blocker/major/minor. ¿Por qué? Porque las revisiones dominadas por nitpicks desmoralizan al author, marcando al reviewer como "innecesariamente riguroso".
 
-Cada módulo se define en el archivo CODEOWNERS en el root del repo. Un cambio en la API backend requiere aprobación de al menos un backend engineer. Un cambio en frontend requiere OK del UI lead. Esta regla elimina la práctica de "cualquier miembro del equipo puede aprobar". El archivo CODEOWNERS es un mapeo en formato YAML en el root del repositorio: `/services/payment -> @payment-team`, `/ui/components -> @frontend-lead`. Se asigna automáticamente cuando se abre un PR.
+La métrica comment density: número promedio de comentarios por PR. En Roibase, este número está entre 3-5. Más de 10 comentarios generalmente significa que el PR necesita dividirse. Cero comentarios indica una revisión de goma — también indeseable.
 
-## Review Ritual: Blockers en Standups Asincronos
+### Uso de Plantilla
 
-La revisión de código no es tema para el standup diario — si los standups son asincronos ya estás ocupado. Pero los PR's blocker, es decir los que superan 4 horas o reciben la etiqueta "needs split", se listan al final del standup. De esta manera, todos saben qué PR's están atascados y los reviewers disponibles pueden levantar la mano.
+Todo reviewer comienza desde una plantilla de PR de GitHub:
 
-En Roibase tenemos un board "PR Blockers" abierto en Linear. Los PR's que caen aquí pero no se resuelven dentro del día se registran como puntos negativos en la velocity del sprint. Esta métrica se usa para medir el desempeño del equipo — no individual sino colectivo.
+```markdown
+## Review Checklist
+- [ ] ¿La lógica del código es correcta?
+- [ ] ¿La cobertura de test está por encima del 80%?
+- [ ] ¿Hay cambios que rompan compatibilidad? (¿Se actualizó CHANGELOG?)
+- [ ] ¿Se midió el impacto de rendimiento? (benchmarks/)
 
-Después de la revisión, los PR's que requieren cambios vuelven al autor con la etiqueta "author action". Una vez que el autor hace los cambios, pasa a "re-review". La automatización que sigue este ciclo sincroniza con el ticket de Linear: cuando el PR se fusiona, el ticket automáticamente pasa a "done".
+## Comments
+**🔴 BLOCKER:**
+-
 
-## Outputs Medibles de la Cultura de Review
+**🟠 MAJOR:**
+-
 
-Los números que observamos en un equipo que implementó estas reglas durante 6 meses: el tiempo promedio de mergear bajó de 72 horas a 18 horas. Los comentarios por PR bajaron de 8 a 3. La proporción de PR's etiquetados con "needs split" pasó de 40% en el primer mes a 5% en el cuarto mes — los developers interiorizaron la práctica de PRs pequeños.
+**🟡 MINOR:**
+-
 
-Más importante aún, los conflictos dentro del equipo disminuyeron. Los comentarios de review no se percibieron como crítica personal porque todo el proceso estaba definido por métricas. En lugar de "tu código es malo", es "este PR tiene 250 líneas, por regla dividamos", lo que desactiva los mecanismos de defensa.
+**🔵 NITPICK:**
+-
+```
 
-Esta disciplina no se limita a la revisión de código, sino que establece una cultura de medibilidad en todo el workflow ingenieril. Sprint velocity, cycle time, deployment frequency — todas se rastrean con la misma mentalidad sistemática. El enfoque de ingeniería en 15+ disciplinas de Roibase, tan presente en el desarrollo de software como en operaciones de marketing, se basa en este mismo pensamiento sistemático.
+Esta plantilla hace dos cosas: obliga al reviewer a categorizar, y permite al author identificar rápidamente qué comentarios son críticos.
+
+## Revisión Asincrónica: La Trampa de las Reuniones Sync
+
+La revisión de código no debe hacerse en reuniones sincrónicas. En Roibase, el concepto de "review call" no existe — toda revisión es asincrónica, en GitHub. ¿Por qué? El equipo trabaja en 3 zonas horarias diferentes, y proteger bloques de deep work es crítico.
+
+La disciplina de revisión asincrónica funciona así: el reviewer examina el PR durante su bloque de enfoque profundo (generalmente 09:00-12:00). Escribe comentarios, aprueba o solicita cambios. Cuando el author recibe la notificación (en su propia agenda), realiza los cambios y solicita re-revisión. Este ciclo se repite generalmente 2-3 veces.
+
+Excepción: **bloqueo de revisión** — si author y reviewer no llegan a un acuerdo en 3 rondas, entonces se abre una llamada sincrónica de 15 minutos. Pero esto ocurre solo 5-6 veces al año, como situación excepcional. La voz de marca que Roibase creó durante su proceso de [posicionamiento de marca](https://www.roibase.com.tr/es/branding) también refleja esta cultura de trabajo async-first — documentación primero, reuniones al final.
+
+## Propiedad vs. Gatekeeping
+
+El propósito de la revisión de código es asegurar la calidad, pero el efecto secundario no debe ser gatekeeping. En Roibase, cada PR requiere un mínimo de 1 y un máximo de 2 reviewers. ¿Por qué 2 como límite superior? Porque el costo en tiempo de esperar aprobación de 3+ reviewers supera la ganancia en calidad del código.
+
+La selección de reviewers no es automática — el author elige. La regla: al menos uno debe ser code owner (del archivo CODEOWNERS), el otro puede ser cualquiera. Este enfoque mantiene la propiedad en el author. La pregunta "¿quién debe aprobar esto?" es responsabilidad del author, no del líder del equipo.
+
+El archivo CODEOWNERS se ve así:
+
+```
+# Backend
+/backend/ @backend-team
+/api/ @backend-team
+
+# Frontend
+/web/ @frontend-team
+/mobile/ @mobile-team
+
+# Infrastructure
+/terraform/ @devops-team
+/.github/ @devops-team
+```
+
+Todo cambio de archivo debe ser revisado por alguien del equipo relevante — pero es el author quien elige la persona específica.
+
+## Retrospectiva: Métricas de Revisión
+
+Al final de cada sprint (cada 2 semanas), revisamos las métricas de revisión. Dashboard de Linear:
+
+- Time-to-merge promedio (objetivo: 36 horas)
+- Distribución de tamaño de PR (objetivo: 90% bajo 400 líneas)
+- Densidad de comentarios (objetivo: 3-5 por PR)
+- Proporción de nitpick (objetivo: <30%)
+- Cuello de botella de revisión (¿quién espera más?)
+
+Estas cifras se discuten en la retrospectiva, pero sin culpa personal. Por ejemplo, en lugar de "Ali's reviews son lentos", la pregunta es "Los PR de backend esperan 48 horas en promedio, ¿deberíamos ampliar el pool de reviewers?"
+
+---
+
+Llevar la cultura de revisión de código del juicio personal a la disciplina sistémica no es difícil — pero requiere reglas medibles. SLA de time-to-review, regla de 400 líneas, categorización de comentarios, enfoque async-first — estas son las herramientas concretas que han permitido a Roibase mantener la calidad mientras crece. Si tus procesos de revisión aún son "intuitivos" y "dependen de la situación", pon números, hazlos sistémicos. La calidad subirá mientras los conflictos bajan.
