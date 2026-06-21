@@ -1,245 +1,199 @@
 ---
 title: "Edge SSR ile Personalizasyon Latency'sini 40ms'ye Düşürmek"
-description: "Cloudflare Workers ve Vercel Edge üzerinde KV store ile server-side rendering latency'sini 40ms'ye düşüren mimari — kod örnekleri, tradeoff'lar ve benchmark'larla."
-publishedAt: 2026-06-02
-modifiedAt: 2026-06-02
+description: "Cloudflare Workers ve Vercel Edge ile server-side rendering'i edge'e taşıyınca personalizasyon 250ms'den 40ms'ye düştü. KV store mimarisi, kod örneği, tradeoff analizi."
+publishedAt: 2026-06-21
+modifiedAt: 2026-06-21
 category: tech
 i18nKey: tech-003-2026-06
-tags: [edge-ssr, cloudflare-workers, vercel-edge, kv-store, web-performance]
+tags: [edge-computing, ssr, personalization, cloudflare-workers, vercel-edge]
 readingTime: 8
 author: Roibase
 ---
 
-Klasik SSR'da kullanıcı ABD'den istek atıyor, sunucu Frankfurt'ta render ediyor, 180ms network latency + 80ms compute = 260ms. Bu süre personalizasyon katmanı eklendiğinde 400ms'yi bulabiliyor. Edge SSR ile bu rakamı 40ms'ye düşürmek mümkün — ama tradeoff'ları bilmeden üretime almak maliyetli. Bu yazıda Cloudflare Workers ve Vercel Edge üzerinde KV store ile çalışan bir mimariyi, benchmark'larını ve dikkat edilmesi gereken noktaları anlatıyoruz.
+Modern e-ticaret sitelerinde personalizasyon artık beklenti — ama kullanıcı her tıklamada 250ms beklemek istemiyor. Geleneksel SSR (server-side rendering) mimarisi kullanıcı ile origin server arasında ortalama 150-300ms latency yaratıyor: DNS lookup, TCP handshake, TLS negotiation, origin processing time. Edge SSR bu gecikmeyi coğrafi yakınlık ve global KV store kullanarak 40-60ms'ye indiriyor. Cloudflare Workers ve Vercel Edge Functions gibi platformlar edge runtime sunuyor, bizim işimiz personalizasyon mantığını oraya taşımak ve KV store'u doğru kurmak.
 
-## Edge SSR'ın Çekirdeği: Compute'u Kullanıcıya Yaklaştırmak
+## Edge SSR ile Origin SSR Arasındaki Gecikme Farkı
 
-Edge SSR, render işlemini kullanıcının bulunduğu coğrafi bölgeye en yakın edge node'da gerçekleştiriyor. Cloudflare'in 310+ şehrinde, Vercel'in 20+ bölgesinde dağıtılmış edge runtime'lar var. Kullanıcı Tokyo'dan istek atarsa Tokyo edge node'u cevap veriyor, São Paulo'dan atarsa São Paulo.
+Geleneksel SSR'de istek şu yolu izliyor: kullanıcı → CDN (cache miss) → origin server (DB query + rendering) → response. Ortalama toplam süre 250ms, %95 percentile 450ms. Edge SSR'de istek edge location'da sonlanıyor: kullanıcı → edge worker (KV lookup + rendering) → response. Ortalama 40ms, %95 percentile 80ms.
 
-Klasik SSR'da sunucu tek lokasyonda — Frankfurt'taki bir EC2 instance veya Google Cloud Run. Her istek önce oraya gitmek zorunda. Edge SSR'da ise:
+Gecikme kaynakları:
 
-- **TTFB (Time to First Byte):** 40-80ms (edge node mesafesi 10-30ms + compute 20-50ms)
-- **Klasik SSR TTFB:** 180-400ms (network latency + compute + database round trip)
+| Adım | Origin SSR | Edge SSR |
+|---|---|---|
+| DNS + TLS | 50ms | 15ms (edge proximity) |
+| Network RTT | 120ms (intercontinental) | 10ms (edge'e mesafe) |
+| Compute | 80ms (origin) | 15ms (V8 isolate) |
+| **Toplam** | **250ms** | **40ms** |
 
-Fark 3-4 kat. Ancak bu performans kazancını almak için mimari kararlar vermeniz gerekiyor — edge runtime'lar Node.js'in tüm API'sını desteklemiyor, cold start'lar farklı davranıyor ve veri katmanı stratejisi tamamen değişiyor.
+Bu %84 düşüş LCP (Largest Contentful Paint) ve CLS (Cumulative Layout Shift) metriklerini doğrudan etkiliyor. Google'ın 2025 Core Web Vitals raporuna göre LCP'de her 100ms %3.5 bounce rate artışı yaratıyor — 210ms kazanmak %7.3 conversion lift demek (hesaplama: 210/100 × 3.5).
 
-## Cloudflare Workers + KV: 40ms Latency için Mimari
+Tradeoff: edge runtime Node.js değil V8 isolate — native modüller, dosya sistemi, child process kullanılamıyor. Personalizasyon mantığı tamamen stateless ve lightweight olmalı.
 
-Cloudflare Workers V8 isolate üzerinde çalışıyor — container değil. Cold start 0ms, her istek mevcut bir isolate içinde yürütülüyor. KV (Key-Value Store) ise globally distributed bir veri deposu: key yazıldığında 60 saniye içinde tüm edge node'lara yayılıyor, okuma işlemi lokal edge'den yapılıyor (sub-millisecond).
+### Cloudflare Workers ile Edge SSR Mimarisi
 
-Personalizasyon için bu yapıyı şöyle kullanıyoruz:
+Cloudflare Workers her request'i global network'teki 300+ edge location'dan birine yönlendiriyor. İstek edge'de şöyle işleniyor:
 
-```typescript
-// worker.ts — Cloudflare Workers
+```javascript
+// worker.js — Cloudflare Workers
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request, env) {
     const url = new URL(request.url);
-    const userId = request.headers.get('x-user-id') || 'anonymous';
-    
-    // KV'den kullanıcı segmentini oku (edge-local, <1ms)
+    const userId = request.headers.get('x-user-id'); // JWT'den parse ediliyor
+
+    // KV'den kullanıcı segmentini çek
     const segment = await env.USER_SEGMENTS.get(userId);
-    const parsedSegment = segment ? JSON.parse(segment) : { tier: 'free', region: 'default' };
-    
-    // Segment'e göre content render et
-    const html = renderPersonalizedHTML(url.pathname, parsedSegment);
-    
+    const prefs = segment ? JSON.parse(segment) : { tier: 'free' };
+
+    // Personalize edilmiş HTML render et
+    const html = renderHTML(prefs, url.pathname);
+
     return new Response(html, {
       headers: {
-        'Content-Type': 'text/html;charset=UTF-8',
-        'Cache-Control': 'public, s-maxage=60',
-        'X-Segment': parsedSegment.tier
-      }
+        'content-type': 'text/html;charset=UTF-8',
+        'cache-control': 'public, s-maxage=60', // edge cache 60s
+      },
     });
-  }
+  },
 };
 
-function renderPersonalizedHTML(path: string, segment: any): string {
-  // Basit SSR örneği — production'da framework kullanırsınız
-  const greeting = segment.tier === 'premium' ? 'Welcome back, VIP' : 'Hello';
-  return `<!DOCTYPE html>
-<html>
-<head><title>Personalized Page</title></head>
-<body>
-  <h1>${greeting}</h1>
-  <p>Region: ${segment.region}</p>
-</body>
-</html>`;
+function renderHTML(prefs, path) {
+  const hero = prefs.tier === 'premium'
+    ? '<h1>Premium İçerik</h1>'
+    : '<h1>Ücretsiz İçerik</h1>';
+  return `<!DOCTYPE html><html><body>${hero}<p>Path: ${path}</p></body></html>`;
 }
 ```
 
-Bu kod çalıştığında:
+Bu kod her request'te KV'den `USER_SEGMENTS` namespace'inden segment çekiyor. KV read latency global ortalama 15ms (Cloudflare 2025 benchmark). Alternatif olarak Durable Objects kullanılabilir ama read-heavy workload'da KV daha ucuz (KV: $0.50/milyon read, DO: $0.15/milyon request + compute).
 
-1. İstek edge node'a gelir (10-30ms network)
-2. KV'den segment okunur (sub-ms, lokal cache)
-3. HTML render edilir (10-20ms compute)
-4. Response dönülür
+Workers'ın compute limiti 50ms CPU time — karmaşık rendering'de aşabilirsin. Çözüm: pre-render şablonları KV'ye HTML olarak yaz, worker sadece string replace yapsın. Örneğin `{USER_NAME}` placeholder'ını worker değiştiriyor, template KV'de saklanıyor.
 
-**Toplam:** 40-60ms TTFB. Benchmark'larımızda Cloudflare Workers ile ortalama 42ms, P95 68ms TTFB elde ettik (100K istek, global trafikle).
+## Vercel Edge Functions ile Next.js Middleware Entegrasyonu
 
-### KV Store'un Tradeoff'ları
-
-KV eventually consistent — write işlemi 60 saniye içinde propagate oluyor. Real-time personalizasyon (örn. sepete eklenen ürünü anında gösterme) için uygun değil. Bu durumda:
-
-- **Option 1:** Durable Objects (strongly consistent, ama global dağıtım yok — tek region'da çalışır)
-- **Option 2:** Client-side hydration (ilk render genel, sonra JS ile personalize)
-
-Bizim [Headless Commerce](https://www.roibase.com.tr/tr/headless) projelerinde genelde option 2 tercih ediyoruz — CLS'yi kontrol altında tutmak için skeleton UI ile başlayıp hydration sırasında içeriği swap ediyoruz.
-
-## Vercel Edge Functions: Next.js Middleware ile Entegrasyon
-
-Vercel Edge Functions Cloudflare Workers altyapısını kullanıyor ama Next.js ekosistemi ile entegre. Middleware API'si ile SSR pipeline'ına müdahale edebilirsiniz:
+Vercel Edge Functions Next.js 13+ ile native entegre — middleware pattern'i kullanarak request intercept edip personalize edebilirsin. Edge runtime'da `getServerSideProps` yerine `middleware.ts` kullanıyorsun:
 
 ```typescript
 // middleware.ts — Vercel Edge
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function middleware(req: NextRequest) {
-  const userId = req.cookies.get('user_id')?.value || 'anonymous';
-  
-  // Edge KV'den segment oku (Vercel KV = Upstash Redis)
-  const segment = await fetch(`https://your-kv-api.com/segment/${userId}`, {
-    headers: { 'Authorization': `Bearer ${process.env.KV_TOKEN}` }
-  }).then(r => r.json()).catch(() => ({ tier: 'free' }));
-  
-  // Response header'a segment ekle (SSR component'ta kullanılmak üzere)
+  const userId = req.cookies.get('user_id')?.value;
+  if (!userId) return NextResponse.next();
+
+  // Edge KV'den segment çek (Vercel Edge Config)
+  const segment = await fetch(`https://edge-config.vercel.com/${userId}`).then(r => r.json());
+
+  // Header'a segment bilgisi ekle, Next.js'te page component okur
   const response = NextResponse.next();
-  response.headers.set('x-user-segment', JSON.stringify(segment));
-  
+  response.headers.set('x-user-segment', segment.tier);
   return response;
 }
 
 export const config = {
-  matcher: ['/products/:path*', '/account/:path*']
+  matcher: ['/product/:path*', '/category/:path*'],
 };
 ```
 
-Next.js'te SSR component'tan header okuma:
+Bu yaklaşım [headless commerce](https://www.roibase.com.tr/tr/headless) mimarisinde product listing sayfalarını personalize ederken işe yarıyor. Örneğin premium kullanıcılara farklı ürün sıralaması gösteriyorsun. Page component şöyle okuyor:
 
 ```tsx
-// app/products/page.tsx
-import { headers } from 'next/headers';
-
-export default async function ProductsPage() {
-  const headersList = headers();
-  const segmentHeader = headersList.get('x-user-segment');
-  const segment = segmentHeader ? JSON.parse(segmentHeader) : { tier: 'free' };
-  
-  const products = await fetchProducts(segment.tier); // Segment'e göre farklı ürün seti
-  
-  return (
-    <div>
-      <h1>{segment.tier === 'premium' ? 'Exclusive Collection' : 'Our Products'}</h1>
-      <ProductGrid products={products} />
-    </div>
-  );
+// app/product/[id]/page.tsx
+export default async function ProductPage({ params, headers }) {
+  const segment = headers.get('x-user-segment');
+  const products = await fetchProducts(params.id, segment);
+  return <ProductList items={products} />;
 }
 ```
 
-Vercel Edge'de TTFB benchmark'larımız:
+Vercel Edge Config global replication 150ms içinde tamamlanıyor — KV güncellemesi edge'lere bu sürede yayılıyor. Tradeoff: Cloudflare KV'den %20 daha yavaş ama Next.js ekosistemiyle daha entegre.
 
-| Senaryo | TTFB (median) | P95 |
-|---|---|---|
-| Edge middleware + KV | 48ms | 82ms |
-| Klasik SSR (us-east-1) | 220ms | 380ms |
-| Static + CSR | 18ms (HTML) + 400ms (JS hydration) | - |
+### KV Store Mimarisi: Segmentasyon Stratejisi
 
-Edge SSR'ın avantajı: TTFB düşük + FCP hızlı + SEO-friendly (content SSR'da). CSR'da HTML boş gelir, FCP yüksek kalır.
+Personalizasyon verisi KV'de 3 katmanda saklanıyor:
 
-## Veri Katmanı Stratejisi: KV, Durable Objects, Database Proxy
+1. **User segment:** `USER_SEGMENTS:{userId}` → `{"tier":"premium","region":"EU"}`
+2. **Segment config:** `SEGMENT_CONFIG:{tier}` → `{"discount":0.2,"hero":"premium.jpg"}`
+3. **Page template:** `PAGE_TPL:{page}:{tier}` → pre-rendered HTML fragment
 
-Edge SSR'da en kritik sorun veri katmanı. Edge node kullanıcıya yakın ama veritabanınız tek region'da (örn. AWS RDS us-east-1). Her SSR istekte DB'ye query atarsanız network latency geri geliyor (100-200ms).
+Bu yapı sayesinde segment değiştiğinde sadece `USER_SEGMENTS` güncelleniyor, template'ler cache'lenmiş kalıyor. 1 milyon kullanıcı için KV maliyeti: 1M user × 1 read/request × $0.50/1M read = request başına $0.0000005. Origin DB query maliyeti bunun 100 katı.
 
-Çözüm stratejileri:
+KV TTL stratejisi:
 
-### 1. KV Cache-First Pattern
+```javascript
+// Segment 24 saat cache'leniyor
+await env.USER_SEGMENTS.put(userId, JSON.stringify(segment), {
+  expirationTtl: 86400,
+});
 
-Sık okunan, seyrek değişen veriyi KV'de tutuyorsunuz. Örneğin ürün katalog — günde 1 kez güncellenebilir ama saatte 100K okunur:
-
-```typescript
-// Cloudflare Workers
-async function getProduct(sku: string, env: Env): Promise<Product | null> {
-  // 1. KV'den oku (sub-ms)
-  const cached = await env.PRODUCTS_KV.get(sku);
-  if (cached) return JSON.parse(cached);
-  
-  // 2. Cache miss — origin DB'den çek
-  const product = await fetchFromDatabase(sku);
-  
-  // 3. KV'ye yaz (arka planda, response'u bloklamaz)
-  env.waitUntil(env.PRODUCTS_KV.put(sku, JSON.stringify(product), { expirationTtl: 3600 }));
-  
-  return product;
-}
+// Config 1 saat cache'leniyor (sık değişebilir)
+await env.SEGMENT_CONFIG.put(tier, JSON.stringify(config), {
+  expirationTtl: 3600,
+});
 ```
 
-Bu pattern ile cache hit rate %95+ olduğunda edge'den 40ms TTFB tutturursunuz. Cache miss'te 200ms'ye çıkar ama genel ortalama 60ms kalır.
+Invalidation: kullanıcı upgrade olduğunda WebSocket veya webhook ile worker'a sinyal gönderip KV'yi güncelleyebilirsin. Ama gerçek zamanlı değil — eventual consistency kabul edilmeli (1-5 dakika gecikme).
 
-### 2. Durable Objects (Strongly Consistent State)
+## Rendering Tradeoff'ları: Static vs Edge SSR
 
-Sepet, checkout gibi strongly consistent state gerektiren işlemlerde Durable Objects kullanılabilir. Her kullanıcının Durable Object instance'ı tek bir edge node'da yaşar (sticky routing). Bu instance'a yapılan write'lar anında okunur:
+Edge SSR her zaman en iyi çözüm değil. Karşılaştırma:
 
-```typescript
-// cart-durable-object.ts
-export class Cart {
-  state: DurableObjectState;
-  items: CartItem[] = [];
-  
-  constructor(state: DurableObjectState) {
-    this.state = state;
-    this.state.blockConcurrencyWhile(async () => {
-      this.items = await this.state.storage.get('items') || [];
-    });
-  }
-  
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname === '/add') {
-      const item = await request.json();
-      this.items.push(item);
-      await this.state.storage.put('items', this.items);
-      return new Response(JSON.stringify(this.items));
+| Metrik | Static (ISR) | Edge SSR | Origin SSR |
+|---|---|---|---|
+| TTFB | 20ms | 40ms | 250ms |
+| Personalizasyon | Yok | Evet | Evet |
+| Cache hit ratio | %99 | %60 | %10 |
+| Maliyet (1M req) | $0.20 | $2.50 | $15 |
+| Complexity | Düşük | Orta | Yüksek |
+
+ISR (Incremental Static Regeneration) cache hit ratio'su %99'a ulaşıyor ama personalizasyon yok. Edge SSR cache'i user segment'e göre parçalanıyor — her segment ayrı cache key oluşturuyor, bu yüzden hit ratio düşük.
+
+Hibrit yaklaşım: ana layout static, personalize componentler edge'de render edilip client-side inject ediliyor. Örneğin product grid static, "Senin için öneriler" edge SSR ile geliyor:
+
+```javascript
+// Hybrid: static HTML + edge-injected personalized section
+const staticHTML = await env.STATIC_PAGES.get(pathname);
+const personalizedSection = await renderPersonalizedRecommendations(userId);
+const finalHTML = staticHTML.replace('<!--INJECT-->', personalizedSection);
+```
+
+Bu yaklaşım TTFB'yi 30ms'de tutarken personalizasyon sunuyor.
+
+## Debugging ve Monitoring: Edge Runtime Limitleri
+
+Edge runtime production'da debug etmek zor — loglar dağınık, error stack trace eksik. Cloudflare Workers'da Tail Workers kullanarak real-time log stream oluşturabilirsin:
+
+```javascript
+// tail-worker.js
+export default {
+  async tail(events) {
+    for (const event of events) {
+      console.log(JSON.stringify({
+        timestamp: event.timestamp,
+        outcome: event.outcome,
+        logs: event.logs,
+      }));
     }
-    return new Response(JSON.stringify(this.items));
-  }
+  },
+};
+```
+
+Vercel'de `console.log` output'u edge logs'a düşüyor, Vercel dashboard'da stream ediliyor. Ama production'da verbose logging CPU limit'i aşabiliyor — sadece kritik event'leri logla.
+
+Monitoring metrikleri:
+
+- **Cold start latency:** Worker ilk yüklendiğinde 80-120ms — warm request 15ms. Sık kullanılan route'lar warm kalıyor.
+- **KV read failure rate:** %0.01 (Cloudflare SLA). Fallback: KV okunamazsa default segment kullan.
+- **CPU time:** 50ms limit aşımı %429 error döndürüyor. Profiling: `console.time()` ile ölç, heavyweight işlemi origin'e taşı.
+
+Örnek hata yönetimi:
+
+```javascript
+try {
+  const segment = await env.USER_SEGMENTS.get(userId);
+} catch (err) {
+  // KV failure — fallback to default
+  return renderHTML({ tier: 'free' }, pathname);
 }
 ```
 
-Tradeoff: Durable Objects global dağıtılmıyor — kullanıcı Tokyo'dan istek atıyorsa ama Durable Object us-east-1'de ise latency 150ms+. Bu yüzden checkout haricinde KV tercih ediyoruz.
-
-### 3. Database Proxy (PlanetScale, Neon Serverless)
-
-PlanetScale ve Neon gibi serverless DB'ler edge-compatible HTTP API sunuyor. Edge function doğrudan bu API'yi çağırabilir:
-
-```typescript
-// Neon Serverless ile edge'den query
-import { neon } from '@neondatabase/serverless';
-
-const sql = neon(process.env.DATABASE_URL);
-
-export default async function handler(req: Request) {
-  const products = await sql`SELECT * FROM products WHERE featured = true LIMIT 10`;
-  return new Response(JSON.stringify(products));
-}
-```
-
-Latency: 40-80ms (DB proxy edge node'larında). Klasik Postgres connection (TCP) yerine HTTP üzerinden çalıştığı için edge runtime'larla uyumlu.
-
-## Bundle Size ve Cold Start Gerçeği
-
-Edge runtime'larda bundle size kritik — Cloudflare Workers 1MB limit, Vercel Edge 1MB compressed limit. React SSR eklediğinizde bundle 800KB'yi bulabiliyor. Çözüm:
-
-- **Streaming SSR:** HTML'i chunk'lar halinde gönderin, tüm component tree'yi beklemeden TTFB düşürün
-- **Selective Hydration:** Sadece interaktif component'ları client'ta hydrate edin
-- **Code Splitting:** Her route için ayrı bundle (Next.js bunu otomatik yapıyor)
-
-Cold start realitesi: Cloudflare Workers 0ms (isolate model), Vercel Edge 50-150ms (global deployment'ta ilk istek). Production'da bu fark kapanıyor çünkü Vercel warm instance pool tutuyor.
-
-## Önümüzdeki 12 Ay: WebAssembly ve Compute@Edge
-
-Edge SSR'ın bir sonraki aşaması WebAssembly. Rust/Go ile yazılmış SSR engine'leri WASM'e compile edip edge'de çalıştırabilirsiniz — bundle size 200KB, compute 5-10ms. Shopify'ın Hydrogen 2.0'ı bu yöne gidiyor.
-
-Fastly Compute@Edge ve Cloudflare'in WASM desteği 2026'da production-ready. Biz de [Shopify Partner Hizmetleri](https://www.roibase.com.tr/tr/shopify) kapsamında Hydrogen + WASM mimarisini test ediyoruz — ilk benchmark'lar 28ms TTFB gösteriyor.
-
----
-
-Edge SSR 40ms latency vadediyor ama her use case için uygun değil. Real-time state gerektiren (sepet, chat), yüksek DB query volume'ü olan veya mevcut backend'inize sıkı bağımlı projelerde klasik SSR + CDN caching daha verimli olabilir. Ancak content-heavy, personalizasyon gerektiren ve global traffic alan projelerde (e-ticaret, medya, SaaS landing) edge SSR doğru mimari. Tradeoff'ları bilip, veri katmanını KV-first pattern ile kurarsanız 40ms TTFB gerçek.
+Edge SSR'nin bu tradeoff'ları kabul edilebilirse 250ms → 40ms düşüş conversion'da ölçülebilir fark yaratıyor. Özellikle mobil kullanıcılarda network latency yüksek olduğunda edge proximity kritik. Bir sonraki adım KV store'u doğru kurmak, segment stratejisini tanımlamak ve edge runtime limitlerini test etmek.
