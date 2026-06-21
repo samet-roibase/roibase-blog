@@ -9,15 +9,9 @@
     "travel",
     "lifestyle"
   ],
-  "lastIndex": 3,
-  "lastRunAt": "2026-06-21T14:03:17.910Z",
+  "lastIndex": 4,
+  "lastRunAt": "2026-06-21T22:03:00.592Z",
   "history": [
-    {
-      "at": "2026-06-05T06:02:27.079Z",
-      "category": "data",
-      "topicId": "data-005",
-      "i18nKey": "data-005-2026-06"
-    },
     {
       "at": "2026-06-05T14:02:34.026Z",
       "category": "gaming",
@@ -311,6 +305,12 @@
       "category": "data",
       "topicId": "data-005",
       "i18nKey": "data-005-2026-06"
+    },
+    {
+      "at": "2026-06-21T22:03:00.592Z",
+      "category": "gaming",
+      "topicId": "gaming-001",
+      "i18nKey": "gaming-001-2026-06"
     }
   ]
 }
