@@ -1,90 +1,136 @@
 ---
 title: "Prompt Versioning and A/B Testing: The Discipline of LLM Operations"
-description: "Building prompt eval pipelines with Promptfoo and LangSmith. Methods for preventing regression in production LLM workflows and measuring cost-quality tradeoffs."
-publishedAt: 2026-06-04
-modifiedAt: 2026-06-04
+description: "Measure prompt changes with Promptfoo, LangSmith, and evaluation pipelines. Learn how to set up versioning and A/B testing for production LLM systems."
+publishedAt: 2026-06-22
+modifiedAt: 2026-06-22
 category: ai
 i18nKey: ai-004-2026-06
-tags: [llm-operations, prompt-engineering, evaluation, mlops, ai-testing]
+tags: [prompt-engineering, llm-ops, evaluation, ab-testing, promptfoo]
 readingTime: 8
 author: Roibase
 ---
 
-Every team running LLMs in production lives the same cycle: you iterate on a prompt, output improves, then performance tanks in another use case. You revert the change, the first scenario breaks. Versionless prompt iteration is an infinite regression loop. Pulling responses from the Claude API and saying "looks good" isn't product operations — it isn't software engineering. In 2026, any team not testing prompts like code loses confidence with every deploy. Promptfoo, LangSmith, and evaluation frameworks bring this discipline: seeing prompt changes' impact quantified, A/B testing them, being able to roll back.
+Running LLMs in production is no longer a matter of a few API calls. Change a prompt and output quality might drop 15% or climb 22% — but if you don't notice, deployment becomes randomness. Prompt versioning and A/B testing bring software deployment discipline to LLM operations. This piece explains how to use evaluation frameworks like Promptfoo and LangSmith to make prompt changes measurable.
 
-## Why Prompt Versioning Became Non-Negotiable
+## Prompt change is not deployment
 
-LLM output isn't deterministic. The same prompt produces different responses at different times (as long as temperature > 0). This randomness makes the observation "it works today" unreliable. One step further: if you don't know what happens to old test cases when you change a prompt, you can't tell whether you've improved or just traded off. Example: you add "show more data" to your blog-writing workflow prompt, output gets richer but stretches to 400 tokens. Token cost rises 30%, latency hits 1.2 seconds. If you don't catch this before deployment, you find out in production and rollback takes two weeks.
+In classical software engineering, when a function changes, unit tests, integration tests, and canary deployments kick in. In LLM operations, most teams edit the prompt in a plain text file, run a few manual tests, and ship to production. The result: user sentiment drops 8% but nobody connects the dots.
 
-Versioning discipline answers these questions: which metric did this prompt change improve, which did it harm? How much accuracy difference versus the old version? If we ship this change, what's the monthly cost increase? If you can't answer, you're guessing, not iterating. Promptfoo and LangSmith turn those questions into metric tables. Every prompt is a commit, every test run a report. When regression appears, you know which line you changed — like git diff.
+The problem is this: LLM output is non-deterministic. The same prompt yields different responses, which makes single-example testing meaningless. Without a versioning system, you can't answer "was the old prompt better or the new one?" A git commit isn't enough either — you can't extract semantic differences from the commit message.
 
-At Roibase, we commit prompt versions to Git in n8n + Claude API workflows. Every change is a PR, every PR runs the eval suite. Promptfoo fails regression checks, no merge. Without this discipline, our [Generative Engine Optimization](https://www.roibase.com.tr/en/geo) work can't keep citation accuracy stable — every prompt tweak can drop brand mentions, and if we miss it, recovery is three weeks.
+The solution: treat every prompt change as a version, run your eval set before and after the change, compare metrics. This discipline delivers two things: regression detection (whether the new prompt breaks old tasks) and improvement measurement (whether your target metric actually increases).
 
-## Building an Eval Pipeline with Promptfoo
+## How to build an evaluation pipeline
 
-Promptfoo is an open-source test framework: you define prompts in YAML, store test cases in CSV/JSON, run it and get a metric table. Model agnostic — OpenAI, Anthropic, local LLaMA, all accessed through the same interface. Setup is simple: `npm install -g promptfoo`, then `promptfoo init`. Creates two files: `promptfooconfig.yaml` (prompt definition + provider config) and `test-cases.json` (input-output pairs).
+An evaluation pipeline has three components: eval set, eval metric, and runner. The eval set is a list of inputs you'll send to the LLM and the expected outputs (or output properties). In JSON, it looks like this:
 
-Example config:
-
-```yaml
-prompts:
-  - "You are a marketing analyst. Answer this question: {{query}}"
-providers:
-  - anthropic:messages:claude-3-5-sonnet-20241022
-tests:
-  - vars:
-      query: "What are Q4 2025 e-commerce conversion trends?"
-    assert:
-      - type: contains
-        value: "conversion rate"
-      - type: cost
-        threshold: 0.05
+```json
+[
+  {
+    "input": "Summarize the 2025 Q1 revenue trend",
+    "expected_topics": ["revenue", "growth", "quarter"],
+    "expected_sentiment": "neutral"
+  },
+  {
+    "input": "Explain why churn rate is rising",
+    "expected_topics": ["churn", "retention"],
+    "expected_sentiment": "analytical"
+  }
+]
 ```
 
-Run `promptfoo eval` and it sends requests to Claude API, runs outputs against assertions. `contains` assertion is simple — checks if the specified term appears in output. `cost` assertion monitors token usage — fails if threshold is exceeded. These two assertions alone answer: "Does the prompt change produce the right terminology, and is there cost bloat?" 
+You can build the eval set manually (by sampling from production logs) or synthetically (by asking another LLM to generate 50 query variations for your prompt). What matters is that the set covers edge cases — long inputs, ambiguous questions, multiple languages.
 
-More powerful: `llm-rubric`. You route output to another LLM (e.g., GPT-4o) for scoring. Example: "Does this text portray the brand positively?" — GPT-4o scores on a 1-5 scale. Compare average scores across all test cases before and after a prompt change — if regression exists, you see it quantified.
+The eval metric defines how you score LLM output. Two common types: rule-based (checking for specific words in the output) and LLM-as-judge (asking another LLM to score on a 1–5 scale: "Does this output answer the question correctly?"). LLM-as-judge is more flexible but slower and costlier. For a balance of speed and accuracy, combine rule-based checks with lightweight classifiers (like BERT-based sentiment models).
 
-At Roibase, our blog-writing pipeline has 30+ test cases — each a different keyword + category combination. Promptfoo runs nightly in CI/CD, collecting metrics: average readingTime, internal link count, headline length. If a new prompt version drops readingTime below 7 (target is 7-8), it fails. We see it before merge.
+The runner takes the eval set, runs both old and new prompts for each input, scores the outputs with your metric, and produces a diff table. Promptfoo does this with `promptfoo eval` from the terminal:
 
-## Production Observability with LangSmith
+```bash
+promptfoo eval \
+  --prompts prompts/v1.txt prompts/v2.txt \
+  --providers openai:gpt-4 \
+  --tests evals/summarization.json \
+  --output results.json
+```
 
-Promptfoo is perfect for local testing but doesn't see what happens in production. LangSmith (LangChain team's product) fills that gap: logs every LLM call, traces latency/tokens/cost, captures errors. Python/JS SDKs available, also callable from n8n HTTP nodes. Traces appear in the web UI — which prompt produced which output, how many tokens, how many seconds, all on one screen.
+The output shows which prompt performs better on each test case. If your new prompt improves the metric on 80% of the eval set, you're ready to deploy. Otherwise, you have regression — revisit the prompt.
 
-LangSmith's critical feature: convert production traces into datasets and eval against them. Example: you generated 500 blog posts over a week, 10% needed manual edits due to "insufficient internal links." Filter those 50 traces in LangSmith, save as "regression test dataset." Now when you change prompts, test against this dataset — see if you're recreating past failures. 
+## A/B testing: running two prompts in parallel in production
 
-Another feature: human feedback annotation. In LangSmith UI, you thumbs up/down each trace. Over time, high-feedback-score traces become your "golden dataset." Test new prompt versions against it — if golden set performance drops, don't deploy. It's manual but scalable. At Roibase, our editorial team reviews 20-30 outputs per week in LangSmith, annotates them. This data becomes the eval pipeline's ground truth.
+The eval pipeline gives offline results — no real user data. To measure which prompt performs better in production, A/B test both prompts live. This requires traffic splitting and metric collection infrastructure.
 
-Token cost tracking is also embedded. Each trace shows `total_tokens`, `prompt_tokens`, `completion_tokens`. Configure model pricing (Anthropic's per-token rate), LangSmith auto-calculates cost. Dashboard shows "total LLM cost last 30 days" graph. If that trend breaks after a prompt change, rollback is the reason.
+Traffic splitting is straightforward: hash the `user_id` or `session_id` in incoming requests, use modulo to route. For instance, if `hash(user_id) % 100 < 50`, send to prompt A; otherwise, prompt B. This creates a 50–50 split. Critical: the same user should see the same prompt on every request (sticky assignment) — otherwise user experience becomes inconsistent.
 
-## Measuring Cost-Quality Tradeoffs
+For metric collection, attach metadata to the LLM response: `prompt_version`, `latency`, `token_count`. This data flows to your data warehouse (BigQuery, Snowflake). This is where Roibase's [Data Analytics & Insight Engineering](https://www.roibase.com.tr/en/verianalizi) pipeline steps in — you can join LLM logs with other event data (user actions, conversions, churn) to measure downstream impact of the prompt change.
 
-Production LLM operations' most critical balance: should you use a more capable (more expensive) model, or longer prompts for better output? Claude Opus 3.5 or Sonnet 3.5? Temperature 0.7 or 0.3? Every decision is a tradeoff. Deciding without measurement is gambling. An eval pipeline quantifies it.
+What metrics do you track in A/B testing? Three categories:
 
-Example scenario: your blog pipeline uses Claude 3.5 Sonnet, averaging 1500 output tokens, $0.015/request. Would switching to Opus improve quality? A/B test in Promptfoo: send the same 50 test cases to both models, run outputs through GPT-4o with `llm-rubric` assertion. Result: Opus average quality score 4.2, Sonnet 3.9. 8% difference. Cost: Opus $0.045/request, 3× more expensive. Decision: does 8% quality improvement justify 3× cost increase? If editorial workload drops 20% (less manual editing needed), ROI is positive. If the difference doesn't reach users, stick with Sonnet.
+| Metric type | Example | Target |
+|---|---|---|
+| Quality | LLM-as-judge score, hallucination rate | High |
+| Cost | Token count, API cost | Low |
+| Downstream | Conversion rate, user engagement | High |
 
-Different tradeoff: prompt length. Add 200 tokens of context to system prompt and output gets more specific, but every request costs 200 more tokens. At 10K requests/month, that's 2M tokens = $6 extra cost (Sonnet input pricing). What's the return on that $6? Check annotation data in LangSmith: thumbs-down rate before was 15%, after is 8%. Is a 7% quality improvement worth $6? The team decides, but data exists — no guessing.
+For example, prompt B might improve the LLM-as-judge score 12% versus prompt A, but use 35% more tokens — that's a tradeoff. If downstream conversion shows no difference, prompt A is more efficient.
 
-Temperature is another tradeoff. Temperature 0 is deterministic but monotone. Temperature 0.7 is creative but sometimes off-topic. Test 0.0, 0.3, 0.7 versions in Promptfoo with assertion: "internal link count 1-2?" and "readingTime 7-8?". Temperature 0.7 fails 20% of test cases (links become 0 or 3), 0.3 fails 5%. Decision: stick at 0.3, production stability > creativity.
+## LangSmith and observability
 
-## Regression Prevention and Rollback Strategy
+LangSmith is an LLM observability platform built by the LangChain team. Beyond evaluation, it captures production traces, visualizes prompt chains, and shows where latency spikes. Especially in multi-step LLM workflows (RAG + summarization + JSON parsing), debugging is critical.
 
-Without prompt versioning, regression takes two weeks to notice. By then, production has generated 1000 bad outputs. When you notice, you don't know which version to roll back to. The eval pipeline ends this chaos: every commit is tested, fail means no merge. Regression never reaches production.
+Send traces to LangSmith using the SDK:
 
-At Roibase, our Git workflow: `main` branch is production prompt. Changes happen on feature branches, PR opened. GitHub Actions CI triggers Promptfoo eval. Eval passes, reviewer approves, merge. Eval fails, PR blocks. This discipline means zero production prompt regressions in six months — all caught at PR stage.
+```python
+from langsmith import Client
+client = Client(api_key="...")
 
-Rollback mechanism: every production trace in LangSmith is tagged with its prompt version. If post-deploy problems appear (e.g., internal link ratio drops), filter LangSmith's last 100 traces, check which commit hash produced them. Find that commit in Git, `git revert` it, open a new PR. Revert PR also passes eval — you verify the old version is still valid. Merge, deploy. Rollback is done in 15 minutes.
+with client.trace(name="summarize_revenue"):
+    result = llm.invoke(prompt)
+    client.log_metric("token_count", result.usage.total_tokens)
+```
 
-Another strategy: canary deployment. Send the new prompt version to 10% of production traffic, keep 90% on the old version. Watch both versions' metrics side-by-side in LangSmith: latency, cost, thumbs up/down ratio. After 24 hours, if the new version outperforms at 10%, scale to 50%, then 100%. Poor performance drops it to 0%, rollback. This strategy relies on [First-Party Data & Measurement Architecture](https://www.roibase.com.tr/en/firstparty) — if production events are readable in real time, canary works; if not, it doesn't.
+Every trace appears in the LangSmith UI, with full input/output/metadata logging. If you have multiple prompt versions, you can open a comparison view. In the UI you'll see insights like "prompt v2 produces 8% longer outputs on average than v1, but 3% lower latency."
 
-## Integrating the Eval Pipeline into Team Process
+LangSmith also provides a playground — change the prompt and test against multiple inputs with one click. This creates a fast feedback loop for both prototyping and regression testing. But remember: testing in the playground doesn't replace production A/B testing; it's just a first filter.
 
-Setting up eval tooling is easy; adoption is hard. Without team adoption, the tool is dead. At Roibase, we built adoption through: (1) At least one prompt iteration PR expected per sprint. (2) PR review checklist includes "Promptfoo eval passed?" (3) Weekly LLM ops meeting reviews LangSmith dashboard — which traces got thumbs down, why? (4) Quarterly prompt audit: all production prompts tested against regression dataset, refactored if performance drops.
+## The second benefit of prompt versioning: rollback
 
-The team initially resisted, saying "writing evals is extra work." By sprint two they noticed: without eval, each change takes 3 days to test (manually), with eval it's 10 minutes. Manual testing misses edge cases, eval suite doesn't. Adoption grew. Now engineers write test cases first, then iterate the prompt — TDD mindset. This discipline raised prompt quality 40% (by annotation data).
+When a deployment goes wrong, rollback is critical. In LLM operations, rollback means reverting to the previous prompt version. To do that, you need versioning infrastructure.
 
-Another adoption lever: cost reporting. We opened the LangSmith dashboard to our CFO, showed monthly LLM spend. CFO asked, "how do we optimize this?" Answer: eval pipeline tests model/temperature/prompt-length tradeoffs, putting the most efficient config in production. Next quarter we cut costs 15% (with zero quality regression). CFO saw data, approved tooling budget. Moved to LangSmith Plus (team plan, unlimited traces). Now all LLM workflows are in LangSmith — not just content generation, also our SQL generation workflow in [Data Analysis & Insights Engineering](https://www.roibase.com.tr/en/verianalizi).
+Simple approach: store each prompt in git as a separate file (`prompts/summarization_v3.txt`). A deployment script tracks which version is in production in a config file:
 
----
+```yaml
+# config/production.yaml
+prompts:
+  summarization: v3
+  classification: v2
+```
 
-Prompt versioning and eval discipline aren't optional in 2026 — they're foundational to production LLM operations. Use Promptfoo to prevent regression, LangSmith to observe production, eval to measure cost-quality tradeoffs. Every prompt change is a hypothesis, eval results are validation. If you don't have a rollback mechanism, don't deploy. Without team adoption, tooling is dead — embed it in process, decide with data. Now act: take your current LLM workflow, write 10 test cases, set up Promptfoo, run the first eval. When you catch the first regression, you'll see the discipline's value.
+To rollback, change `summarization: v2` and trigger deployment. But this is manual and slow in an incident. A more sophisticated approach: use feature flags (LaunchDarkly, Unleash) to switch prompt versions at runtime without redeploying.
+
+This is where Roibase's [First-Party Data & Measurement Architecture](https://www.roibase.com.tr/en/firstparty) practices come in — you need to correlate prompt changes with downstream events (conversion, churn) so your rollback decision is data-driven. If churn rate jumps 4% within six hours of deploying the new prompt, that's your signal to rollback.
+
+## Edge case: multilingual prompt versioning
+
+If your LLM application runs in multiple languages (TR, EN, DE), maintain separate prompt versions per language. A prompt that works well in English might not deliver the same tone in Turkish.
+
+Solution: organize prompt files by language code:
+
+```
+prompts/
+  summarization/
+    en_v3.txt
+    tr_v3.txt
+    de_v3.txt
+```
+
+Your eval set should also be language-specific — Turkish test cases should have Turkish output expectations. Run A/B tests by language, because user behavior differs across regions. Don't forget to add language segment to metric aggregation.
+
+Another caution: in multilingual prompts, context length varies by language — Turkish sentences are roughly 12% longer by token count. This risks hitting token limits. Add token count checks to your eval pipeline and warn on threshold breaches.
+
+## Practical first step: build your first eval set
+
+To implement the system described here, start small: a minimal eval set of 20–30 real user queries. Open your production logs, pick the most common queries, and define expected output properties for each (accuracy, tone, length).
+
+Then set up Promptfoo or LangSmith, run your current prompt against this set, and take a baseline score. Now make a small prompt change (e.g., add "respond concisely and clearly"), run eval again, and compare scores. If regression is under 5%, deploy the change.
+
+Once this loop is automated, your prompt iteration speed triples. Because now you answer "is this change good or bad?" with numbers, not guesses.
