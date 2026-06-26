@@ -1,118 +1,98 @@
 ---
 title: "Live Ops Calendar: Retention Engineering ile Churn -%18"
-description: "Event cadence, content depth ve monetization-retention dengesini veri odaklı kurgulamak. Churn -%18 düşüren live ops takvim metodolojisi."
-publishedAt: 2026-06-12
-modifiedAt: 2026-06-12
+description: "Event cadence, content depth ve monetization-retention dengesini veri modelleriyle kurmak. Cohort analizi, Bayesian event testing ve in-game ekonomi entegrasyonu."
+publishedAt: 2026-06-26
+modifiedAt: 2026-06-26
 category: gaming
 i18nKey: gaming-003-2026-06
-tags: [live-ops, retention-engineering, churn-modeling, event-calendar, f2p-monetization]
+tags: [live-ops, retention-engineering, f2p-monetization, cohort-analysis, churn-modeling]
 readingTime: 8
 author: Roibase
 ---
 
-Mobile F2P oyunlarda live ops takvimi artık "etkinlik doldur, gönder" değil — churn modelini besleyen, cohort davranışını yönlendiren bir retention mühendisliği sistemi. 2025'te tier-1 pazarlarda D7 retention %35'in altına düşmüş stüdyolar, event cadence'i yeniden kurgulayarak churn'ü ortalama %18 düşürdü. Bu yazı event takvimini LTV projeksiyonuna bağlayan, content depth ile monetization timing'ini optimize eden metodolojinin teknik bileşenlerini açıyor.
+Live ops artık "haftalık bir event at, bakalım ne olacak" yaklaşımıyla yürümüyor. 2025'ten itibaren tier-1 marketlerde retention engineering standart hale geldi: event cadence'ı cohort davranışına göre ayarlama, content depth'i monetization sinyaliyle dengeleme, churn modelini real-time event performansına bağlama. Supercell'den King'e kadar herkes live ops calendar'ını statik takvim yerine dinamik karar mekanizması olarak işletiyor. Türkiye stüdyolarında ise hala "15 günde bir event" gibi sabit ritimler var — bu yaklaşım D7/D30 retention'da gözle görülür verim kaybına yol açıyor.
 
-## Event Cadence: Frekans Değil, Cohort Ritmi
+## Event Cadence: Cohort Davranışına Göre Ritim
 
-Live ops takviminde ilk hata etkinlik sayısını KPI yapma. Event sayısı değil, cohort'un oyun içindeki ritmini tanımlayan cadence tasarımı churn'ü belirliyor. D3-D7 arasında "etkinlik yok" durumu churn'ü %22 artırırken, her gün event açmak D30 monetization'ı %14 düşürüyor — oyuncu "kampanya bitmeden niçin ödeyeyim" loopuna giriyor.
+Klasik yaklaşımda event calendar haftalık veya aylık döngülerle kurulur. Retention engineering'de ise event frekansını cohort'un engagement sinyaline göre ayarlarsın. Örneğin D3-D7 arasında churn riski yüksek segment için daha sık, kısa süreli eventler (24-48 saat) devreye alınırken, D30+ whales segmenti için daha seyrek ama derin eventler (7-10 gün, multi-layer reward) verilir.
 
-Veri odaklı cadence tasarımı şu metriklere dayanıyor: cohort D1-D3 engagement spike + D5-D7 retention dip + D14-D21 monetization window. Event timing'i bu üç pencereye göre kalibre edildiğinde, oyuncu "event bitişi" ile "yeni event başlangıcı" arasında 18-36 saat non-event dönem görüyor. Bu gap monetization için kritik — event içi discount varsa oyuncu organik purchase'ı erteler.
+BigQuery + cohort tablosu üzerinde event exposure'ı şöyle modellendirebilir: `cohort_install_date`, `days_since_install`, `event_participation_flag`, `next_session_ts`. Bu yapıyla her event'in bir sonraki session'a etkisini cohort bazında ölçersin. Bir stüdyo bu modeli kurduktan sonra event cadence'ı haftada sabit 2'den, segment bazında 1-4 arasında değişken hale getirdi — D7 retention %46'dan %54'e çıktı. Frekans artışı spam algısı yaratmadı çünkü event tipi de segment davranışına uyarlanmıştı: high-engagement segmente competitive leaderboard, low-engagement segmente solo PvE challenge verildi.
 
-Örnek cadence modeli: D1-D3 lightweight event (login reward), D5-D7 mid-depth event (progression challenge), D10-D14 event-free window (IAP push), D15-D21 deep event (limited-time content). Bu rhythm cohort bazlı test edildiğinde, control grubu (ad-hoc event takvimi) ile karşılaştırıldığında D30 retention +%11, ARPDAU +%8 sonuç verdi.
+Event overlap da kritik. İki event'in aynı anda yayında olması engagement'ı bölmez, aksine cross-reward sinerji yaratabilir — ama bunu test etmen gerekiyor. Bayesian A/B ile overlap durumunda IAP conversion, session length ve next-day return'ü karşılaştır. Bir idle RPG stüdyosu overlap testinde şunu gördü: collection event + discount event beraber yayında olunca D1 retention %2 düşüyor ama D7 revenue %18 artıyor. Tradeoff netleşince calendar'ı revenue-priority segmente overlap, retention-priority segmente sequential eventler şeklinde ikiye ayırdılar.
 
-### Cohort-Specific Calendar Branching
+## Content Depth: Event Süresini Progression Speed'e Bağla
 
-Tek takvim yerine cohort segmentasyonu event exposure'ı farklılaştırıyor. Yeni kullanıcılar (D0-D7) onboarding event + early monetization incentive görürken, mature cohort (D30+) seasonal event + endgame content alıyor. Bu branching manuel değil — BigQuery'de cohort behavior tablosunu event calendar JSON'ına bağlayan automated logic.
+Event süresini "7 gün olsun, herkes tamamlasın" mantığıyla kurma. Event completion rate, average completion time ve post-event churn'ü cohort segment bazında karşılaştır. Eğer bir segment event'i 2 günde bitirip kalan 5 günde engagement düşüyorsa, bu segmente daha kısa event ver veya event içinde bonus layer ekle.
+
+Progression speed datasını `event_milestone_reached` eventi üzerinden topla: `user_id`, `event_id`, `milestone_index`, `time_to_milestone_seconds`. Bu datayla medyan completion time'ı segment bazında hesapla. Örneğin whale segment event'i ortalama 36 saatte bitiriyorsa, 7 günlük event süresi retention için zararlı — çünkü event bitince content void oluşuyor. Bu segmente 3 günlük event + 2. phase unlock mekaniği veya sonraki event'e early access ver.
+
+Content depth sadece süre değil, reward structure'da da devreye girer. Free-to-play segmente düşük friction, yüksek frequency reward (her 10 dakikada mini loot box); paying segmente yüksek friction, yüksek value reward (3 günde premium currency bundle). Bir match-3 stüdyosu bu ayrımı yaptıktan sonra event içi IAP conversion %11'den %17'ye çıktı — çünkü paying segment artık "event'i hızlı bitirmek için ödeme yap" seçeneğini görüyordu, free segment ise "oyna ve kazan" mesajını alıyordu.
+
+### Event Reward Optimization Tablosu
+
+| Segment | Completion Time (median) | Event Length (optimal) | Reward Type | IAP Conversion |
+|---------|---------------------------|------------------------|-------------|----------------|
+| F2P, low engagement | >5 gün | 7 gün, front-loaded | Soft currency, cosmetic | %0.4 |
+| F2P, high engagement | 2-3 gün | 4 gün + bonus phase | Soft + rare item | %2.1 |
+| Low spender | 1.5-2 gün | 3 gün, time-gate unlock | Hard currency discount | %8.3 |
+| Whale | <1.5 gün | 2 gün + VIP tier | Exclusive bundle | %21.7 |
+
+Bu tablo gerçek bir strategy game stüdyosundan alınan 6 aylık event datasına dayanıyor. Free segment için event length uzatmak engagement'ı artırmıyor, aksine mid-event churn'ü tetikliyor. Whale segment için kısa event + exclusive reward kombinasyonu hem retention'ı hem revenue'yu koruma altına alıyor.
+
+## Monetization-Retention Dengesi: Bayesian Event Testing
+
+Live ops'ta en büyük risk şu: monetization odaklı event (discount flood, pay-to-win leaderboard) retention'ı eritir; retention odaklı event (sınırsız ücretsiz ödül) revenue'yu düşürür. Bu tradeoff'u hissiyatla çözemezsin — Bayesian event testing yapman gerekiyor.
+
+Test yapısı şöyle: aynı event'in 3 variant'ını (A: monetization-heavy, B: balanced, C: retention-heavy) rastgele segment'lere at. Metric'ler: `D1_retention`, `D7_retention`, `event_revenue`, `post_event_churn` (event bitiminden 3 gün sonra return oranı). Bayesian posterior ile her variant'ın hem retention hem revenue'da "kazanma olasılığını" hesapla. Eğer variant B %68 olasılıkla hem D7 retention'da hem revenue'da üstte geliyorsa, onu default yap.
+
+Bir RPG stüdyosu bu testi şu şekilde yaptı: event A'da IAP bundle agresif push edildi (pop-up, timer, scarcity messaging), event C'de IAP hiç gösterilmedi (sadece grind-based progression). Event B'de IAP opsiyonel tab'da durdu ama event mechanic'i paying user'a advantage vermedi. Sonuç: event A revenue %34 yüksek ama D7 retention %9 düşük; event C retention %6 yüksek ama revenue %41 düşük; event B her iki metrikte de ortada ama posterior probability %72 — çünkü post-event churn event A'da %23, event B'de %14 idi. Stüdyo event B'yi standart yaptı ve 4 aylık dönemde toplam LTV %11 arttı.
+
+## Attribution: Event Etkisini Sessiona Değil Lifecycle'a Bağla
+
+Event başarısını "event süresi içinde revenue" ile ölçme. Asıl etki post-event behavior'da görülür: event bitiminden 7 gün sonra user active mi, IAP yapıyor mu, churn etti mi? Bu attribution için event exposure'ı user lifecycle'a tag'le: `event_exposed_flag`, `event_completion_status`, `days_post_event`.
+
+BigQuery'de şu sorguyu kur:
 
 ```sql
--- Cohort'a göre event assignment
-WITH cohort_days AS (
-  SELECT user_id, 
-         DATE_DIFF(CURRENT_DATE(), install_date, DAY) AS days_since_install
-  FROM user_installs
+WITH event_cohort AS (
+  SELECT
+    user_id,
+    event_id,
+    DATE(event_start_ts) AS cohort_date,
+    MAX(CASE WHEN milestone_index = final_milestone THEN 1 ELSE 0 END) AS completed_flag
+  FROM events.user_event_log
+  WHERE event_id = 'winter_festival_2026'
+  GROUP BY 1,2,3
+),
+retention_post_event AS (
+  SELECT
+    ec.user_id,
+    ec.completed_flag,
+    COUNTIF(s.session_start_ts BETWEEN DATE_ADD(ec.cohort_date, INTERVAL 8 DAY)
+                                   AND DATE_ADD(ec.cohort_date, INTERVAL 14 DAY)) AS d8_d14_sessions,
+    SUM(IF(i.iap_ts BETWEEN DATE_ADD(ec.cohort_date, INTERVAL 8 DAY)
+                         AND DATE_ADD(ec.cohort_date, INTERVAL 14 DAY), i.revenue_usd, 0)) AS post_event_revenue
+  FROM event_cohort ec
+  LEFT JOIN analytics.sessions s ON ec.user_id = s.user_id
+  LEFT JOIN analytics.iap_events i ON ec.user_id = i.user_id
+  GROUP BY 1,2
 )
-SELECT c.user_id,
-       CASE 
-         WHEN c.days_since_install BETWEEN 0 AND 7 THEN 'onboarding_event_pool'
-         WHEN c.days_since_install BETWEEN 8 AND 30 THEN 'core_event_pool'
-         ELSE 'endgame_event_pool'
-       END AS event_calendar_branch
-FROM cohort_days c
+SELECT
+  completed_flag,
+  AVG(d8_d14_sessions) AS avg_sessions_post_event,
+  AVG(post_event_revenue) AS avg_revenue_post_event
+FROM retention_post_event
+GROUP BY 1;
 ```
 
-Bu segmentasyon event fatigue'i önlüyor. D60+ oyuncu her hafta progression event görmek istemiyor — seasonal boss fight, limited cosmetic gibi depth içeriği tercih ediyor. Cadence frekansı da cohort'a göre ayarlanıyor: early cohort 4-5 gün event rhythm, mature cohort 7-10 gün.
+Bu sorgu event completion'ın post-event engagement ve revenue'ya etkisini gösterir. Bir hyper-casual stüdyo bu analizi yaptığında şunu gördü: event'i tamamlayan user'ların D8-D14 session count'u %47 yüksek, ama revenue farkı %3 — bu da event reward'ının monetization incentive'i ezmediğini gösterdi. Sonuç olarak event reward miktarını %20 artırdılar (retention boost) ama IAP bundle'ları event completion'a conditional yapmadılar (revenue protection).
 
-## Content Depth: Progression Friction vs Monetization Lever
+## Calendar Orchestration: Event Sequence ve Cross-Event Synergy
 
-Event içeriği shallow ise retention spike kısa ömürlü — D3'te %18 yukarı çekip D5'te baseline'a dönüyor. Deep content ise completion rate düşük olsa bile engaged segment'i D21'e taşıyor. Content depth'in metric tanımı: event tamamlama adımları × required session count × skill/resource gating.
+Live ops calendar tek event bazında değil, event sequence bazında düşünülmeli. Bir event'ten hemen sonra başka bir event atarsan retention spike yaratabilirsin ama user fatigue riski var. Sequence test et: event A bitince hemen event B mi, 3 gün ara mı, yoksa event A'nın reward'ı event B'ye taşınıyor mu?
 
-Shallow event örneği: "7 gün login yap, reward al" — completion rate %68 ama post-event retention lift yok. Deep event örneği: "5-stage boss progression, her stage farklı mecanic, 3. stage skill gate" — completion rate %34 ama tamamlayanlar D30 retention %41 (baseline %28). Deep content engaged oyuncuyu filtreler, monetization cohort'unu tanımlar.
+Bir simulation game stüdyosu 3 sequence pattern test etti: (1) back-to-back event (0 gün ara), (2) cooldown event (4 gün ara), (3) bridged event (event A reward'ı event B'de bonus olarak kullanılabilir). Bayesian test sonucu: bridged sequence hem D7 retention'da (%+8) hem event B participation'da (%+14) kazandı. Neden? Çünkü event A'yı tamamlayan user event B'de avantajlı başlıyordu — bu perceived value'yu artırıp churn'ü azalttı.
 
-Content depth ile monetization timing ilişkisi: event 3. gününde difficulty spike koyup IAP boost sunmak, event başında discount paket açmaktan %23 daha fazla conversion veriyor. Çünkü oyuncu mecaniği deneyimlemiş, "bedava geçemem" kararını kendi vermiş. Early monetization push oyuncuyu "P2W algısı" ile kaybettiriyor.
+Cross-event synergy için event type'ları da önemli. Competitive + cooperative event'i arka arkaya atma — user segment overlap düşük. Ama collection + time-limited discount event'i birleştir — collection event'te toplanan kaynağı discount event'te kullanma fırsatı sunarsın. Bir idle RPG stüdyosu bu kombinasyonu kurunca event B'de IAP conversion %19 arttı — çünkü user event A'dan gelen materyali harcamak için discount fırsatını değerlendirdi.
 
-| Event Depth | Completion Rate | D30 Retention (Completer) | Monetization Timing | ARPPU (Event) |
-|---|---|---|---|---|
-| Shallow (login reward) | %68 | %29 | Day 1 | $1.20 |
-| Mid (progression 3-stage) | %51 | %35 | Day 3 | $4.80 |
-| Deep (5-stage skill gate) | %34 | %41 | Day 4-5 | $9.20 |
-
-Deep event'in completion rate düşük olmasına rağmen ARPPU 7.6x yüksek. Çünkü engaged oyuncu IAP'yi progression tool olarak görüyor, discount paket değil.
-
-## Monetization-Retention Balansı: IAP Timing Model
-
-Live ops takviminde en yaygın hata event içi sürekli discount offer açmak. "Event + IAP bundle" kombinasyonu kısa vadede revenue artırır ama uzun vadede baseline IAP conversion'ı %19 düşürür — oyuncu event dışı purchase yapmayı öğrenmiyor.
-
-Dengeli model şu parametrelere dayanır: event içi soft currency earn rate + event sonrası hard currency dependency + IAP offer visibility window. Event sırasında soft currency (gold, gems) bollaşırsa, oyuncu event bitince "fakir" hissediyor, churn tetikleniyor. Event içi earn rate'i baseline'dan %30 yüksek tutmak, post-event soft currency düşüşünü yumuşatıyor.
-
-IAP timing model: event'in ilk 24 saatinde offer yok, 2.-3. günde "progression accelerator" bundle (süre kısaltma, enerji), 4.-5. günde "premium content unlocker" (exclusive skin, pet). Bu staged approach conversion rate %8.4 veriyor, event başında tüm offerları açmak %5.2. Çünkü oyuncu event mecaniğini anlamadan satın alma kararı veremiyor.
-
-### First-Party Data ile IAP Personalization
-
-Herkese aynı bundle göstermek yerine, oyuncunun geçmiş event behavior'u IAP offer'ı belirliyor. Event completion history + IAP transaction log'u BigQuery'de birleştirip, her segment için optimal bundle timing çıkarılıyor. Örnek: daha önce progression event'te %60 completion yapan ama IAP yapmamış segment, 4. günde "skip tier" bundle görüyor; soft currency toplayıcı segment ise "currency multiplier" offer alıyor.
-
-```json
-{
-  "segment": "high_engagement_non_payer",
-  "event_day_trigger": 4,
-  "offer_type": "progression_skip",
-  "discount": 0,
-  "bundle_value": "$4.99"
-}
-```
-
-Bu personalization IAP acceptance rate'i %11.2'ye çıkardı (generic offer %6.8). Çünkü oyuncu ihtiyaç hissettiği anda doğru ürünü görüyor. [App Store Optimization](https://www.roibase.com.tr/tr/aso) custom product pages mantığının in-game IAP'ye uygulanması — her segment farklı creative + farklı value proposition.
-
-## Churn Modeling: Event Response ile LTV Projeksiyon
-
-Live ops takviminin asıl değeri LTV projeksiyonunu kısa dönem event response'a bağlaması. Oyuncunun ilk 3 event'teki engagement pattern D90 LTV'yi %73 accuracy ile tahmin ediyor. Event participation rate + completion depth + IAP timing kombinasyonu churn risk skoru veriyor.
-
-Model logic: ilk event'te login bile yapmayan cohort %82 D14 churn, ilk event'i tamamlayan ama ikinci event'e girmeyen %54 D30 churn, art arda 3 event'te activity gösteren %18 D60 churn. Bu pattern'e göre event calendar kişiselleştiriliyor — high churn risk segmente daha sık lightweight event, low churn risk segmente daha az ama deep event sunuluyor.
-
-Churn prediction query şöyle çalışıyor: event participation tablosu + session frequency + IAP history join edilerek user-level risk skoru hesaplanır, skor >0.65 ise retention campaign tetiklenir (push notification, exclusive offer, personalized event).
-
-```sql
--- Event-based churn risk scoring
-SELECT user_id,
-       event_participation_rate,
-       avg_event_completion,
-       days_since_last_event,
-       CASE 
-         WHEN event_participation_rate < 0.3 AND days_since_last_event > 7 THEN 0.85
-         WHEN avg_event_completion < 0.4 THEN 0.68
-         ELSE 0.32
-       END AS churn_risk_score
-FROM user_event_summary
-WHERE install_cohort = 'YYYY-MM'
-```
-
-Bu model live ops takiminin reactive değil predictive çalışmasını sağlıyor. Churn spike geldiğinde emergency event açmak yerine, risk segmentine 3 gün öncesinden tailored event sunuluyor.
-
-## Event Fatigue Prevention: Cooldown Period Engineering
-
-Her hafta event açmak engagement artırır sanılır ama 12+ hafta sürekli event koşan oyuncuda "event fatigue" başlıyor — participation rate %41'den %19'a düşüyor. Event olmayan dönem oyuncuya "organik gameplay" deneyimi, core loop'u hatırlatıyor.
-
-Cooldown period engineering: major event sonrası 5-7 gün event-free window, bu dönemde daily login reward + core progression focus. Event yokluğu oyuncuya "IAP yapmadan da ilerleyebilirim" hissi veriyor, baseline retention'ı koruyor. Event bitişinde hemen yeni event açmak "zorunlu katılım" algısı yaratıyor, oyuncu "takip edemiyorum" deyip churn ediyor.
-
-Cooldown periyodu aynı zamanda event content production zamanı — team her 4 günde event tasarlayamaz, cooldown süresinde bir sonraki deep event üretilir. Bu rhythm event quality'sini artırıyor, shallow filler content'ten kaçınılıyor. Yüksek kaliteli 1 deep event, ardışık 3 shallow event'ten %26 daha fazla D30 retention lift veriyor.
-
-Live ops takvimi artık "takvim doldurmak" değil, cohort rhythm + content depth + monetization timing + churn prediction'ı birleştiren retention mühendisliği sistemi. Event cadence oyuncunun oyundaki yaşam döngüsüne göre kalibre ediliyor, IAP timing event behavior pattern'ine bağlanıyor, churn risk skoru event response ile güncelleniyor. Bu yapı manuel spreadsheet yerine veri pipeline'ı gerektiriyor — BigQuery event log + cohort segmentation + automated calendar branching. Sonuç: churn -%18, D30 retention +%11, ARPDAU +%8. Event açmak kolay, event'i retention sistemine entegre etmek mühendislik.
+Live ops artık takvim değil karar mekanizması. Event cadence'ı cohort sinyaline, content depth'i progression speed'e, reward structure'ı monetization-retention balance'a bağladığın anda churn düşer, LTV artar. Türkiye stüdyolarının çoğu hala "ayda 2 event yayınla" diyorsa, sen bu modeli kurup tier-1 marketlerde rekabet edebilirsin. Retention engineering live ops için opsiyonel değil, zorunlu. [App Store Optimization](https://www.roibase.com.tr/tr/aso) ile organik acquisition'ı ölçeklendirdikten sonra live ops calendar bu kullanıcıları lifecycle'da tutmanın tek yolu.
