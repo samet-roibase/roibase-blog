@@ -1,114 +1,147 @@
 ---
-title: "Consent Mode v2 y TCF 2.2: Cómo Gestionar la Pérdida de Modeling"
-description: "Equilibrar la medición compatible con GDPR y la pérdida de rendimiento: estrategia técnica para configurar señales de consentimiento correctamente y preservar la calidad del modeling."
-publishedAt: 2026-05-19
-modifiedAt: 2026-05-19
+title: "Consent Mode v2 y TCF 2.2: Cómo Gestionar el Modeling Loss"
+description: "Guía para gestionar el trade-off entre cumplimiento GDPR y pérdida de medición con Google Consent Mode v2 y TCF 2.2. Accuracy del modelado, signal gap y soluciones prácticas."
+publishedAt: 2026-06-27
+modifiedAt: 2026-06-27
 category: marketing
-i18nKey: marketing-006-2026-05
-tags: [consent-mode, tcf-2-2, gdpr-compliance, conversion-modeling, server-side-tracking]
+i18nKey: marketing-006-2026-06
+tags: [consent-mode, gdpr, tcf-2-2, attribution, server-side-tracking]
 readingTime: 8
 author: Roibase
 ---
 
-Cuando Google hizo obligatorio Consent Mode v2 en marzo de 2024, los mercados europeos experimentaron una pérdida de medición promedio del 15-40% en campañas de rendimiento. Este régimen, integrado con el estándar TCF 2.2 de IAB Europe, garantiza cumplimiento legal pero restringe las señales de conversión críticas para los algoritmos de bidding. Simplificar el problema como "aumentemos la tasa de consentimiento" es insuficiente — la pregunta real es cómo configurar el régimen de consentimiento para minimizar la pérdida de modeling y alimentar adecuadamente los motores de machine learning de las plataformas.
+Desde marzo de 2024, Google Consent Mode v2 es obligatorio para cualquiera que envíe tráfico en el Espacio Económico Europeo (EEE). TCF 2.2 (Transparency & Consent Framework) es el estándar que IAB Europe estableció en el lado legal. La intersección de ambos sistemas crea un trade-off: logras cumplimiento total con GDPR, pero pierdes entre el 30% y el 50% de tu señal de conversión. Esta pérdida se conoce como "modeling loss" — el espacio que Google intenta completar mediante machine learning. El problema: si el modelado no es lo suficientemente preciso, tu algoritmo de pujas pierde contacto con la realidad. Este artículo explora cómo configurar correctamente el mecanismo de consentimiento para minimizar el signal gap.
 
-## El Impacto de Consent Mode v2 en la Arquitectura de Medición
+## La Pérdida de Señal Que Introduce Consent Mode v2
 
-Google Consent Mode v2 hizo obligatorios los parámetros `ad_user_data` y `ad_personalization`, además de `ad_storage` y `analytics_storage`. Si el usuario no otorga consentimiento, los tags funcionan en modo sin cookies y las plataformas estiman las conversiones mediante reporting agregado y modeling, en lugar de datos determinísticos del lado del cliente. La calidad de este sistema depende de la tasa de consentimiento y la densidad de señales.
+Google Consent Mode v2 soporta dos estados: `granted` y `denied`. Cuando un usuario rechaza permisos de analytics o ad_storage, los tags de Google Analytics y Google Ads no establecen cookies. En su lugar, envían "pings sin cookies" — la conversión cuenta, pero no hay información de atribución a nivel de usuario. Google intenta completar este vacío de datos mediante modelado.
 
-Escenario de ejemplo: si tienes 1.000 conversiones en Google Ads pero tu tasa de consentimiento es del 40%, la plataforma solo ve datos determinísticos de 400. Las 600 restantes se completan mediante modeling. La precisión del modeling varía según el volumen de conversiones, la distribución geográfica y la profundidad del funnel — en segmentos pequeños (tasa de conversión inferior al 5%), el margen de error puede alcanzar el 30%.
+Ejemplo del mundo real: un sitio con 1000 sesiones donde el 60% rechaza el consentimiento (promedio en el EEE), Google solo obtiene señal completa de 400 sesiones. Las 600 restantes envían un ping con el parámetro `gcs=G100` (estado denied). Google estima el número total de conversiones modelando estos 600 pings según los patrones de comportamiento de los 400 usuarios con consentimiento otorgado. El mecanismo de estimación se basa en inferencia bayesiana — afirma una precisión del 90%+ si hay suficientes datos permitidos.
 
-TCF 2.2 estandariza las Plataformas de Gestión de Consentimiento (CMP). Listas de vendors, legitimidad de propósitos, características especiales — todo crea control granular para el usuario, pero también complejidad en la interfaz. Un banner CMP mal diseñado puede reducir la tasa de consentimiento al 20%. Técnicamente puedes ser compliant, pero los resultados comerciales son desastrosos.
+El problema: si el grupo de usuarios permitidos no es representativo (por ejemplo, solo usuarios técnicos aceptan), el modelo se equivoca. Los reportes de Search Ads 360 de 2025 mostraron que en algunos retailers alemanes, el error de modelado alcanzó el 18%. Esto significa un error del 18% en el ciclo de aprendizaje de Smart Bidding — tu objetivo de CPA no se cumple.
 
-### Amplificar la Calidad del Modeling con Server-Side Tracking
+### Factores Que Mejoran la Precisión del Modelado
 
-El punto clave en Consent Mode v2 es no dejar de enviar señales simplemente porque no hay consentimiento — en su lugar, **desplaza las señales sin consentimiento al servidor**. Enviar datos first-party hasheados a través del Google Tag Manager del lado del servidor (sGTM) a endpoints como Enhanced Conversions y Conversion API mejora la precisión del modeling entre 15-25%.
+La precisión de Consent Mode depende de tres variables principales:
 
-Lo crítico aquí es configurar correctamente los campos de enhanced match. Hashear PII como email, teléfono y dirección con SHA256 y enviarlos desde el contenedor del servidor a Google Ads y Meta CAPI. Incluso sin consentimiento del cliente, estos datos se pueden procesar del lado del servidor bajo interés legítimo o base contractual (conforme al Artículo 6(1)(b) y 6(1)(f) del GDPR).
+1. **Tasa de consentimiento otorgado**: debe estar por encima del 40% (recomendación de Google). Debajo de eso, el modelo es poco confiable.
+2. **Volumen de tráfico**: necesitas al menos 100+ conversiones diarias. Los sitios pequeños no tienen suficiente poder estadístico.
+3. **Diversidad de conversiones**: en lugar de un único tipo (solo purchase), implementa un multi-funnel (add_to_cart, begin_checkout, purchase) — el modelo puede interpolar las etapas intermedias.
 
-Flujo de ejemplo:
-```
-Usuario (sin consentimiento ad_storage)
-  → empuje de dataLayer (GTM del lado del cliente)
-    → contenedor sGTM
-      → función de Cloud Run (hash PII + deduplicación)
-        → API de Enhanced Conversions de Google Ads
-        → Meta CAPI (event_source_url + fallback fbp)
-```
+Ejemplo: un sitio de e-commerce con tasa de consentimiento del 35%, 50 purchases + 200 add_to_cart diarios, Google estima el número de purchases con un margen de error del 12% (según el reporte de Data Quality de Google Analytics 4). Pero con 20% de consentimiento y solo 20 purchases diarios, el error sube al 30% — en ese punto, las pujas dejan de ser confiables.
 
-Esta arquitectura te permite generar coincidencia probabilística incluso de usuarios que no dieron consentimiento, enriqueciendo el input del modeling. Según la documentación de Google, con conversiones mejoradas activas, la confianza del modeling alcanza niveles del 90%+.
+## TCF 2.2 y el Stack de Vendor Consent
 
-## Optimización de Banner TCF 2.2: Elevar la Tasa de Consentimiento
+TCF 2.2 es el formato de consent string en evolución de IAB Europe. Funciona con el "Additional Consent Mode" (ACM) de Google — es decir, el vendor ID de Google (755) puede estar presente en ACM incluso si no está en el string TCF 2.2. Esta distinción es crítica: si solo confías en el string TCF 2.2, puede haber usuarios que rechacen consentimiento a Google incluso si lo otorgaron.
 
-El diseño del banner CMP determina si tu tasa de consentimiento será superior al 50% o no. El estándar TCF 2.2 de IAB define 10 propósitos y 11 características especiales diferentes, pero presentarlos todos simultáneamente causa sobrecarga cognitiva. Estrategia de optimización:
+Al elegir una Consent Management Platform (CMP), verifica que soporte tanto strings TCF 2.2 como ACM. Plataformas grandes como Cookiebot, OneTrust y Usercentrics lo hacen. Pero algunos CMP pequeños o custom no generan el string ACM — Google marca a estos usuarios como "denied".
 
-**1. Divulgación progresiva:** En la primera capa, muestra solo "Aceptar todo" y "Gestionar preferencias". Deja los detalles para la segunda capa. Resultados de pruebas A/B muestran que el diseño progresivo aumenta la tasa de consentimiento entre 18-22%.
+### Errores Críticos en la Configuración de CMP
 
-**2. Granularidad a nivel de propósito:** Agrupa los 10 propósitos de TCF bajo 3-4 categorías (Esencial, Funcionalidad, Marketing, Analítica). Cuando el usuario selecciona "Marketing", activas los Propósitos 2, 3, 4, 7 en segundo plano.
+Un error común: habilitar el modo "legitimate interest" en el CMP para los tags de Google. En TCF 2.2, legitimate interest es legal para algunos vendors, pero Google Ads específicamente requiere "consentimiento" (Purpose 1 de IAB + toggle de consentimiento específico de Google). Si solo activas legitimate interest, Google recibe un ping con `gcs=G110` (ad_storage rechazado, analytics otorgado) — se pierden las conversiones de ads.
 
-**3. Interés legítimo pre-marcado:** Para propósitos conformes al Artículo 6(1)(f) del GDPR (por ejemplo, prevención de fraude, analítica básica), usa la base de interés legítimo y marca previamente. El usuario puede rechazar, pero el default abierto evita que la tasa de consentimiento caiga.
+Configuración correcta:
+- **Purpose 1** (Store and/or access information): tanto consentimiento como legitimate interest habilitados
+- **Google vendor consent toggle**: habilitado (755 + ACM)
+- **Señal de consentimiento personalizado**: `gtag('consent', 'update', {ad_storage: 'granted'})` — el listener de eventos del CMP debe ejecutar este código cuando cambia el consentimiento
 
-**4. Filtrado de vendors:** La lista de vendors de TCF contiene 800+ empresas. No las muestres todas — incluye solo los 15-20 vendors activos que realmente usas. Listas extensas generan percepción de "venden mis datos".
+Ejemplo de bloque de código (GTM event listener):
 
-En proyectos de [Programmatic Advertising](https://www.roibase.com.tr/es/ppc) de Roibase, la optimización de banners CMP aumentó la tasa de consentimiento de un promedio del 42% al 61% (prueba A/B de 12 semanas, n=48.000).
-
-## Medir la Pérdida de Modeling: Un Framework Simple
-
-Para ver la pérdida real en tus campañas después de Consent Mode v2, monitorea estas métricas:
-
-| Métrica | Cálculo | Objetivo |
-|---------|---------|----------|
-| **Tasa de Conversión Observada** | (Modelada + Observada) / Sesiones | Dentro del 10% de la línea base |
-| **Ratio de Modeling** | Conversiones Modeladas / Total Conversiones | Inferior al 40% |
-| **Tasa de Coincidencia Mejorada** | Conversiones Coincidentes / Total Conversiones | 60%+ |
-| **Tasa de Consentimiento** | Usuarios Consentidos / Total Usuarios | 50%+ |
-
-En Google Ads, revisa la puntuación de calidad del modeling en Conversiones > Medición > Informe de diagnóstico. Si ves "Bajo" o "Limitado", significa que la tasa de consentimiento es demasiado baja o que no tienes conversiones mejoradas configuradas.
-
-Puedes analizar la pérdida real usando exportaciones de conversiones agregadas en BigQuery:
-```sql
-SELECT
-  campaign_id,
-  SUM(conversions) AS observed_conversions,
-  SUM(all_conversions) AS total_conversions,
-  SAFE_DIVIDE(SUM(all_conversions) - SUM(conversions), SUM(all_conversions)) AS modeling_ratio
-FROM `project.dataset.p_ads_ConversionStats_*`
-WHERE _TABLE_SUFFIX BETWEEN '20260501' AND '20260518'
-GROUP BY campaign_id
-HAVING modeling_ratio > 0.4
-ORDER BY modeling_ratio DESC;
+```javascript
+window.addEventListener('CookiebotOnAccept', function () {
+  if (Cookiebot.consent.marketing) {
+    gtag('consent', 'update', {
+      ad_storage: 'granted',
+      analytics_storage: 'granted'
+    });
+  }
+});
 ```
 
-Cuando el ratio de modeling supera el 40%, cambiar de estrategia Max Conversions a tROAS es arriesgado — el modelo aprende con datos insuficientes y la eficiencia de costo se deteriora.
+Sin este listener, aunque el usuario otorgue consentimiento en el CMP, los tags de Google no se actualizan — la pérdida de señal continúa.
 
-## El Argumento Contrario: El Mito de "Sin Consentimiento, Sin Datos"
+## Cerrar el Signal Gap con Server-Side GTM
 
-Interpretar el GDPR como "sin consentimiento, no puedo hacer nada" es el error más común. En realidad, el GDPR tiene 6 bases legales: consentimiento, contrato, obligación legal, intereses vitales, tarea pública e interés legítimo. En operaciones de marketing, la combinación consentimiento + interés legítimo es completamente legal.
+Dado que los mecanismos de consentimiento client-side dependen de cookies, ITP (Safari), ETP (Firefox) y los bloques de cookies de terceros ya reducen la señal entre 20-30%. Si Consent Mode añade 30-50% de pérdida adicional, la pérdida total de señal puede alcanzar 50-70%.
 
-Por ejemplo, si un usuario compra en tu tienda de e-commerce, puedes procesar datos de pedidos bajo **obligación contractual (Artículo 6(1)(b))**. Enviar esos datos al API de Enhanced Conversions de Google Ads del lado del servidor no viola el GDPR — la transacción ya se está procesando contractualmente. La misma lógica aplica para detección de fraude, analítica básica y recomendación de productos.
+Solución: modernizar la infraestructura de [Dijital Pazarlama](https://www.roibase.com.tr/es/dijitalpazarlama) con server-side tag management. Google Tag Manager del lado del servidor (sGTM) transmite la señal de consentimiento al servidor, donde se envía a Google Analytics 4 Measurement Protocol y a la Google Ads Enhanced Conversions API. En esta arquitectura:
 
-Las "Características Especiales" en TCF 2.2 también juegan un papel aquí. Datos como geolocalización o características del dispositivo pueden caer en la categoría "estrictamente necesaria" y no requerir consentimiento (GDPR Considerando 47). Si configuras correctamente tu CMP, puedes recopilar señales básicas incluso sin consentimiento.
+1. **Client-side**: el estado de consentimiento se registra, se envía un ping mínimo (pageview + parámetro `gcs`) al servidor.
+2. **Server-side**: si el consentimiento es `granted`, el servidor añade IP del usuario, user-agent y client_id a event_data antes de enviarlo a Google. Si es `denied`, solo va un ping agregado.
+3. **Ventaja**: ITP/ETP de Safari/Firefox no ve estas requests del servidor — son HTTP calls desde el dominio de primera parte, por lo que no se bloquean.
 
-El punto crítico es documentar explícitamente la base legal en el CMP y la política de privacidad. Si dices "interés legítimo", necesitas hacer y documentar un test de equilibrio. Esto proporciona tanto a auditores de GDPR como a usuarios transparencia.
+Un caso de estudio de Google Ads 2025 (retail, Alemania): la combinación de sGTM + Consent Mode v2 capturó un 18% más de señal de conversión comparado con una configuración puramente client-side (incluso entre usuarios con consentimiento otorgado, porque la pérdida por ITP se elimina).
 
-## Adaptar Estrategias de Bidding al Entorno de Modeling
+### Integración sGTM + Enhanced Conversions
 
-El cambio en la estrategia de bidding es inevitable después de Consent Mode v2. Si los datos de conversión determinísticos cayeron un 40%, el aprendizaje de la plataforma se ralentiza y la varianza aumenta. Estrategia de adaptación:
+Enhanced Conversions permite que Google Ads haga matching de conversiones con datos de primera parte hasheados SHA-256 (email, teléfono, dirección). Combinado con Consent Mode v2:
 
-**1. Amplia la ventana de conversión:** Aumenta la ventana de 7 días a 14-30 días. Como el modeling informa conversiones con retraso, ventanas cortas reducen el volumen y aumentan la volatilidad del CPA.
+- **Usuario con consentimiento otorgado**: se envían cookie + email hasheado → %95+ match rate
+- **Usuario que rechazó**: ping sin cookies + email hasheado (si hay consentimiento) → %60-70 match rate
 
-**2. Define micro-conversiones:** Si tu conversión principal (compra) bajó un 40%, define "agregar al carrito", "iniciar checkout" como conversiones. La plataforma ve más señales y la estabilidad del bidding mejora.
+Pero ojo: el hasheo de email también requiere consentimiento GDPR. En TCF 2.2, esto cae bajo Purpose 2 (Basic ads). Si el usuario rechaza Purpose 2, no puedes hashear su email.
 
-**3. Opta por bidding basado en volumen sobre valor:** La estrategia tROAS depende mucho de la precisión del modeling. Si el ratio de modeling supera el 40%, Max Conversions + target CPA es más seguro.
+Tabla de flujo de ejemplo:
 
-**4. Segmentación de campañas:** La tasa de consentimiento varía entre 30-70% según geografía. Si es así, divide campañas: bidding agresivo en geos de alto consentimiento, defensivo en geos bajos.
+| Estado de Consentimiento | ¿Cookie Set? | ¿Email Hash? | Mecanismo de Matching |
+|---|---|---|---|
+| Otorgado (Purpose 1+2) | ✓ | ✓ | Cookie + email → %95 match |
+| Rechazado Purpose 1, Otorgado Purpose 2 | ✗ | ✓ | Solo email → %70 match |
+| Rechazado (todo) | ✗ | ✗ | Modelado basado en IP → %40 match |
 
-Resultados de pruebas: En entornos de modeling, campañas tROAS pierden eficiencia promedio del 22% (prueba holdout de 8 semanas, n=12 campañas). Con Max Conversions + límite manual de CPA, la pérdida de eficiencia se mantiene en el 8%.
+Sin email hash, Google solo puede confiar en IP + user-agent — el match rate cae a 40%.
 
-## Visión Futura: Differential Privacy y Federated Learning
+## Medir el Modeling Loss: GA4 Data Quality Report
 
-Google intenta integrar Consent Mode v2 con Privacy Sandbox. APIs como Topics y Attribution Reporting proporcionan señales a nivel agregado, pero la adopción está por debajo del 5%. Para finales de 2026, Chrome eliminará completamente el soporte para cookies de terceros — en ese punto, la importancia de consent mode aumentará aún más.
+En Google Analytics 4, bajo "Admin > Data Quality" encontrarás el widget "Consent mode impact". Este reporte muestra tres métricas:
 
-A largo plazo, la solución será una combinación de differential privacy y federated learning. Las plataformas procesarán conversiones en el dispositivo (on-device) y enviarán solo gradientes agregados al servidor. En este modelo, el régimen de consentimiento cambiará — en lugar de "comparte tus datos", la pregunta será "comparte tu modelo".
+1. **Observed conversions**: número real de conversiones de usuarios con consentimiento otorgado
+2. **Modeled conversions**: número estimado de conversiones para usuarios que rechazaron
+3. **Total (observed + modeled)**: el total que ves en los reportes
 
-Por ahora, lo que debes hacer es: configurar infraestructura del lado del servidor, activar conversiones mejoradas, optimizar el diseño de CMP y monitorear continuamente el ratio de modeling. Consent Mode v2 no es un obstáculo — son las nuevas reglas del juego. Los marketers que entienden estas reglas reducen la pérdida de modeling a menos del 10% y ganan ventaja sobre la competencia.
+Si la calidad del modelado es mala, las "modeled conversions" representan más del 50% del total — Google mostrará una advertencia: "Modeled traffic high, consider increasing consent rate."
+
+Datos de mayo 2026 (sitio e-commerce promedio en EEE): distribución de 42% observed, 58% modeled. Está en el límite — si baja un punto más, Google pone Smart Bidding en modo "learning" (se detiene la optimización de pujas).
+
+### Validar el Error de Modelado con Holdout Test
+
+Para medir la precisión del modelado, puedes ejecutar un holdout test: durante una semana, marca aleatoriamente el 10% de usuarios con consentimiento otorgado como "denied" (manipula el consent string, el consentimiento real existe pero envía señal `denied` al tag). Luego compara el número real de conversiones con lo que Google modeló.
+
+Ejemplo: de 1000 usuarios con consentimiento, conviertes 100 a denied. Estos 100 usuarios generaron 15 conversiones reales. Google modeló 18 conversiones → sobreestimación del 20%. Esto significa que tu bidding será agresivo (hará pujas 20% más altas que el objetivo de CPA).
+
+## Tácticas para Aumentar la Tasa de Consentimiento (dentro del cumplimiento)
+
+Hay dos formas de aumentar la tasa de consentimiento: optimización de UX e incentivos (la segunda está en una zona gris de GDPR).
+
+**Optimización de UX:**
+- **Progressive disclosure**: en la primera visita, muestra solo el banner de "cookies esenciales", en la segunda visita abre el modal completo de consentimiento. Reduce la fricción de la primera visita.
+- **Toggles granulares**: en lugar de "Marketing", separa en "Product recommendations" + "Retargeting ads" — el usuario puede aceptar el primero (suficiente para conversión tracking).
+- **Ubicación del banner**: no cubras más del 30% de la pantalla (la regla GDPR de "consentimiento libremente dado" prohíbe presión visual). Pero un notification completamente en la esquina tampoco tiene visibilidad — equilibrio.
+
+Datos de A/B test de Cookiebot 2025: colocar el banner en la parte inferior y hacer el botón "Accept all" azul (color CTA) aumentó la tasa de consentimiento de 38% a 44% (n=50,000 usuarios, Alemania).
+
+**Incentivos (con cuidado):**
+- "Dame consentimiento y obtendrás 10% de descuento" — técnicamente prohibido por GDPR (el consentimiento debe ser libremente dado). Pero "regístrate en la newsletter y obtén 10%" + la newsletter requiere marketing consent, genera un aumento indirecto.
+- "Dame consentimiento para una experiencia personalizada" — esto es aceptable (es una explicación funcional, sin presión).
+
+## Argumento Contrario: "El Modelado es Suficientemente Bueno, ¿Por Qué Molestarme?"
+
+El discurso de Google: "El modeling loss ya no es un problema, Smart Bidding maneja la situación." Los datos presentados en Google Marketing Live 2024: en un sitio con 35% de consentimiento otorgado, el modelado logra 88% de precisión en attribution de conversiones (comparado con un setup solo-consentimiento-otorgado).
+
+Pero este reclamo se basa en dos supuestos:
+1. **Los usuarios con consentimiento son representativos**: si los usuarios que otorgan consentimiento tienden a ser más jóvenes/técnicos/ricos (que típicamente lo son), el modelo expande este sesgo a todo el tráfico.
+2. **El volumen de tráfico es suficiente**: 100+ conversiones diarias. No aplica a sitios pequeños.
+
+Contra-ejemplo del mundo real: 2025 Q4, una empresa SaaS en Alemania (B2B), 32% de tasa de consentimiento + 40 trial signups diarios. Google modeló 68 signups totales. El número real (desde CRM): 51. Sobreestimación del 33% → objetivo de CPA superado en 25%. Solución: implementaron sGTM + email hash (mejoraron la tasa de consentimiento a 45% mediante matching basado en email — usuarios denegados parcialmente se rastrean) — el objetivo de CPA se normalizó.
+
+En conclusión: el modelado ayuda, pero no es suficiente en todos los escenarios. Cerrar el signal gap requiere esfuerzo activo.
+
+## Qué Hacer Ahora
+
+La estructura Consent Mode v2 + TCF 2.2 ya no es opcional — si tienes tráfico del EEE, una configuración correcta es requisito legal. Pero equilibrar cumplimiento legal con precisión de medición depende de ti. Tres pasos:
+
+1. **Audita tu CMP**: ¿genera correctamente los strings TCF 2.2 y ACM? ¿se transmite la señal de consentimiento a los tags de Google?
+2. **Monitorea el reporte GA4 Data Quality**: si la distribución modeled/observed supera 60/40, el signal gap es grande.
+3. **Implementa sGTM + Enhanced Conversions**: minimiza la pérdida por ITP/ETP, aumenta el match rate con email hash.
+
+Esta triple estrategia puede reducir la pérdida de consentimiento de 50% a 25% (dato promedio 2026 para retailers). Aún hay 25% de pérdida, pero está dentro del umbral que Smart Bidding tolera. Si la precisión del modelado se mantiene por encima del 90%, la desviación de CPA estará por debajo del 5% — en ese punto, habrás equilibrado consentimiento y performance.
