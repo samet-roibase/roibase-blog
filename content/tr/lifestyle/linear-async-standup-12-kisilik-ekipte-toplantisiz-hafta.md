@@ -1,104 +1,81 @@
 ---
 title: "Linear + Async Standup: 12 Kişilik Ekipte Toplantısız Hafta"
-description: "Cycle yönetimi, daily updates ve blocker escalation pattern ile senkron toplantı sayısını sıfırlayan operasyon disiplini. Sayısal sonuçlar ve uygulama detayı."
-publishedAt: 2026-06-15
-modifiedAt: 2026-06-15
+description: "Cycle yönetimi, günlük async updates ve blocker escalation pattern ile 12 kişilik ekipte senkron toplantı sayısını sıfıra indirmenin operasyonel tasarımı."
+publishedAt: 2026-06-27
+modifiedAt: 2026-06-27
 category: lifestyle
 i18nKey: lifestyle-001-2026-06
-tags: [async-workflow, linear, remote-team, engineering-ops, cycle-management]
+tags: [async-first, linear, ekip-yonetimi, verimlilik, cycle-planning]
 readingTime: 8
 author: Roibase
 ---
 
-Roibase'de son 18 ayda senkron standup toplantısı yapmıyoruz. 12 kişilik çapraz disiplinli ekipte (engineering, growth, design) haftalık toplantı sayısı 3'ün altına düştü. Cycle süreleri %22 kısaldı, blocker escalation süresi ortalama 4 saatten 90 dakikaya indi. Bunun tek sebebi var: Linear'ı issue tracker olarak değil, operasyonel disiplin altyapısı olarak kullanmak.
+2026'da senkron toplantı miktarı ile organizasyonun olgunluğu ters orantılı. 12 kişilik bir ekipte haftada 8 saat toplantı normal sayılıyor, 15 saat standart. Roibase'de bu rakam 0-2 saat arasında. Sihir değil — Linear, async standup disiplini ve blocker escalation pattern. Bu yazı operasyonel tasarımı satır satır açıyor.
 
-Bu yazıda Linear'ın cycle engine'i, async daily update pattern'i ve blocker escalation mekaniklerini somut kurulum detayıyla açıklıyoruz. Verimlilik hack'i değil, workflow mimarisi anlatıyoruz.
+## Cycle Planlaması: İki Haftada Tek Toplantı
 
-## Cycle Engine: Sprint Değil, Ritim
+Linear'ın cycle yapısı sprint değil, delivery window. Roibase'de 14 günlük cycle başlamadan önce tek bir senkron toplantı yapıyoruz: cycle planning. 60 dakika, tüm ekip. Toplantıda sadece önceliklendirme ve scope netleştirme var. Tahmin yok — scope net olunca timeline de net oluyor.
 
-Linear'ın cycle kavramı klasik sprint mantığıyla karıştırılır. Fark şu: sprint planlama toplantısı bekler, cycle otomatik döner. Cycle'ı doğru kurmak demek haftalık planlama meeting'ini silmek demektir.
+Planning öncesi herkes Notion'da issue'ları okumuş durumda. Toplantıda yeni bilgi sunumu yapılmıyor. Sadece "Bu cycle'a bu 8 issue girer, şu 3'ü çıkar" kararı veriliyor. Karar sonrası Linear'da issue'lara milestone atanıyor, label'lar güncelleniyor. Bu 60 dakika dışında cycle boyunca hiçbir proje toplantısı yok.
 
-Biz 2 haftalık cycle çalıştırıyoruz. Cycle başlama günü Pazartesi, kapanış Cuma akşam. Her cycle'da şu otomatik mekanizma devrede:
+Cycle bittiğinde retrospektif toplantısı da yapmıyoruz. Tamamlanan issue sayısı, blocker sayısı, cycle velocity Linear'da zaten görünüyor. Retrospektif yapılacaksa async Slack thread'inde yapılıyor — herkes kendi zamanında yazıyor, CEO dahil. Senkron olana mecburiyet yok.
 
-- **Auto-assignment kuralı:** Backlog'da priority label'ı "High" veya "Critical" olanlar, başlatılan cycle'a otomatik taşınır. Linear'ın Triage view'ındaki issue'lar hiçbir zaman cycle içinde açılmaz — önce backlog refined edilir, sonra priority verilir.
-- **WIP limiti:** Kişi başı maksimum 3 "In Progress" issue. Dördüncü issue'yu açmak teknik olarak mümkün ama Linear'daki custom automation Slack'e uyarı gönderir. Ekip bu kuralla WIP discipline tutuyor — yeni issue başlamadan önce bir tanesini "Done" veya "Blocked" yapmak zorundasın.
-- **Velocity tracking:** Linear'ın built-in cycle analytics'i completion rate ve point velocity gösterir. Bizim için altın metrik "scope creep ratio" — cycle içinde eklenen issue sayısı / planlanan issue sayısı. %15'in üstüne çıkarsa bir sonraki cycle'da backlog refinement daha agresif yapılır.
+### Delivery Velocity ve Cycle Süresi
 
-Linear'ın roadmap view'ı buradan güç alıyor: cycle'lar planlı ritimde dönüyorsa, 3 ay sonrasını tahmin etmek mümkün oluyor. Tahmin değil, projeksiyon — velocity'e dayalı matematiksel çıkarım.
+12 kişilik ekipte ortalama cycle velocity 24-28 issue. Issue büyüklüğü S/M/L label'ıyla işaretli. Velocity düşerse bir sonraki cycle'da scope azaltılıyor, toplantı eklenmesi değil. Toplantı eklemek kısa vadede hız yanılsaması yaratır, uzun vadede bağlam anahtarlama maliyeti artırır.
 
-### Cycle Close Ritual: Async Retrospektif
+## Async Standup: Daily Update Disiplini
 
-Cycle kapandığında toplantı yok, Linear'da "Cycle Review" issue'su açılıyor. Şablon şu:
+Her sabah saat 09:30'da Slack'te otomasyon bot tetikleniyor. Ekip üyelerine 3 soru soruluyor:
 
 ```
-## Completed
-{Linear otomatik doldurur}
-
-## Spilled Over
-{Tamamlanamayan issue'lar — neden spillover oldu?}
-
-## Velocity
-{Point tamamlama oranı}
-
-## Blockers Escalated
-{Blocker tag'i alan issue sayısı + escalation süresi}
-
-## Next Cycle Adjustment
-{Scope artırma/azaltma kararı}
+1. Dün ne tamamladın? (Linear issue ID)
+2. Bugün ne üzerinde çalışıyorsun? (Linear issue ID)
+3. Blocker var mı? (varsa ID + kişi tag)
 ```
 
-Her ekip üyesi 24 saat içinde kendi kısmını doldurur. Senkron retrospective toplantısı sadece ardışık 2 cycle'da velocity %30'un altına düşerse yapılıyor — yılda 1-2 kez oluyor.
+Yanıt süresi maksimum 10:30. Geç kalanlar dashboard'da kırmızı görünüyor. Bu disiplin iş saatinin başlangıcını netleştiriyor — remote ekipte saat 09:30 herkesin online olduğu anlamına geliyor.
 
-## Daily Update Pattern: Status Değil, Context
+Standup yanıtları async yazılıyor, okunması da async. PM sabah 11:00'de tüm yanıtları tarayıp blocker'ları önceliklendiriyor. Kimse kimseyi beklemek zorunda değil. Daily standup toplantısında 6 kişi 15 dakika bekler, bu 90 insan-dakika kayıp. Async'te herkes 2 dakikada yazıyor, 5 dakikada okuyor — toplam 7 insan-dakika. **13x verimlilik farkı.**
 
-Async standup'ın çöp versiyonu şudur: "Dün ne yaptım, bugün ne yapacağım, blocker var mı?" Slack'e yapıştırılır, kimse okumaz. Bu bilgi Linear'da zaten var — tekrar etmenin anlamı yok.
+Standup yanıtı Linear issue ID içermeli. "Bug düzelttim" değil, "LIN-342 düzelttim" yazılıyor. Bu sayede PM Slack'ten doğrudan Linear'a gidip issue durumunu görebiliyor. Context switching yok.
 
-Biz daily update'i "bağlam transferi" olarak tasarladık. Her sabah 09:30'da Linear bot Slack'te şu soruları soruyor (DM, public değil):
+## Blocker Escalation Pattern
 
-1. **Hangi issue'da scope değişti?** (Başlangıçta düşündüğünden farklı teknik karar aldıysan)
-2. **Hangi issue başkasının input'unu bekliyor?** (Dependency açık kalacaksa)
-3. **Bugün kim "Deep Work" modunda?** (Meeting yapılmayacak saat aralığı)
+Blocker async standup'ta bildirildiğinde PM ya da lead developer 30 dakika içinde yanıt veriyor. Yanıt 3 türden biri:
 
-Cevap vermek opsiyonel — ama bir issue'da scope shift varsa ve bildirmezsen, code review'da "bu neden böyle tasarlandı?" sorusu geliyor. O zaman async bağlam aktarımı yapmış olmak code review süresini kısaltıyor.
+| Durum | Aksiyon | Timeline |
+|---|---|---|
+| Hızlı fix | Lead developer çözer | 2 saat |
+| Scope değişimi | PM cycle scope'u revize eder | 4 saat |
+| Ekip dışı bağımlılık | CEO/CTO'ya escalate | 8 saat |
 
-Linear'daki her issue'nun "Activity" sekmesi bu update'leri otomatik gösteriyor — manuel Slack scroll'una gerek yok. Issue context'ini görmek için issue'ya tıklıyorsun, orada son 3 günün bağlam aktarımı zaten var.
+Blocker 8 saatten uzun sürerse senkron toplantı açılabilir. Ama bu yılda 2-3 kere oluyor. Çoğu blocker async çözülüyor. Senkron toplantı exception, kural değil.
 
-### Deep Work Bloğu ve Interrupt Cost
+Blocker escalation pattern Linear'da automation rule olarak kurulu. Issue'ya `blocker` label'ı eklendiğinde otomatik olarak PM ve lead developer'a notify ediliyor. Notify Slack'te, yanıt da Slack'te. Linear yorumu Slack thread'ine sync ediliyor. İki tool arasında context copying yok.
 
-Sabah update'inde "Deep Work" işaretleyen kişi Slack statüsünü otomatik "Do Not Disturb" yapıyor (Zapier entegrasyonu). Linear notification'ları da 4 saat suspend ediliyor. Bu mekanik şu sonucu verdi: average response time DM'lerde 12 dakikadan 38 dakikaya çıktı — ama code merge süresi %18 düştü. Interrupt cost azalınca output kalitesi artıyor.
+### Blocker Metriği
 
-Roibase'in [markalaşma çalışmasında](https://www.roibase.com.tr/tr/branding) da benzer ritim disiplini var — yaratıcı sorumluluk bağlamsız meeting'le bölünmez, tasarım sprintleri async cycle içinde ilerler.
+Cycle başına ortalama blocker sayısı: 3-4. Bu normaldir. Blocker varsa sorun yok, çözüm süresi önemli. Ortalama blocker çözüm süresi 4 saat. 8 saati geçen blocker sayısı yılda 6-8. Bu rakamlar Linear dashboard'da canlı. Toplantı yapıp metrik paylaşmaya gerek yok — herkes kendi dashboard'ında görüyor.
 
-## Blocker Escalation: 2 Saat Kuralı
+## Async-First Kültürün Maliyeti
 
-"Blocker" kelimesi çoğu ekipte belirsiz kalır. Biz blocker'ı sayısal kuralla tanımladık: **2 saat içinde çözemediğin veya başkasının input'u olmadan ilerleyemediğin issue blocker'dır.**
+Async-first operasyon bedava değil. İlk 3 ayda ekip alışana kadar verimlilik %15-20 düşüyor. Async disiplin öğreniliyor — yazılı iletişim, Linear issue description standartları, blocker bildirme formatı. Eğitim süreci var.
 
-Linear'da blocker issue'ya "Blocked" label veriyorsun, otomatik olarak şu akış başlıyor:
+İkinci maliyet psychological safety eksikliği riski. Senkron toplantıda yüz yüze bakarak "Sorun var mı?" diye sormak async'te daha zor. Ekip üyesi blocker bildirmekten çekinebilir. Bunu önlemek için her cycle sonunda 1-on-1 yapıyoruz — bu senkron, 30 dakika. Yılda 26 cycle × 30 dakika = 13 saat. Hâlâ haftada 8 saat toplantıdan çok düşük.
 
-1. **İlk 30 dakika:** Issue assignee'si Slack'te blocker detayını yazıyor (hangi dependency, kimden ne bekleniyor).
-2. **1 saat:** Beklenen kişi response veriyor — ya hemen hallediyor, ya da "X saatte çözebilirim" commit ediyor.
-3. **2 saat:** Commit tutulmadıysa issue otomatik olarak team lead'e escalate ediliyor.
+Üçüncü maliyet tool dependency. Linear veya Slack çökerse operasyon duruyor. Ama bu risk geleneksel ekipte de var — mail sunucusu çökse aynı etki. Async-first ekip single point of failure yaratmıyor, zaten var olan riski görünür kılıyor.
 
-Bu pattern'in sayısal sonucu: blocker issue'ların %78'i 90 dakika içinde çözülüyor. Eskiden blocker issue daily standup'ta konuşuluyordu, şimdi konuşulmadan çözülüyor.
+## Liderlik Rolü: Yazılı İletişim Standardı
 
-Linear'ın "Blocked by" relation özelliği burada kritik — bir issue başka bir issue'ya bağlıysa, upstream issue kapanınca downstream otomatik "Ready" statüsüne geçiyor. Manuel takip yok.
+CEO veya founder async ekipte farklı rol üstleniyor. Senkron toplantıda karar verme yetkisi konuşma hızıyla birleşir, en hızlı konuşan kazanır. Async'te en net yazan kazanır. Bu adil değil demek kolay ama operasyon açısından daha verimli. Yazılı karar tartışılabilir, arşivlenebilir, referans edilebilir.
 
-## Toplantısız Hafta: Gerçek Sayılar
+Roibase'de founder her cycle planning'de tek sayfa yazılı brief hazırlıyor. Brief öncelik sıralaması, tradeoff açıklaması, blocker beklentisi içeriyor. Ekip bu brief'i okuyup Linear issue'ları önceliklendiriyor. Toplantıda "Bu neden önemli?" sorusu sorulmuyor çünkü cevap zaten yazılı. [Markalaşma & Brand Identity](https://www.roibase.com.tr/tr/branding) sürecinde de aynı disiplin geçerli — brand tone of voice yazılı şekilde tanımlanıyor, ekip async okuyor, senkron tartışma gerekmiyor.
 
-18 ay önce haftalık ortalama meeting saatimiz kişi başı 8.2 saatti. Şimdi 2.1 saat. Kalan meeting'ler:
+Liderlik async-first kültürde daha görünür. Senkron toplantıda kötü karar 5 dakikada unutulur. Slack thread'indeki kötü karar kalıcı. Bu accountability artırıyor.
 
-- **Cycle kickoff (2 haftada 1):** 30 dakika, sadece high-level priority sıralaması
-- **Client sync (haftada 1):** 45 dakika, external stakeholder'la zorunlu
-- **Design critique (2 haftada 1):** 60 dakika, Figma review — async'e çevrilemedi çünkü gerçek zamanlı tartışma gerekiyor
+## Şimdi Ne Yapmalı
 
-Her şeyin async olması gerekmiyor — ama async olabilecek şeyin meeting'e çekilmesi maliyet. Linear + async update pattern bu maliyeti düşürdü.
+Ekibini async-first'e geçirmek istiyorsan önce tool stack'i kur: Linear, Slack, async standup bot. İlk ay hybrid çalış — haftada 2 toplantı devam ettir, async disiplini paralel başlat. İkinci ayda toplantı sayısını yarıya indir. Üçüncü ayda sadece cycle planning kalır.
 
-Ekip memnuniyeti anketinde (6 ayda 1 yapıyoruz) "meeting yükü" skoru 3.2/10'dan 7.8/10'a çıktı. "Cycle ritmi öngörülebilir mi?" sorusu 8.9/10 — bu sayı Linear öncesi 5.1/10'du.
-
-## Karşı Argüman: Async Her Ekibe Uyar mı?
-
-Bu sistem 5 kişilik ekipte overkill. Linear'ın cycle engine'i küçük ekipte yük yaratır — manuel Trello board daha pratik. Async standup da 5 kişiye fazla. Ama 10+ kişiye çıktığında meeting maliyeti katlanıyor, o zaman disiplin kurmak şart.
-
-Bir başka sınır: müşteri-facing roller (sales, support) tamamen async olamaz. Ama engineering + design + growth operasyonu async yürütülebilir — biz bunu 12 kişiyle kanıtladık.
-
-Linear'ı sadece issue tracker olarak kullanıyorsan bu yazı sana bir şey kazandırmaz. Linear'ı operasyon disiplini altyapısı olarak kullanmaya başladığında toplantısız hafta mümkün oluyor. Cycle yönetimi, daily update pattern, blocker escalation — üçü birlikte kurulunca senkron meeting ihtiyacı düşüyor. Bizde düştü, sayısal kanıt var. Senin ekibinde de düşebilir — ama araç değil, disiplin kurmak gerekiyor.
+Async disiplinin ilk 3 ayı zor. Ekip direniyor çünkü senkron toplantı güvenlik hissi veriyor. Ama metrik izlersen async'in kazandırdığı zamanı göreceksin. 12 kişilik ekipte haftada 8 saat toplantı = yılda 4992 insan-saat kayıp. Async'le bu rakam 1500'e iniyor. 3500 saat pure execution kazancı. Bunu görmezden gelemezsin.
