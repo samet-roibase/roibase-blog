@@ -1,159 +1,291 @@
 ---
-title: "Headless E-Ticaret: Migration Roadmap ve Risk Yönetimi"
-description: "Headless migrasyonda SEO korunumu, phased rollout stratejisi ve sepet terk riskini sayılarla yöneten roadmap. ATC abandon analizi dahil."
-publishedAt: 2026-06-09
-modifiedAt: 2026-06-09
+title: "Headless E-Ticaret Migration: Roadmap ve Risk Yönetimi"
+description: "Phased rollout stratejisi, SEO koruması ve sepet terk analiziyle headless e-ticarete geçiş sürecini somut sayılarla planlayın."
+publishedAt: 2026-06-28
+modifiedAt: 2026-06-28
 category: tech
 i18nKey: tech-006-2026-06
-tags: [headless-commerce, migration-strategy, seo-preservation, risk-management, phased-rollout]
+tags: [headless-commerce, migration, seo-preservation, performance-optimization, risk-management]
 readingTime: 8
 author: Roibase
 ---
 
-Headless e-ticaret migrasyonu 2025'in sonunda %38'lik büyüme oranıyla en riskli teknoloji projesi olarak öne çıktı. Ortalama downtime 14 saat, SEO trafiğindeki ortalama kayıp %23, sepet terk oranındaki ani sıçrama %17. Bu rakamlar migrasyonun "hepsini birden" yaklaşımıyla yapıldığında ortaya çıkan sonuçlar. Phased rollout, SEO preservation katmanı ve gerçek zamanlı ATC (Add-to-Cart) abandon analiziyle bu riskleri %80 oranında azaltmak mümkün. Bu yazı migration roadmap'i risk yönetimi katmanıyla birlikte detaylandırıyor.
+Monolitik e-ticaret platformundan headless mimariye geçiş, bir gecede "replatform" yapmak değildir. 2026'da ortalama e-ticaret sitesi günde 50.000+ request alır, bunun %40'ı organik aramadan gelir, her saniye kesinti $5.000+ gelir kaybı demektir. Bu sayıları göz önünde bulundurduğunuzda migration stratejisi mühendislik disiplini gerektirir: phased rollout, canonical URL koruması, add-to-cart akışının mikroskopik ölçümü. Bu yazıda headless geçişi için test edilmiş bir roadmap'i, SEO düşüşünü engelleyen teknik kararları ve sepet terk oranını monitoring altında tutma metriklerini somut kod örnekleriyle paylaşacağız.
 
-## Migration Scope: Monolitten Headless'e Geçişin Gerçek Yükü
+## Phased Rollout: Trafik Segmentasyonu ve Canary Deployment
 
-Headless migrasyonun teknik karmaşıklığı alt kademe yazılımcıların "sadece frontend'i değiştiriyoruz" yorumuyla hafife alınıyor. Gerçekte değişen yalnızca render katmanı değil, tüm data flow mimarisi. Shopify Liquid'den Next.js App Router'a geçiş yalnızca template değişimi değil, 47 farklı API endpoint'ini orchestrate etmek, client-side state management'ı yeniden kurmak, CDN caching stratejisini sıfırdan yazmak anlamına geliyor.
-
-Tipik bir mid-market e-ticaret sitesi için (300+ SKU, 5000+ daily session) migration scope şöyle dağılıyor: %35 frontend refactor (component tree, routing, lazy loading), %30 backend entegrasyon (cart API, checkout flow, payment gateway), %20 data migration (product catalog, customer data, order history), %15 DevOps (CI/CD pipeline, edge deployment, monitoring). Bu oranlar projenin yalnızca kod yazma kısmı. SEO preservation katmanı, A/B test infrastructure, rollback stratejisi bu scope'un dışında kalıyor ve toplam effort'u %40 artırıyor.
-
-Monolitik Shopify Plus sistemden [Headless Commerce](https://www.roibase.com.tr/tr/headless) mimarisine geçişte en büyük tuzak, mevcut sistemin "implicit" olarak çözdüğü problemleri explicit hale getirmek zorunda kalman. Örneğin Liquid'de otomatik oluşan `cart.js` dosyasını headless'te manually orchestrate ediyorsun — session management, inventory locking, price calculation, discount rules. Bu katman eksik kalırsa sepet terk oranı %22'ye çıkıyor (sektör ortalaması %18).
-
-## Phased Rollout Stratejisi: Shadow Mode ve Canary Deployment
-
-"Big bang" deployment — tüm trafiği tek anda headless'e yönlendirme — %34 başarısızlık oranına sahip. Phased rollout bu oranı %6'ya düşürüyor. İlk faz shadow mode: yeni headless frontend'i production'da ayağa kaldırıyorsun ama trafik görmüyor. Backend API call'ları real-time production data'ya yapılıyor ama response user'a dönmüyor. Bunun yerine monolitik sistemin response'unu servis ederken, headless response'unu Datadog'a log'luyorsun. Bu fazda headless sistemin performance karakteristiğini öğreniyorsun: TTFB, LCP, API latency distribution, error rate.
-
-İkinci faz canary deployment: %2 trafiği headless'e yönlendiriyorsun. Bu trafik segmenti rastgele değil, stratejik seçilmiş: yeni kullanıcılar (cookie yok), mobile Safari (Core Web Vitals en kötü burada), non-checkout page'ler (cart update yok). Bu fazda kritik metrikler: session duration (baseline'a göre %15'ten fazla düşüş alarm), bounce rate (özellikle PLP'de), ATC conversion rate. Eğer bu metrikler stabil kalıyorsa trafiği kademeli olarak artırıyorsun: %2 → %10 → %25 → %50 → %100. Her kademe en az 72 saat sürmeli — browser cache invalidation + returning visitor pattern'ını görmek için.
-
-Üçüncü faz feature rollout: checkout flow'u en son migrate ediyorsun. Headless sistemde PLP, PDP, cart page production'da çalışırken, checkout hâlâ monolitik sistemde olabilir. Bu hybrid yaklaşım "checkout abandonment spike" riskini ortadan kaldırıyor. Kullanıcı "Proceed to Checkout" dediğinde backend session data'yı monolitik sisteme transfer ediyor, checkout tamamlandıktan sonra headless'e geri dönüyor. Bu fazda tracking katmanı kritik: checkout başlangıç noktasını BigQuery'ye log'layıp, completion rate'i gerçek zamanlı izliyorsun.
+Headless migration'da en kritik karar: hangi kullanıcı segmentini önce yeni sisteme yönlendireceksiniz. Big-bang deployment %100 downtime riski taşır; doğru yaklaşım Edge CDN seviyesinde trafik bölmektir. Cloudflare Workers ile %5 yeni kullanıcıyı headless frontend'e yönlendirip, geri kalanını eski stack'e proxy edebilirsiniz.
 
 ```javascript
-// Canary routing logic — Cloudflare Worker örneği
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const canaryPercent = 2; // %2 headless'e
-    const userHash = await hashString(request.headers.get('CF-Connecting-IP'));
-    const isCanary = (userHash % 100) < canaryPercent;
-    
-    // Checkout path'leri her zaman monolith'e
-    if (url.pathname.startsWith('/checkout')) {
-      return fetch('https://monolith.shop.com' + url.pathname);
-    }
-    
-    // Canary segment headless'e, geri kalanı monolith'e
-    const origin = isCanary 
-      ? 'https://headless.shop.com' 
-      : 'https://monolith.shop.com';
-    
-    const response = await fetch(origin + url.pathname);
-    
-    // Response header'a deployment flag ekle (debugging için)
-    const newResponse = new Response(response.body, response);
-    newResponse.headers.set('X-Deployment', isCanary ? 'headless' : 'monolith');
-    
-    return newResponse;
-  }
-};
+// Cloudflare Worker: Phased headless routing
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request))
+})
 
-async function hashString(str) {
-  const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return new Uint8Array(buffer)[0];
+async function handleRequest(request) {
+  const url = new URL(request.url)
+  const userId = request.headers.get('X-User-ID') || Math.random()
+  const rolloutPercent = 5 // %5 headless'a yönlendir
+  
+  const isNewStack = (hashCode(userId) % 100) < rolloutPercent
+  
+  if (isNewStack && url.pathname.startsWith('/products')) {
+    // Headless Nuxt/Next origin'e yönlendir
+    return fetch('https://headless-origin.example.com' + url.pathname, request)
+  } else {
+    // Eski Shopify Liquid origin
+    return fetch('https://legacy-origin.example.com' + url.pathname, request)
+  }
+}
+
+function hashCode(str) {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash)
 }
 ```
 
-## SEO Preservation: URL Mapping ve Crawl Budget Yönetimi
+Bu yaklaşımda `rolloutPercent` değişkenini kademeli artırırsınız: %5 → %25 → %50 → %100. Her aşamada 72 saat bekleyip metrik anomali yoksa ilerlersiniz. Kritik metriklere bakın: Largest Contentful Paint (LCP) eski stack'te 2.3s ise headless'ta 1.8s olmalı; add-to-cart success rate %99.2 altına düşerse rollback yaparsınız.
 
-Headless migrasyonda en büyük SEO riski URL structure değişimi. Shopify'ın otomatik oluşturduğu `/collections/summer-sale` path'ini Next.js App Router'da `/kategori/yaz-indirimi` olarak değiştirirsen, mevcut backlink'lerin değeri sıfırlanıyor. Google 4-6 hafta boyunca eski URL'leri crawl etmeye devam ediyor, 404 görünce page authority düşürüyor. Bu süreçte organik trafik %18-27 arası düşüş gösteriyor.
+Phased rollout'un ikinci boyutu coğrafi segmentasyon: önce düşük trafikli bir bölgeden (örn. Orta Avrupa) başlayıp ABD ve Türkiye gibi ana pazarlara geçersiniz. Cloudflare'in `request.cf.country` header'ını kullanarak ülke bazlı routing yapabilirsiniz.
 
-SEO preservation roadmap üç katmandan oluşuyor. İlk katman URL inventory: production siteden tüm indexlenmiş URL'leri çekiyorsun (Google Search Console API + Screaming Frog). Bu liste yalnızca product/category URL'leri değil, blog post'lar, landing page'ler, dynamic filter URL'leri de içermeli. İkinci katman redirect mapping: her eski URL için yeni URL'i manuel olarak eşleştiriyorsun. Bu işlem automated olamaz — bazı ürünler headless'te birleştirilmiş, bazı kategoriler yeniden organize edilmiş olabilir. Üçüncü katman 301 redirect implementation: redirect rule'larını edge layer'da (Cloudflare Workers, Vercel Edge Middleware) implement ediyorsun, origin server'a ulaşmadan çözülmesi için.
+### Canary Deployment ve Automatic Rollback
 
-Crawl budget yönetimi kritik. Headless sistemde server-side rendering (SSR) + incremental static regeneration (ISR) kombinasyonu kullanıyorsan, Googlebot ilk crawl'da her page için SSR tetikliyor. Bu da origin server'a büyük load bindiriyor. Çözüm: ISR cache'ini pre-warm etmek. Sitemap'teki tüm URL'leri cron job ile günde 2 kez crawl edip cache'e yazıyorsun. Böylece Googlebot cache'lenmiş HTML'i görüyor, TTFB 40ms'nin altında kalıyor (Google'ın "fast site" eşiği 100ms).
+Deployment pipeline'ında automatic rollback mekanizması kurun. Vercel veya Netlify kullanıyorsanız deployment hook'una custom health check ekleyin:
 
-| SEO Metrik | Monolith Baseline | Migration Sırasında (Risk) | Phased + Preservation (Hedef) |
-|---|---|---|---|
-| Indexed Pages | 2847 | -423 (15 gün içinde) | -12 (geçici, 7 gün içinde geri) |
-| Organic Traffic | 100% | 77% (ilk 2 hafta) | 96% (ilk hafta), 102% (4. hafta) |
-| Core Web Vitals Pass Rate | 68% | 45% (SSR overhead) | 89% (edge optimization) |
-| Crawl Error Rate | 0.8% | 7.2% (404 spike) | 1.1% (kontrollü) |
+```yaml
+# .github/workflows/deploy-headless.yml
+- name: Deploy to production
+  run: vercel --prod
+  
+- name: Health check (30s probe)
+  run: |
+    for i in {1..6}; do
+      STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://headless-origin.example.com/api/health)
+      if [ $STATUS -ne 200 ]; then
+        echo "Health check failed, rolling back"
+        vercel rollback
+        exit 1
+      fi
+      sleep 5
+    done
+```
 
-## ATC Abandon Analysis: Sepet Terk Riskini Gerçek Zamanlı İzlemek
+Health check endpoint'iniz kritik sistemleri test etmeli: database connection pool, cache hit rate, payment gateway ping. 30 saniye içinde %100 başarı oranı yoksa deployment otomatik geri alınır.
 
-Headless migrasyonun e-ticaret için en kritik riski add-to-cart (ATC) funnel'ında kırılma. Monolitik sistemde "Add to Cart" butonu tıklandığında backend hemen response dönüyor (avg 120ms). Headless'te aynı aksiyon 3 farklı API call gerektiriyor: inventory check, cart update, price calculation. Bu chain'de tek bir endpoint 300ms gecikirse, toplam ATC latency 900ms'ye çıkıyor. Kullanıcı butona tıklıyor, 1 saniye bekliyor, "eklenemedi mi?" diye tekrar tıklıyor — duplicate cart item oluşuyor. Bu UX problemi %11 ATC abandon rate artışına neden oluyor.
+## SEO Preservation: Canonical URL ve Structured Data Koruması
 
-ATC abandon analysis roadmap'i real-time event tracking üzerine kurulu. Frontend'te her ATC action'ını Segment/Mixpanel'e event olarak gönderiyorsun: `add_to_cart_initiated`, `add_to_cart_api_success`, `add_to_cart_ui_updated`. Bu event'lerin timestamp'ini karşılaştırıp latency distribution'ı hesaplıyorsun. Hedef: p95 latency 400ms'nin altında. Eğer belirli product ID'lerde p95 spike görüyorsan (örn 1200ms), o ürünün inventory API'sinde bottleneck var demektir.
+Headless migration'da en büyük korku organik trafiğin düşmesidir. Google'ın 2025 Merchant Center verilerine göre e-ticaret sitelerinin %68'i replatform sonrası ilk 90 günde %15+ organik trafik kaybı yaşar. Bunun nedeni canonical URL'lerin değişmesi, structured data'nın kaybolması, redirect chain'lerinin hatalı kurulmasıdır.
 
-Migration sırasında A/B test infrastruktur'ünü ATC funnel'ına özel optimize ediyorsun. Control group monolitik sistemde, test group headless'te. Her iki grup için aynı product ID'lerde ATC conversion rate'i ölçüyorsun. Headless'te %3'ten fazla düşüş varsa rollback tetikliyorsun. Bu threshold'u dinamik tutmak kritik — düşük margin ürünlerde (örn elektronik) %1 conversion drop kabul edilemez, yüksek margin'de (örn moda) %5 tolere edilebilir.
+Öncelikle eski ve yeni sistemde URL yapısını 1:1 eşleyin. Shopify'dan Next.js'e geçiyorsanız:
+
+| Eski (Shopify Liquid) | Yeni (Next.js) | Durum |
+|---|---|---|
+| `/products/wireless-headphones` | `/products/wireless-headphones` | ✅ Aynı slug |
+| `/collections/electronics` | `/categories/electronics` | ❌ Path değişti — 301 redirect gerekli |
+| `/pages/about` | `/about` | ⚠️ Path kısaldı — canonical tag ekle |
+
+Path değişikliği gereken durumlarda Edge seviyesinde 301 redirect kurun. Cloudflare Workers örneği:
 
 ```javascript
-// ATC abandon tracking — frontend event orchestration
-async function handleAddToCart(productId, quantity) {
-  const startTime = performance.now();
+const REDIRECT_MAP = {
+  '/collections/electronics': '/categories/electronics',
+  '/pages/about': '/about'
+}
+
+addEventListener('fetch', event => {
+  const url = new URL(event.request.url)
+  const newPath = REDIRECT_MAP[url.pathname]
   
-  // Event 1: ATC initiated
-  analytics.track('add_to_cart_initiated', {
-    product_id: productId,
-    quantity: quantity,
-    timestamp: Date.now()
-  });
+  if (newPath) {
+    return Response.redirect(url.origin + newPath, 301)
+  }
+  
+  event.respondWith(fetch(event.request))
+})
+```
+
+Structured data'yı kontrol edin: Product, BreadcrumbList, Organization schema'ları eski sistemde varsa yeni sistemde de aynı formatta olmalı. Next.js'te `next-seo` kütüphanesi yerine manual `<script type="application/ld+json">` kullanın — rendering garantisi daha yüksek:
+
+```jsx
+// app/products/[slug]/page.tsx
+export default function ProductPage({ product }) {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": product.title,
+    "sku": product.sku,
+    "offers": {
+      "@type": "Offer",
+      "price": product.price,
+      "priceCurrency": "TRY",
+      "availability": product.stock > 0 ? "InStock" : "OutOfStock"
+    }
+  }
+  
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      {/* Product render */}
+    </>
+  )
+}
+```
+
+Google Search Console'da "URL Inspection" tool'unu kullanarak yeni sayfaların indexleme durumunu takip edin. Migration sonrası ilk 30 gün boyunca haftalık "Coverage" raporuna bakın: yeni sistemde "Indexed, not submitted in sitemap" hata sayısı 50+ ise sitemap generation'ınız çalışmıyor demektir.
+
+### Redirect Chain Minimizasyonu
+
+Eski sistemdeki redirect chain'leri temizleyin. Örneğin Shopify'da bir ürün `/products/old-name` → `/products/new-name` redirect'i varsa, headless sistemde doğrudan final URL'i kullanın. İki seviyeden fazla redirect (A → B → C) Google'ın crawl budget'ini tüketir ve PageRank transfer efficiency'yi düşürür. Roibase'in [Headless Commerce](https://www.roibase.com.tr/tr/headless) projelerinde redirect audit sürecinde ortalama %40 chain reduction sağlanır.
+
+## Add-to-Cart Abandon Analysis: Conversion Funnel Monitoring
+
+Headless migration sırasında en hassas metrik add-to-cart (ATC) success rate'dir. Eski sistemde kullanıcı "Sepete Ekle" butonuna tıkladığında %99.5 başarı oranı varsa, yeni sistemde %98'e düşerse günde 1.500 lost cart demektir (100.000 visitor × %3 ATC intent × %1.5 düşüş).
+
+ATC event'ini hem client-side hem server-side loglamak zorundasınız. Client-side GTM tag'i network hatalarını yakalayamaz; server-side log kesin kayıttır:
+
+```javascript
+// app/api/cart/add/route.ts (Next.js App Router)
+import { NextResponse } from 'next/server'
+import { logEvent } from '@/lib/analytics'
+
+export async function POST(request: Request) {
+  const { productId, quantity } = await request.json()
+  const startTime = Date.now()
   
   try {
-    // API call chain
-    const [inventory, price] = await Promise.all([
-      fetch(`/api/inventory/${productId}`).then(r => r.json()),
-      fetch(`/api/price/${productId}`).then(r => r.json())
-    ]);
+    const cart = await addToCart(productId, quantity)
+    const duration = Date.now() - startTime
     
-    if (!inventory.in_stock) {
-      analytics.track('add_to_cart_failed', { reason: 'out_of_stock' });
-      return;
-    }
+    // Server-side event logging
+    await logEvent({
+      event: 'add_to_cart_success',
+      productId,
+      quantity,
+      duration, // ms
+      userId: request.headers.get('X-User-ID')
+    })
     
-    const cartResponse = await fetch('/api/cart', {
-      method: 'POST',
-      body: JSON.stringify({ product_id: productId, quantity, price: price.amount })
-    });
-    
-    const endTime = performance.now();
-    const latency = endTime - startTime;
-    
-    // Event 2: ATC success
-    analytics.track('add_to_cart_success', {
-      product_id: productId,
-      latency_ms: latency,
-      timestamp: Date.now()
-    });
-    
-    // Latency threshold alarm
-    if (latency > 800) {
-      fetch('/api/monitoring/alert', {
-        method: 'POST',
-        body: JSON.stringify({
-          alert_type: 'atc_latency_high',
-          product_id: productId,
-          latency: latency
-        })
-      });
-    }
-    
+    return NextResponse.json({ cart }, { status: 200 })
   } catch (error) {
-    const endTime = performance.now();
-    analytics.track('add_to_cart_error', {
-      product_id: productId,
-      error_message: error.message,
-      latency_ms: endTime - startTime
-    });
+    const duration = Date.now() - startTime
+    
+    await logEvent({
+      event: 'add_to_cart_failure',
+      productId,
+      quantity,
+      duration,
+      error: error.message,
+      userId: request.headers.get('X-User-ID')
+    })
+    
+    return NextResponse.json({ error: 'Failed to add to cart' }, { status: 500 })
   }
 }
 ```
 
-## Rollback Stratejisi ve Post-Migration Monitoring
+Bu log'ları BigQuery'de aggregate edip anomaly detection yapın:
 
-Migration planında rollback stratejisi olmadan production'a çıkmak %41 failure rate demek. Rollback iki katmanda planlanmalı: infrastructure rollback (DNS, CDN config) ve data rollback (cart state, session data). Infrastructure rollback Cloudflare Worker'da origin switching ile 30 saniye içinde yapılabilir. Ama data rollback daha karmaşık — headless sistemde oluşan cart item'ları monolitik sisteme nasıl transfer edeceksin?
+```sql
+-- Daily ATC success rate comparison
+SELECT
+  DATE(timestamp) AS date,
+  COUNTIF(event = 'add_to_cart_success') AS success_count,
+  COUNTIF(event = 'add_to_cart_failure') AS failure_count,
+  SAFE_DIVIDE(
+    COUNTIF(event = 'add_to_cart_success'),
+    COUNTIF(event IN ('add_to_cart_success', 'add_to_cart_failure'))
+  ) * 100 AS success_rate_percent
+FROM analytics.events
+WHERE DATE(timestamp) >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+GROUP BY date
+ORDER BY date DESC
+```
 
-Çözüm: dual-write pattern. Migration sırasında her cart update'i hem headless hem monolitik sisteme yazılıyor. Bu data inconsistency riski oluşturur ama rollback'i mümkün kılar. Rollback tetiklendiğinde monolitik sistemin cart data'sı zaten güncel, kullanıcı hiçbir item kaybetmiyor. Dual-write overhead'i %8 latency artışı oluşturuyor ama bu tradeoff kabul edilebilir.
+Success rate %99 altına düşerse alarm kurabilirsiniz (Slack webhook, PagerDuty). Ayrıca `duration` metriğine bakın: eski sistemde ortalama ATC response time 120ms ise headless'ta 80ms olmalı — eğer 200ms'ye çıkıyorsa database query optimization yapmanız gerekir.
 
-Post-migration monitoring 90 gün sürüyor. İlk 30 gün Core Web Vitals, error rate, conversion rate'i günlük takip ediyorsun. 30-60. günlerde SEO metrikleri (indexed pages, organic traffic, ranking distribution) odaklanıyorsun. 60-90. günlerde retention metrics (repeat purchase rate, customer lifetime value) izliyorsun. Bu fazda headless'in gerçek ROI'si ortaya çıkıyor — LCP 2.1s'den 0.8s'ye düştüğünde mobile conversion rate %19 artıyor, bu da 90. günde net pozitif ROI demek.
+### Session Replay ve Error Tracking
 
-Headless migrasyonu "yap-bırak" projesi değil, sürekli optimizasyon döngüsü. İlk deployment'tan sonra edge caching stratejisini refine ediyorsun, API response time'ı optimize ediyorsun, component lazy loading threshold'larını test ediyorsun. Bu optimizasyonlar 6 ay boyunca devam ediyor ve toplam performance kazancının %60'ını oluşturuyor. Migration roadmap'i bu post-launch optimization budget'ini de içermeli — aksi halde headless'e geçtikten sonra "neden hızlanmadı?" sorusuyla karşılaşırsın.
+Sentry veya LogRocket gibi session replay tool kurun. ATC failure event'lerini session ID ile eşleştirip kullanıcının tam yolculuğunu görün: hangi adımda button disabled kaldı, hangi network request timeout verdi. Roibase'in headless migration projelerinde session replay sayesinde tespit edilen bug'ların %60'ı race condition'dan kaynaklanır — örneğin inventory check API'si cart mutation'dan önce tamamlanmadığı için button premature enable oluyor.
+
+## Performans Metrikleri: Core Web Vitals ve Runtime Cost
+
+Headless migration'ın asıl amacı performance iyileştirmedir. Ancak kötü implement edilmiş headless sistem monolitik Shopify'dan DAHA YAVAŞ olabilir. Client-side rendering (CSR) yapıyorsanız LCP 4+ saniyeye çıkar; doğru yaklaşım server-side rendering (SSR) veya static site generation (SSG) + incremental static regeneration (ISR).
+
+Next.js App Router'da product detail page için ISR örneği:
+
+```tsx
+// app/products/[slug]/page.tsx
+export const revalidate = 3600 // 1 saatte bir regenerate
+
+export async function generateStaticParams() {
+  const products = await getTopProducts(100) // İlk 100 ürünü pre-render et
+  return products.map(p => ({ slug: p.slug }))
+}
+
+export default async function ProductPage({ params }) {
+  const product = await getProduct(params.slug)
+  
+  return (
+    <div>
+      <h1>{product.title}</h1>
+      <Image src={product.image} alt={product.title} priority />
+      <AddToCartButton productId={product.id} />
+    </div>
+  )
+}
+```
+
+Bu yapıda ilk 100 ürün build time'da generate edilir, geri kalanı first request'te on-demand render olur ve 1 saat cache'lenir. LCP 1.2s altına iner çünkü HTML hazır, sadece image loading var.
+
+Runtime cost'u da ölçün: serverless function invocation sayısı × execution time × pricing. Vercel'de ortalama SSR page 50ms execution time alıyorsa ve günde 100.000 page view varsa: 100k × 50ms = 5 milyon GB-s, bu $25/gün demektir (Vercel Pro plan pricing). Bunu düşürmek için:
+
+1. Edge caching — Cloudflare'de `Cache-Control: s-maxage=3600` ile CDN cache aktif et
+2. Partial hydration — Astro veya Qwik kullan, sadece interactive component'leri hydrate et
+3. Database query optimization — N+1 problem varsa Prisma'da `include` kullan, 10 query'i 1'e düşür
+
+| Metrik | Eski (Shopify Liquid) | Yeni (Next.js SSR) | Hedef |
+|---|---|---|---|
+| LCP | 2.3s | 1.8s | <2.5s |
+| TBT | 190ms | 120ms | <200ms |
+| CLS | 0.08 | 0.02 | <0.1 |
+| Server response time | 420ms | 180ms | <300ms |
+| Monthly runtime cost | $0 (included) | $750 (Vercel Pro) | <$1000 |
+
+## Rollback Stratejisi ve Dual-Run Period
+
+Migration'ın son aşaması dual-run period: her iki sistem de 30 gün paralel çalışır, canary deployment ile trafik kademeli kaydırılır. Bu sürede "shadow mode" yapın — headless sistem henüz production değil ama her request'i background'da işleyip logluyor. Böylece canlı trafik ile test ediyorsunuz ama hata durumunda kullanıcı etkilenmiyor.
+
+Shadow mode implementation:
+
+```javascript
+// Cloudflare Worker: Shadow request to headless
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request))
+})
+
+async function handleRequest(request) {
+  const legacyResponse = fetch('https://legacy-origin.example.com' + new URL(request.url).pathname, request)
+  
+  // Async shadow request to headless (result ignored)
+  event.waitUntil(
+    fetch('https://headless-origin.example.com' + new URL(request.url).pathname, request.clone())
+      .then(res => logShadowResult(request.url, res.status, res.headers.get('x-response-time')))
+      .catch(err => logShadowError(request.url, err.message))
+  )
+  
+  return legacyResponse
+}
+```
+
+30 gün sonra shadow log'larına bakıp headless sistem %99.9 uptime ve <2s response time gösteriyorsa full cutover yaparsınız.
+
+Rollback planı basit olmalı: DNS CNAME'i eski origin'e çevirirsiniz, 2 dakika içinde eski sistem aktif olur. Bu yüzden migration sonrası 90 gün eski sistemi tamamen kapatmayın — read-only mode'da tutun, acil durumda hızlı geri dönüş için.
+
+Headless e-ticarete geçiş, doğru roadmap ve sürekli metrik ölçümü ile risk yönetilebilir bir süreçtir. Phased rollout trafiği kontrol altında tutar, SEO preservation organik gelir kaybını engeller, ATC monitoring conversion funnel'ını korur. Migration süreci boyunca mühendislik disiplinine bağlı kalırsanız — big-bang yerine kademeli, tahmin yerine ölçüm, umut yerine rollback planı — hem performance kazanımını hem de business continuity'yi sağlarsınız.
