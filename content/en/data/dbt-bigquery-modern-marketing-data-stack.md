@@ -1,8 +1,8 @@
 ---
-title: "Modern Marketing Data Stack with dbt + BigQuery"
-description: "From source mapping to semantic layer: how to turn marketing data into a decision engine. dbt modeling layers, exposure definitions, and production pipeline architecture."
-publishedAt: 2026-06-14
-modifiedAt: 2026-06-14
+title: "dbt + BigQuery for Modern Marketing Data Stack"
+description: "Source mapping, modeling layer, semantic layer, exposures: transforming marketing data into a production-ready architecture that powers decision-making."
+publishedAt: 2026-06-30
+modifiedAt: 2026-06-30
 category: data
 i18nKey: data-002-2026-06
 tags: [dbt, bigquery, data-modeling, semantic-layer, marketing-analytics]
@@ -10,245 +10,246 @@ readingTime: 8
 author: Roibase
 ---
 
-In 2026, marketing teams don't wrestle with data—they make decisions from it. GA4, Meta Ads, Google Ads, CRM, CDP, server-side GTM—each dumps into its own table. The team manually stitches data in spreadsheets, numbers shift every week, nobody trusts the source. This chaos vanishes with a modern data stack: BigQuery as the warehouse, dbt as the transformation layer, semantic layer as the metric graph. You version control your code, test every change, and metrics flow from a single source of truth. This article shows how dbt + BigQuery turns a marketing data pipeline into production-grade infrastructure.
+Marketing teams still generate reports from Excel pivots, data engineers rewrite SQL for every new question, KPIs don't reconcile across departments. In 2026, tolerating this scenario is an engineering failure. The modern marketing data stack operates in three layers: raw source integration, transformation layer, semantic layer. dbt + BigQuery delivers all three at production grade — with version control, test coverage, and lineage tracking included.
 
-## Source mapping: Standardizing raw data paths
+## Source Mapping: Moving Raw Data to a Trusted Zone
 
-dbt's first job is source mapping—fitting raw data from different systems into the same schema. In BigQuery, `analytics_123456.events_*` comes from GA4, `facebook_ads.ads_insights` from the Meta API, `crm.transactions` from Shopify. Each has a different timestamp format, different user identifier, different currency column. You define these raw tables in dbt's `sources.yml`:
+Pulling marketing data into BigQuery's central warehouse seems straightforward: ETL tools like Fivetran, Stitch, and Airbyte write GA4, Meta Ads, and Google Ads directly to `raw_` schemas. But six months in, when the raw table's schema shifts, downstream models break. dbt's **source definitions** put this risk under control.
 
 ```yaml
+# models/sources.yml
 version: 2
+
 sources:
   - name: ga4
-    database: analytics_123456
+    database: analytics_prod
+    schema: raw_ga4
     tables:
-      - name: events_
-        identifier: "events_*"
+      - name: events_*
+        freshness:
+          warn_after: {count: 6, period: hour}
+          error_after: {count: 12, period: hour}
         loaded_at_field: event_timestamp
-  - name: meta_ads
-    database: facebook_ads
-    schema: public
-    tables:
-      - name: ads_insights
-        loaded_at_field: date_start
+        columns:
+          - name: event_name
+            tests:
+              - not_null
+          - name: user_pseudo_id
+            tests:
+              - not_null
 ```
 
-This definition tells dbt: "These are upstream sources, I don't own them, but I'll test their freshness." Running `dbt source freshness` checks when the last data arrived—if Meta API is delayed, an alert fires. Without source mapping, every model writes `SELECT * FROM analytics_123456.events_20260614` directly; when the table name changes, 40 models break. With mapping, the reference becomes `{{ source('ga4', 'events_') }}`, and changes propagate from a single point.
+Source definitions serve three functions: **(1)** Alerting on upstream changes (the `freshness` metric posts to Slack), **(2)** Schema contracts (the columns list surfaces as documentation), **(3)** Lineage tracking (dbt docs shows which models depend on GA4). When Fivetran's schema changes, you'll catch it at compile time — not in production.
 
-GA4 event_timestamp is Unix microseconds, Meta ads date_start is an ISO string, CRM created_at is UTC datetime—all different formats. In source mapping, you extract a standard timestamp column: `TIMESTAMP_MICROS(event_timestamp) AS event_time` for GA4, `PARSE_TIMESTAMP('%Y-%m-%d', date_start) AS event_time` for Meta. This normalization feeds clean input downstream.
+During source mapping, tag identity signals: `user_id`, `client_id`, `fbclid`, `gclid`, `email_sha256`. In the modeling layer, you'll stitch these signals together and map them to a single `customer_id`. Losing signals in the raw table makes that impossible later.
 
-## Modeling layer: Staging, intermediate, mart
+### Partitioned Table Strategy
 
-dbt's power lies in layered modeling—staging, intermediate, and mart tiers. Staging models pull 1:1 from sources, only renaming and casting types. `stg_ga4_events.sql`:
+GA4's `events_*` wildcard tables are daily partitions (`events_20260630`). In dbt, define the wildcard source and filter with `_TABLE_SUFFIX`:
 
 ```sql
-SELECT
-  TIMESTAMP_MICROS(event_timestamp) AS event_time,
-  user_pseudo_id AS anonymous_id,
-  event_name,
-  (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'session_id') AS session_id,
-  geo.country,
-  device.category AS device_category
-FROM {{ source('ga4', 'events_') }}
-WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY))
-  AND FORMAT_DATE('%Y%m%d', CURRENT_DATE())
-```
-
-Staging delivers clean data with no business logic. Intermediate models layer in business logic: sessionization, attribution, funnel steps. `int_sessions.sql` aggregates GA4 events to session grain:
-
-```sql
-WITH session_events AS (
-  SELECT
-    session_id,
-    MIN(event_time) AS session_start,
-    MAX(event_time) AS session_end,
-    COUNT(DISTINCT CASE WHEN event_name = 'page_view' THEN event_time END) AS pageviews,
-    MAX(CASE WHEN event_name = 'purchase' THEN 1 ELSE 0 END) AS converted
-  FROM {{ ref('stg_ga4_events') }}
-  GROUP BY session_id
-)
-SELECT
-  *,
-  TIMESTAMP_DIFF(session_end, session_start, SECOND) AS duration_seconds
-FROM session_events
-```
-
-Mart models are the final consumption layer—BI tools, Looker, internal dashboards query here. `fct_marketing_performance.sql` unifies all channels, calculates spend + revenue + ROAS. Each mart focuses on one business entity: `dim_customers`, `fct_orders`, `fct_sessions`. Mart naming convention is critical—`dim_` for dimensions (customer, product), `fct_` for facts (transaction, event), `rpt_` for report aggregates.
-
-## Semantic layer: KPI definitions as code
-
-The semantic layer pulls metric definitions into dbt—"what is revenue," "how is CAC calculated"—no longer a spreadsheet, now YAML in your codebase. With dbt v1.6+, you build your metric graph in `metrics.yml`:
-
-```yaml
-version: 2
-metrics:
-  - name: revenue
-    label: Revenue
-    model: ref('fct_orders')
-    calculation_method: sum
-    expression: order_amount
-    timestamp: order_date
-    time_grains: [day, week, month, quarter]
-    dimensions:
-      - channel
-      - country
-      - device_category
-
-  - name: cac
-    label: Customer Acquisition Cost
-    calculation_method: derived
-    expression: "{{ metric('ad_spend') }} / {{ metric('new_customers') }}"
-    timestamp: acquisition_date
-    time_grains: [month, quarter]
-```
-
-With a semantic layer, your BI tool doesn't calculate CAC—dbt does. When Looker asks for CAC, dbt returns compiled SQL that joins spend and new customer tables, then divides. The definition is code, tracked in git history—"who changed the CAC formula and why" has an answer. The spreadsheet formula doesn't vanish; it has version control.
-
-At Roibase, semantic layer setup is part of [data analytics & insights engineering](https://www.roibase.com.tr/en/verianalizi) scope—not just metric definitions, but KPI tree mapping, dimension hierarchy, and grain standardization. For example, "revenue" is the sum of `fct_orders.order_amount`, but "recognized_revenue" filters the same table by `recognized_at` timestamp (SaaS subscription model). One table, two metrics, different business logic.
-
-## Exposures: Making downstream dependencies visible
-
-An exposure answers dbt's "who uses this model" question. If a Looker dashboard queries `fct_marketing_performance`, you define it in `exposures.yml`:
-
-```yaml
-version: 2
-exposures:
-  - name: marketing_dashboard
-    type: dashboard
-    maturity: high
-    owner:
-      name: Growth Team
-      email: growth@company.com
-    depends_on:
-      - ref('fct_marketing_performance')
-      - ref('dim_customers')
-    description: "Executive marketing dashboard — daily refresh, 90-day rolling window"
-    url: https://looker.company.com/dashboards/123
-```
-
-Without exposure definitions, when you change `fct_marketing_performance`, you don't know which dashboard breaks. Looker shows zero metrics, you debug for 2 hours. With exposures, running `dbt compile --select +exposure:marketing_dashboard` shows all upstream models—impact analysis before you change anything.
-
-Exposures aren't just BI tools—they include reverse ETL (Hightouch, Census):
-
-```yaml
-exposures:
-  - name: meta_capi_sync
-    type: application
-    maturity: high
-    depends_on:
-      - ref('dim_customers')
-    description: "Meta Conversion API — incremental customer events, 5-minute delay"
-```
-
-This signals: "If you change dim_customers, you'll break the schema sent to Meta CAPI." In production, model update → CAPI sync error → attribution data loss is prevented by early warning.
-
-## Production pipeline: Incremental builds and test coverage
-
-dbt in production doesn't run full refresh every day—it uses incremental models. `fct_orders.sql` reprocesses only the last 3 days:
-
-```sql
-{{ config(
+-- models/staging/stg_ga4_events.sql
+{{
+  config(
     materialized='incremental',
-    unique_key='order_id',
-    partition_by={'field': 'order_date', 'data_type': 'date'},
-    cluster_by=['customer_id', 'channel']
-) }}
+    partition_by={'field': 'event_date', 'data_type': 'date'},
+    cluster_by=['event_name', 'user_pseudo_id']
+  )
+}}
 
-SELECT
-  order_id,
-  customer_id,
-  order_date,
-  order_amount,
-  channel
-FROM {{ ref('stg_shopify_orders') }}
-
+select
+  parse_date('%Y%m%d', _table_suffix) as event_date,
+  event_timestamp,
+  event_name,
+  user_pseudo_id,
+  ...
+from {{ source('ga4', 'events_*') }}
+where _table_suffix >= format_date('%Y%m%d', date_sub(current_date(), interval 3 day))
 {% if is_incremental() %}
-WHERE order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  and parse_date('%Y%m%d', _table_suffix) > (select max(event_date) from {{ this }})
 {% endif %}
 ```
 
-Incremental builds cut BigQuery costs by 90%—scanning 50GB instead of 2TB. Partition + cluster boosts query performance: a `WHERE customer_id = 'X'` query hits only the relevant cluster, no full scan.
+This config writes `stg_ga4_events` with daily partitions in BigQuery and clusters by `event_name` + `user_pseudo_id` to cut query costs. Incremental materialization reduces 90-day history scans to 3 days — a 30× cost savings.
 
-Test coverage is critical. In dbt's `schema.yml`, you write tests for every model:
+## Modeling Layer: Codify Business Logic
+
+The staging layer cleans raw data, the intermediate layer builds join logic, the mart layer answers business questions. dbt separates these with folder structure: `staging/`, `intermediate/`, `marts/`.
+
+**Staging example** — Standardize Meta Ads columns:
+
+```sql
+-- models/staging/stg_meta_ads.sql
+select
+  date_start as report_date,
+  campaign_id,
+  campaign_name,
+  spend as cost_usd,
+  impressions,
+  clicks,
+  actions.value as conversions -- extract from nested JSON
+from {{ source('meta_ads', 'ads_insights') }}
+where date_start >= date_sub(current_date(), interval 90 day)
+```
+
+**Intermediate example** — Unify all paid media sources:
+
+```sql
+-- models/intermediate/int_paid_media_unified.sql
+with meta as (
+  select report_date, campaign_id, 'meta' as source, cost_usd, impressions, clicks, conversions
+  from {{ ref('stg_meta_ads') }}
+),
+google as (
+  select report_date, campaign_id, 'google' as source, cost_usd, impressions, clicks, conversions
+  from {{ ref('stg_google_ads') }}
+)
+
+select * from meta
+union all
+select * from google
+```
+
+**Mart example** — Daily performance dashboard:
+
+```sql
+-- models/marts/fct_daily_performance.sql
+select
+  report_date,
+  source,
+  sum(cost_usd) as total_cost,
+  sum(impressions) as total_impressions,
+  sum(clicks) as total_clicks,
+  sum(conversions) as total_conversions,
+  safe_divide(sum(clicks), sum(impressions)) as ctr,
+  safe_divide(sum(cost_usd), sum(conversions)) as cpa
+from {{ ref('int_paid_media_unified') }}
+group by 1, 2
+```
+
+The `ref()` function builds dbt's dependency graph. The `dbt run` command executes models in dependency order. If `int_paid_media_unified` changes, all downstream marts rebuild automatically.
+
+### Test Coverage
+
+Serving a bad KPI report in production is a six-figure mistake in e-commerce. dbt's generic tests add contracts to every model:
 
 ```yaml
+# models/marts/schema.yml
+version: 2
+
 models:
-  - name: fct_orders
+  - name: fct_daily_performance
     columns:
-      - name: order_id
+      - name: report_date
         tests:
-          - unique
           - not_null
-      - name: order_amount
+          - unique
+      - name: total_cost
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: ">= 0"
-      - name: order_date
+      - name: cpa
         tests:
-          - dbt_utils.recency:
-              datepart: day
-              interval: 7
+          - dbt_utils.expression_is_true:
+              expression: "is null or cpa >= 0"
 ```
 
-`dbt test` asserts these conditions in BigQuery—if order_amount goes negative, the build fails. In production, every commit runs through CI/CD: `dbt run --select state:modified+ → dbt test --select state:modified+`. Modified models and downstream dependencies run and test; if all passes, merge is allowed.
+The `dbt test` command validates these contracts. In the CI/CD pipeline, a failed test blocks the merge — bad data never reaches production. At Roibase, we target 85% test coverage on critical models (row count × field density metric).
 
-## Orchestration: Airflow, Prefect, dbt Cloud
+## Semantic Layer: Define Metrics Once
 
-dbt itself isn't an orchestrator—Airflow or Prefect schedules it. Example Airflow DAG:
+By late 2025, dbt Labs integrated "MetricFlow," its semantic layer, into dbt Cloud. When the marketing team asks for "conversion rate," the data team shouldn't rewrite SQL — the metric definition should live in one place. dbt's `metrics.yml` file provides this abstraction:
 
-```python
-from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
-from airflow.operators.bash import BashOperator
+```yaml
+# models/metrics.yml
+version: 2
 
-dbt_run = BashOperator(
-    task_id='dbt_run',
-    bash_command='cd /opt/dbt && dbt run --profiles-dir .',
-    dag=dag
-)
+metrics:
+  - name: conversion_rate
+    label: Conversion Rate
+    model: ref('fct_daily_performance')
+    calculation_method: derived
+    expression: "safe_divide(total_conversions, total_clicks)"
+    timestamp: report_date
+    time_grains: [day, week, month]
+    dimensions:
+      - source
 
-dbt_test = BashOperator(
-    task_id='dbt_test',
-    bash_command='cd /opt/dbt && dbt test',
-    dag=dag
-)
-
-dbt_run >> dbt_test
+  - name: cpa
+    label: Cost Per Acquisition
+    model: ref('fct_daily_performance')
+    calculation_method: derived
+    expression: "safe_divide(total_cost, total_conversions)"
+    timestamp: report_date
+    time_grains: [day, week, month]
+    dimensions:
+      - source
 ```
 
-dbt Cloud is the alternative—managed orchestration, Web IDE, Slack alerts. Most enterprises prefer Airflow because there are tasks beyond dbt: upstream API pulls, downstream reverse ETL, snapshot tables.
+The semantic layer serves two purposes: **(1)** When a metric is selected in a BI tool, SQL generates automatically (Looker, Tableau, Power BI integrations), **(2)** When a metric changes, all dashboards stay consistent. The decision to add shipping cost to CPA calculation requires one change — 40 dashboards update in one go.
 
-Schedule strategy ties to data freshness. GA4 events have 24-hour processing lag (processing_date ≠ event_date); Meta Ads Insights API isn't real-time. Staging models trigger on source freshness—when GA4 sends a new partition, `stg_ga4_events` refreshes, cascading through intermediate → mart. An Airflow sensor checks BigQuery's `_TABLE_SUFFIX`:
+MetricFlow is still beta (as of June 2026) but production-ready. An alternative: write custom metric functions as dbt macros:
 
-```python
-wait_for_ga4 = BigQueryTableExistenceSensor(
-    task_id='wait_for_ga4_partition',
-    project_id='analytics_123456',
-    dataset_id='events_',
-    table_id=f"events_{yesterday.strftime('%Y%m%d')}",
-    poke_interval=300
-)
+```sql
+-- macros/calculate_cpa.sql
+{% macro calculate_cpa(cost_column, conversion_column) %}
+  safe_divide({{ cost_column }}, nullif({{ conversion_column }}, 0))
+{% endmacro %}
 ```
 
-Once the partition is ready, the dbt chain triggers. This pattern solves late-arriving data—instead of blocking on API delays, the pipeline waits.
+Call `{{ calculate_cpa('total_cost', 'total_conversions') }}` in every mart model — metric changes propagate from a single source.
 
-## Tradeoffs: What dbt doesn't solve
+## Exposures: Link Models to BI Dashboards
 
-dbt is a transformation engine, not a data loader. Who pulls data into BigQuery? Fivetran, Airbyte, custom Python scripts. dbt assumes raw data is already there in its source definitions. The pattern is ELT: Extract-Load-Transform. Different from ETL—the Transform happens inside the warehouse. dbt handles the T; EL is a separate toolchain.
+dbt's `exposures.yml` tracks which model feeds which dashboard. This tracking is operational — when a model changes, you know which dashboards need testing:
 
-dbt doesn't support real-time streaming. Kafka → BigQuery streaming insert → dbt incremental model chain introduces minute-level latency. Sub-second use cases (fraud detection, dynamic pricing) need stream processors—Flink, Spark Structured Streaming, or Materialize. dbt isn't the tool.
+```yaml
+# models/exposures.yml
+version: 2
 
-dbt's Python model support (v1.3+) is limited. You can do pandas dataframe manipulation:
+exposures:
+  - name: executive_performance_dashboard
+    type: dashboard
+    maturity: high
+    url: https://lookerstudio.google.com/reporting/abc123
+    description: "Daily paid media performance for C-level"
+    depends_on:
+      - ref('fct_daily_performance')
+      - ref('fct_campaign_performance')
+    owner:
+      name: Growth Team
+      email: growth@company.com
 
-```python
-def model(dbt, session):
-    df = dbt.ref('stg_orders').to_pandas()
-    df['log_amount'] = np.log1p(df['order_amount'])
-    return df
+  - name: weekly_marketing_review
+    type: analysis
+    maturity: medium
+    url: https://docs.google.com/spreadsheets/d/xyz789
+    description: "Weekly deep-dive into channel mix"
+    depends_on:
+      - ref('fct_daily_performance')
+    owner:
+      name: Marketing Ops
+      email: mops@company.com
 ```
 
-But you're not training scikit-learn models here. BigQuery compute is expensive, Python runtime overhead is high. Complex transformations run faster in SQL. Feature engineering lives in dbt; model training happens in Vertex AI; inference in BigQuery ML. That's the pattern.
+Exposure lineage appears in the graph: after `dbt docs generate`, click on `fct_daily_performance` in the web UI to see which dashboards depend on it. Before making a breaking change to a model, you can auto-notify exposure owners via Slack webhook.
 
-## What to do now
+### Production Deployment Pattern
 
-If your marketing data still lives in manually stitched spreadsheets, the first move is setting up raw data flow to BigQuery. GA4 export, Meta/Google Ads API connectors (Fivetran, Supermetrics), CRM webhooks → BigQuery streaming insert. Once raw data is there, you create a dbt repository: staging models for source mapping, intermediate models for sessionization and attribution, mart models for final KPIs. In the first two weeks, `fct_sessions` and `fct_orders` are enough—dashboards point here, metrics stabilize. The semantic layer lands in week three, exposure mapping in week four. By week six, your production pipeline is git-controlled, test-covered, and incremental-optimized. Spreadsheets become read-only archives.
+dbt Cloud production jobs run in this sequence:
+
+1. **Source freshness check** — `dbt source freshness` (fails if upstream data lags)
+2. **Model run** — `dbt run --select tag:daily` (daily models build at 07:00)
+3. **Test execution** — `dbt test` (contract violations trigger rollback)
+4. **Documentation update** — `dbt docs generate` (lineage graph refreshes)
+
+Using a dbt job instead of BigQuery scheduled queries buys: version control (each deployment ties to a git commit), rollback capability (a bad model reverts in 5 minutes), Slack alerts (test failures + freshness warnings).
+
+## Tradeoff: ELT vs. Reverse ETL
+
+The dbt + BigQuery stack follows the ELT (extract-load-transform) pattern — raw data lands in the warehouse first, transformation happens in BigQuery. Reverse ETL (Hightouch, Census) complements this — data flows from the warehouse into SaaS tools. They're complementary: dbt cleans the warehouse, reverse ETL ships segments to Braze or Iterable.
+
+The tradeoff: BigQuery compute cost. One terabyte scanned costs $5 — a complex mart model running 10 times daily costs $50/day, or $1,500/month. Optimization: incremental materialization + partition pruning + clustering. At Roibase, the BigQuery cost target is $0.02 per monthly active user — 1M MAU = $20K/year (acceptable).
+
+A marketing data stack isn't a one-time project — it's an evolving architecture. After the dbt + BigQuery foundation is built, add layers for MMM (marketing mix modeling), incrementality testing, and identity resolution. Building this foundation correctly takes 6–8 weeks but saves 18 months downstream — every new KPI question gets answered in 2 hours, manual data cleaning disappears, attribution model changes take 1 hour instead of 1 day. Stack it right, and you've transformed marketing data into a decision-making engine.
