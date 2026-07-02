@@ -1,143 +1,136 @@
 ---
 title: "Multi-Agent Orchestration: From Single LLM Call to Production Systems"
-description: "Agent SDKs, tool use, and parallel/serial topologies transform LLMs into production infrastructure — managing latency, cost, and reliability tradeoffs."
-publishedAt: 2026-05-23
-modifiedAt: 2026-05-23
+description: "How to integrate LLMs into business processes using agent SDKs, tool use, and parallel/serial topologies. Production tradeoffs and orchestration architectures."
+publishedAt: 2026-07-02
+modifiedAt: 2026-07-02
 category: ai
-i18nKey: ai-008-2026-05
-tags: [multi-agent, llm-orchestration, tool-use, agent-sdk, ai-engineering]
+i18nKey: ai-008-2026-07
+tags: [multi-agent, llm-orchestration, agent-sdk, tool-use, ai-infrastructure]
 readingTime: 8
 author: Roibase
 ---
 
-In 2024, "AI assistant" meant a single prompt-response loop. In 2026, what's running in production is different: parallel agent meshes, serial orchestration pipelines, agents wired to external systems via tool use. Moving from a single LLM call to a system of agents signaling each other rewrites the reliability and cost/latency balance. Multi-agent orchestration is the architectural layer that transforms the LLM into a production infrastructure component.
+The proof-of-concept phase where you made a single LLM API call and got an answer ended in 2023. By 2026, companies moving LLMs to production are dealing with what we call "agent orchestration": multiple models, each accessing different tools, working in parallel or sequence, observable and reproducible systems. In this article, you'll see what decisions you make when building multi-agent architecture, what SDKs promise versus deliver, and what tradeoffs orchestration topologies carry.
 
-## Agent SDKs and the Tool Use Layer
+## What Agent SDKs Promise and Deliver
 
-Agent frameworks — LangGraph, Autogen, CrewAI — give the LLM permission to "call functions." Tool use is the model converting its own output into function calls conforming to JSON schema, the interpreter executing that function, and feeding the result back into the prompt. OpenAI function calling, Anthropic Claude's tool use API, Google Gemini's function declaration all rest on the same principle: the LLM cannot run deterministic code, but it can decide which function to call with which parameters.
+Frameworks like LangChain, CrewAI, Semantic Kernel, and LlamaIndex are marketed as "agent SDKs." Their common promise: give the LLM permission to use tools, establish a decision hierarchy, manage chains. In practice, do these tools suffice?
 
-SDKs manage this loop: user query arrives, model says "call the weather API with city=Istanbul," orchestrator invokes the API, appends the result to the prompt, model produces final output. That's 3 roundtrips = 3× latency. In production, a tool call chain can reach 5–7 steps; each adding 200–800ms means 1–5 seconds total response time. In multi-agent systems, the goal is breaking that latency through parallelization and caching.
+The first problem: **abstraction overhead**. High-level libraries like LangChain simplify tool binding but complicate debugging. In production, when a tool call fails, parsing traces to determine whether LangChain's internal state or the API response triggered the error becomes tedious. If you have native tool support like Anthropic's Computer Use API, using the SDK directly typically provides cleaner visibility.
 
-Example tool definition:
+The second problem: **versioning**. Agent SDKs iterate quickly, breaking changes appear frequently. For example, LangChain's 0.1 → 0.2 transition deprecated certain chain structures. Rather than waiting for patches while keeping a pinned version in production, writing tool use logic yourself is sometimes more maintainable. Especially if your orchestration layer has custom business logic, you won't be constrained by the SDK's opinionated structure.
 
-```python
-tools = [
-    {
-        "name": "query_analytics",
-        "description": "Fetch specified metric from BigQuery",
-        "parameters": {
-            "metric": "string (revenue|sessions|conversions)",
-            "date_range": "string (7d|30d|90d)"
-        }
-    }
-]
-```
+The third benefit: **built-in observability**. Add-ons like LangSmith or LlamaIndex's eval suite visualize call chains. This is critical for production debugging — which agent called which tool, where did latency spike, which prompt consumed which tokens. If you've written your own orchestration, you'll implement this telemetry yourself. SDKs save time here but carry lock-in risk.
 
-When the model decides to use this tool, the orchestrator invokes the BigQuery client, appends the result to the prompt, and the model produces final synthesis. Tool use's power: the LLM can query the external world without sacrificing determinism.
+## Tool Use: Beyond Function Calling
 
-## Parallel and Serial Agent Topologies
+Tool use is when an LLM generates structured output to make requests to external APIs. OpenAI function calling, Anthropic tool use, Google function calling — all implement the same principle with different schema formats. The interesting part is when tools **depend on each other**.
 
-Single agent = serial processing. Multi-agent = parallel + serial mix. Two primary patterns: **scatter-gather** and **pipeline**.
+Simple example: an email campaign automation agent. First tool: `list_segments` (fetches segment list from CRM). Second tool: `get_segment_stats` (returns metrics for a segment). Third tool: `create_campaign` (creates a campaign object). You must run these three tools **sequentially** because each one's output becomes the next's input.
 
-**Scatter-gather:** The main orchestrator splits the task into 3 sub-agents; each runs simultaneously with a different tool; results merge at a central agent. Example: "Analyze last month's campaign performance" → agent_1 hits Google Ads API, agent_2 hits Meta Ads API, agent_3 hits BigQuery, all in parallel. Orchestrator collects the 3 responses, synthesizes, delivers final report. Latency: max(agent_1, agent_2, agent_3) + synthesis latency. If serial: agent_1 + agent_2 + agent_3 + synthesis. Instead of 3×800ms, you get 800ms + 300ms = 1.1s.
+Complex example: a data analysis agent. You can run `query_bigquery`, `fetch_gsc_data`, `fetch_ga4_events` tools in **parallel** because they're independent. Parallel execution reduces production latency but the orchestrator must manage concurrency limits and rate limits. Anthropic's SDK can make parallel tool calls, but OpenAI function calling is sequential (as of Q2 2026). In that case, you write the orchestrator.
 
-**Pipeline:** Agent_A's output is agent_B's input. Example: (1) query planner agent writes SQL → (2) execution agent runs the SQL → (3) visualization agent produces chart spec. Each step depends on the next. Latency is serial, but **each agent is specialized** — the query planner can be a small model (GPT-4o-mini, 50ms), doesn't need heavy reasoning; visualization agent can use Gemini Flash. Instead of one large model, three small models = cheaper + faster (in many cases).
+A critical tradeoff in tool use: **determinism vs. flexibility**. If you tell the LLM "pick one of these three tools," it might choose differently each run. If you hard-code the tool sequence, you lose flexibility but gain reproducibility. In production, you typically use **hybrid**: hard-code the critical path, let the LLM handle optional decisions.
 
-In Roibase's [First-Party Data & Measurement Architecture](https://www.roibase.com.tr/en/firstparty) service, we use multi-agent orchestration in attribution pipelines: one agent parses raw events, one binds them to sessions, one maps revenue, final agent computes cross-channel attribution. Pipeline topology = deterministic steps, each with its own tool set.
-
-### Parallel vs. Serial Tradeoff
-
-| Topology | Latency | Cost | Use Case |
-|----------|---------|------|----------|
-| Parallel (scatter-gather) | Low (max operation time) | High (N agents × LLM call) | Independent queries (multi-source data pull) |
-| Serial (pipeline) | High (total time) | Medium (each agent can be small model) | Dependent operations (parse → enrich → analyze) |
-| Hybrid (parallel → merge → serial) | Medium | Medium-High | Complex tasks (data gathering parallel, result processing serial) |
-
-In production, we cap concurrency on scatter-gather to avoid rate limits (e.g., max 5 parallel LLM calls). On serial pipelines, we use intermediate caching — if agent_A's output is valid for 10 minutes, the same query sends agent_B directly from the cached output.
-
-## The Orchestrator's Job: Routing and Error Handling
-
-The orchestrator doesn't just trigger agents; it **decides which agent owns which task**. In LangGraph, this is called the "supervisor agent": it categorizes the incoming query and routes accordingly. Example logic:
+### Tool Call Chain Example
 
 ```python
-def route_query(user_query: str) -> str:
-    # LLM-based router (small model, fast)
-    classification = llm.classify(user_query, categories=["data_query", "content_gen", "code_review"])
+# Serial tool chain (each step provides input to the next)
+def orchestrate_campaign(prompt: str, client: AnthropicClient):
+    # 1. List segments
+    segments = client.tool_use("list_segments", {})
     
-    if classification == "data_query":
-        return "analytics_agent"
-    elif classification == "content_gen":
-        return "writer_agent"
-    else:
-        return "code_agent"
-```
-
-The router agent is typically a fast, cheap model like GPT-4o-mini or Claude Haiku. It adds 50–100ms overhead but prevents unnecessary use of large models. If the user says "summarize campaign performance," it routes to analytics_agent (with BigQuery tool use); if "write a blog post," to writer_agent (with web search + writing LLM).
-
-**Error handling is critical in multi-agent.** With a single agent, if the LLM hallucinates, you retry. In multi-agent, if agent_2 works with agent_1's faulty output, you get cascade failure. The orchestrator must validate each agent's output:
-
-```python
-def validate_agent_output(output: dict, schema: dict) -> bool:
-    # JSON schema validation
-    if not matches_schema(output, schema):
-        raise AgentOutputError("Agent output does not match schema")
+    # 2. Get stats for each segment (parallel batch)
+    stats_calls = [
+        client.tool_use("get_segment_stats", {"segment_id": s})
+        for s in segments["ids"]
+    ]
+    stats = asyncio.gather(*stats_calls)
     
-    # Semantic check (optional, expensive)
-    if confidence_score(output) < 0.7:
-        return False  # retry or fallback
-    
-    return True
+    # 3. Create campaign for highest engagement segment
+    best_segment = max(stats, key=lambda x: x["engagement"])
+    campaign = client.tool_use("create_campaign", {
+        "segment_id": best_segment["id"],
+        "message": prompt
+    })
+    return campaign
 ```
 
-If agent_1 fails, the orchestrator enters a fallback chain: first retry (1×), then alternative agent (larger model), then human-in-the-loop. Without this logic, multi-agent is unreliable in production.
+In this example, the structure is `list_segments` → `get_segment_stats` (parallel) → `create_campaign` (serial). The LLM only enters at final message generation — a **semi-autonomous** architecture. The orchestrator manages tool call logic.
 
-## Latency and Cost: Benchmark Scenarios
+## Parallel vs. Serial Agent Topology
 
-Test scenario: "Analyze revenue trend for the last 30 days, summarize campaign performance, write a summary email for the CEO" — 3 independent tasks.
+Multi-agent systems have two fundamental topologies: **parallel** (multiple agents run simultaneously, outputs merge) and **serial** (each agent produces input for the next).
 
-**Single agent (GPT-4, serial):**
-- Query BigQuery → 800ms (LLM + API)
-- Query ad platforms → 900ms
-- Generate email → 600ms
-- **Total:** 2300ms
-- **Cost:** 3 turns × $0.03/1K tokens = ~$0.09 (typical input/output mix)
+**Parallel topology** is typically used for **specialization**. Example: a content production pipeline. Agent A writes headlines, Agent B generates body paragraphs, Agent C optimizes SEO meta descriptions. All three take the same brief as input, outputs merge. The advantage: each agent specializes in its domain, prompts are shorter, token cost drops (context window isn't shared). The disadvantage: coordination overhead. Merge logic is your responsibility — if outputs conflict, manual reconciliation is needed.
 
-**Multi-agent (scatter-gather + pipeline):**
-- Agents 1, 2, 3 in parallel (BigQuery, ads, email prep) → max 900ms
-- Orchestrator merge + synthesis → 400ms
-- **Total:** 1300ms
-- **Cost:** 3 agents × $0.02 (small model) + synthesis $0.03 = ~$0.09 (same, but reducible via model selection)
+**Serial topology** is used for **refinement** or **validation**. Agent A produces a draft, Agent B fact-checks, Agent C polishes tone. Each agent receives the previous one's output. The advantage: each stage improves the previous, linear reasoning is easy to debug. The disadvantage: latency — each agent must wait in sequence. Total time is N × average agent latency.
 
-**Gain:** 43% latency reduction. Cost is similar, but with model optimization (agent_1 → Gemini Flash, agent_2 → Claude Haiku, orchestrator → GPT-4o-mini), it drops to $0.05.
+At Roibase, we use a hybrid model in marketing operations: in **[Generative Engine Optimization](https://www.roibase.com.tr/en/geo)** processes, parallel agents scrape citations from different search engines (ChatGPT, Perplexity, Gemini), and a serial agent chain matches these citations to brand mention patterns. The parallel part speeds up data collection, the serial part provides analysis depth.
 
-**But:** Parallel agents consume parallel rate limits. If OpenAI tier allows 500 RPM, 10 parallel agents = 50 users in 5 minutes. With a single agent, you'd serve 500 users. In production, we manage this via queuing + caching.
+### Topology Comparison
 
-## Observability and Debugging
+| Architecture | Latency | Specialization | Debugging | Use Case |
+|---|---|---|---|---|
+| Parallel | Low (max agent time) | High | Merge logic complex | Data collection, multi-source analysis |
+| Serial | High (sum of agent times) | Low | Linear trace | Refinement, validation, multi-step reasoning |
+| Hybrid | Medium | High | Complex | Production pipelines |
 
-In multi-agent systems, answering "where did it break?" is hard. Tools like LangSmith, Helicone, and Arize Phoenix visualize agent traces: which agent called which tool when, with which prompt, what it returned, where it retried. Example trace:
+## Orchestration State and Reproducibility
 
-```
-orchestrator → classify_query (50ms, GPT-4o-mini) → "data_query"
-→ analytics_agent → query_bigquery (800ms, tool_call) → success
-→ writer_agent → generate_summary (600ms, GPT-4) → success
-→ orchestrator → merge_results (200ms) → final_output
-```
+When building a multi-agent system, the critical decision: **where do you keep state?** Three options exist.
 
-Each step logs token count, latency, and cost. Without this telemetry in production, multi-agent is impossible to debug. If agent A's tool call times out, you see it in the trace and add retry logic.
+**Stateless orchestration:** Each agent is independent, orchestrator holds intermediate outputs in memory. Advantage: easy to replay, horizontal scaling possible. Disadvantage: memory pressure — in long chains you hold GB of conversation history.
 
-Another metric: **agent utilization**. If you define 5 agents but 80% of user queries route to a single agent, your routing logic is broken. We measure the orchestrator's classification accuracy — building labeled datasets from user feedback and fine-tuning the router (moving from few-shot prompts to lightweight classifiers).
+**Stateful orchestration:** Store intermediate state in external storage (Redis, PostgreSQL). Advantage: low memory, crash recovery possible. Disadvantage: I/O overhead, consistency guarantees required.
 
-## Multi-Agent's Limits
+**Hybrid (checkpointing):** Persist state at certain milestones. For example, checkpoint every 5 agent calls. If it crashes, resume from the last checkpoint. Advantage: balance between performance and reliability. Disadvantage: complex implementation.
 
-Multi-agent doesn't solve everything. There's **coordination overhead**: inter-agent messaging, orchestration logic, error handling — all add latency. A simple query that a single agent completes in 1 second might take 1.5 seconds with multi-agent (routing + orchestrator + merge). Architectural complexity grows — larger codebase, harder to test, deployment more fragile.
+In production, a common pattern within **[First-Party Data & Measurement Architecture](https://www.roibase.com.tr/en/firstparty)** is writing orchestration state to a log stream. Every agent call becomes a structured log entry in BigQuery, event sourcing enables replay. This way you can retrospectively analyze the attribution chain — which agent output affected which downstream metric?
 
-Multi-agent makes sense in these scenarios:
-- **Parallel data pull required:** Pulling from 5 different APIs benefits from scatter-gather
-- **Specialized models are optimal:** Query planning with a small model, code generation with a large one — pipeline topology cuts cost
-- **Long-running tasks:** Agent_1 starts work, agent_2 monitors async, agent_3 completes, orchestrator notifies — event-driven architecture beats synchronous LLM calls
+## Eval and Observability: Orchestration Debugging
 
-For short, frequent, simple queries, a single agent + caching is better. Multi-agent creates value when a complex task can be decomposed and optimized.
+Debugging multi-agent systems is hard because failure points are many. Did Agent A pick the wrong tool, did Agent B misparsed its input, is the orchestrator's merge logic flawed? An **observability stack** is mandatory.
 
----
+Metrics you need:
+- **Agent-level latency** (p50, p95, p99) — which agent is the bottleneck?
+- **Tool success rate** — which API call fails frequently?
+- **Token usage per agent** — cost attribution
+- **Eval score** — use LLM-as-judge to score each agent output from 0-1
 
-Multi-agent orchestration transforms the LLM from a stateless function call into a stateful, observable, scalable system. Parallel topology breaks latency, pipeline topology cuts cost, orchestrator ensures reliability. In production, start with scatter-gather, monitor rate limits and cost, move to pipelines as needed. Log agent traces, layer error handling, test routing logic. Multi-agent is the inflection point from LLM engineering to LLM infrastructure.
+For eval, we use a pattern called **reference-free scoring**. A "supervisor" LLM (e.g., GPT-4) evaluates each agent output with "task completion" and "hallucination" scores. These scores are stored as time-series, regressions are detected. For instance, if Agent A's hallucination score jumps from 0.1 to 0.3, you'd rollback the prompt version.
+
+Another technique Anthropic recommends: **Claude as evaluator**. With its long context window, feed the entire agent chain to Claude in a single prompt and ask "are there logical errors in this chain?" This meta-evaluation is used in pre-production QA.
+
+## Orchestration Tradeoffs and Decision Matrix
+
+When choosing multi-agent architecture, you weigh these tradeoffs:
+
+**1. Complexity vs. control:** Using an SDK speeds up implementation but obscures debugging. Writing a custom orchestrator gives control but increases maintenance burden.
+
+**2. Latency vs. specialization:** Parallel agents are faster but introduce coordination overhead. Serial agents reason deeper but are slower.
+
+**3. Cost vs. quality:** Each agent call consumes tokens. Adding agents can improve quality but cost grows linearly. In production you must find the "minimum viable agent count."
+
+**4. Determinism vs. adaptability:** Hard-coded tool sequences are reproducible but can't handle edge cases. Letting the LLM choose tools is adaptive but non-deterministic.
+
+The decision matrix we use at Roibase:
+
+| Use Case | Topology | SDK | State Management |
+|---|---|---|---|
+| Data collection | Parallel | LlamaIndex | Stateless |
+| Content refinement | Serial | Custom | Checkpointing |
+| Real-time inference | Hybrid | Anthropic SDK | Redis cache |
+| Batch processing | Parallel | LangChain | PostgreSQL |
+
+## Moving Orchestration to Production
+
+When moving a multi-agent system to production, pay attention to three things.
+
+**Rate limiting:** Parallel agents can exceed API rate limits. Use token bucket or semaphore patterns in the orchestrator. If Anthropic API has a 50 req/min limit, throttle parallel agent count accordingly.
+
+**Fallback strategy:** What happens if an agent fails? Basic retry logic is simple, but add exponential backoff plus jitter. If an agent is non-critical (e.g., optional SEO meta tag generator), use a circuit breaker and switch to fail-safe mode.
+
+**Cost monitoring:** Log the token cost of each agent call. In production, track $/request per agent. If an agent creates a cost spike, optimize its prompt or disable the agent.
+
+The power of multi-agent orchestration isn't "do more than a single LLM," it's **making business processes modular, observable, and scalable**. To maintain orchestration architecture in production, think about tool topology, state management, and eval pipeline together. When building these systems, **[Data Analysis & Insights Engineering](https://www.roibase.com.tr/en/verianalizi)** capacity is critical — tying orchestration metrics to business metrics, measuring retroactively which agent configuration boosted which downstream KPI.

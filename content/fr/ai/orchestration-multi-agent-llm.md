@@ -1,109 +1,136 @@
 ---
-title: "Orchestration Multi-Agent : Des Systèmes Depuis un Seul Appel LLM"
-description: "SDK Agent, utilisation d'outils et topologies parallèles/sérielles pour déployer les applications LLM en production. Compromis entre coût token, latence et isolation des erreurs."
-publishedAt: 2026-06-13
-modifiedAt: 2026-06-13
+title: "Orchestration Multi-Agent : Partir d'Un Seul Appel LLM vers les Systèmes"
+description: "Agent SDK, tool use et topologies parallèles/série pour intégrer les LLM aux processus métier. Trade-offs de production et architectures d'orchestration."
+publishedAt: 2026-07-02
+modifiedAt: 2026-07-02
 category: ai
-i18nKey: ai-008-2026-06
-tags: [multi-agent, orchestration-llm, utilisation-outils, sdk-agent, ia-production]
-readingTime: 8
+i18nKey: ai-008-2026-07
+tags: [multi-agent, llm-orchestration, agent-sdk, tool-use, ai-infrastructure]
+readingTime: 9
 author: Roibase
 ---
 
-Un seul prompt LLM suffisait il y a quelques mois. Aujourd'hui, les systèmes en production exigent des topologies d'agents parallèles, des sorties structurées et des chaînes de secours. Le Computer Use d'Anthropic, le function calling d'OpenAI et le support des state machines de LangGraph ont porté l'orchestration d'agents au niveau du framework. L'architecture multi-agent n'est plus seulement de la recherche, c'est l'outillage quotidien des équipes de croissance. Réduire le coût token, contrôler la latence et isoler les défaillances rendent le passage d'un appel mono-agent à un système orchestré incontournable.
+La phase de preuve de concept où vous effectuez un appel API LLM unique et recevez une réponse a pris fin en 2023. En 2026, les entreprises qui déploient les LLM en production gèrent ce que nous appelons « l'orchestration d'agents » : plusieurs modèles, chacun ayant accès à des outils différents, fonctionnant en parallèle ou en série, observables et rejouables. Dans cet article, vous verrez quelles décisions prendre lors de la mise en place d'une architecture multi-agent, ce que promettent les différents SDK et quels trade-offs impliquent les topologies d'orchestration.
 
-## SDK Agent et Protocole Tool Use
+## Ce que Promettent les SDK d'Agent et ce qu'ils Livrent
 
-Le schéma JSON de function calling d'OpenAI est devenu standard en 2023. Anthropic a étendu tool use avec Claude 3.5 : la réponse API retourne maintenant un bloc `tool_use`, tu exécutes et renvoies le résultat sous forme de `tool_result`. Cette boucle peut s'étendre sur 20+ itérations, mais la limite de tokens t'arrête. La syntaxe function declarations de Gemini est similaire, la différence résidant dans le grounding et les extensions de retrieval. Les trois fournisseurs partagent le même pattern : le modèle reçoit un descripteur de fonction, retourne le nom de la fonction + arguments, l'exécution est de ton côté.
+Les frameworks comme LangChain, CrewAI, Semantic Kernel et LlamaIndex sont commercialisés comme des « SDK d'agent ». Ils partagent une promesse commune : autorisez votre LLM à utiliser des outils, établissez une hiérarchie de prise de décision, gérez les chaînes. En réalité, ces outils sont-ils suffisants ?
 
-Les SDK Agent abstraient cette boucle. L'`AgentExecutor` de LangChain, l'`ReActAgent` de LlamaIndex, le moteur central d'AutoGPT — tous résolvent le même problème : gérer la séquence d'appels d'outils. Mais les abstractions créent une surcharge token. Par exemple, LangChain envoie l'historique de conversation en préfixe à chaque itération. 10 appels d'outils = 10× context window. Pour réduire cela, il faut un agent de summarisation ou une pruning contextuelle sélective. En production, sans une couche d'observabilité comme LangSmith, le débogage est impossible.
+Le premier problème : **l'overhead d'abstraction**. Des bibliothèques de haut niveau comme LangChain facilitent le tool binding mais compliquent le débogage. En production, quand un appel d'outil échoue, il faut déterminer si c'est l'état interne de LangChain ou la réponse API qui pose problème — cela signifie parser les traces. Si vous avez un support natif comme l'API Computer Use d'Anthropic, utiliser le SDK directement offre généralement une meilleure visibilité.
 
-Le protocole tool use n'est pas déterministe — le modèle hallucine parfois, donne des arguments de fonction incorrects. C'est pourquoi une couche de validation est obligatoire : valide l'entrée avec un schéma Pydantic, capture les exceptions à l'exécution, retourne un message d'erreur au modèle. Chez LangChain, `PydanticOutputParser`, chez Anthropic, le paramètre `tool_choice="required"` réduit ce risque. Mais le vrai problème : le modèle ne sélectionne pas toujours le bon outil. Avec 3-4 outils similaires, les sélections erronées surviennent à 8-12%. Dans ce cas, tu ajoutes une logique de retry ou un agent de routage.
+Le deuxième problème : **le versioning**. Les SDK d'agent itèrent rapidement, les breaking changes sont fréquents. Par exemple, la transition LangChain 0.1 → 0.2 a déprécié certaines structures de chaîne. Au lieu d'attendre les correctifs sur une version épinglée en production, implémenter vous-même la logique tool use est parfois plus durable. Surtout si vous avez une logique métier personnalisée à la couche d'orchestration — vous ne serez pas contraint par la structure opinionée du SDK.
 
-## Topologie Agent Parallèle vs Sérielle
+Le troisième avantage : **l'observabilité intégrée**. Des add-ons comme LangSmith ou la suite d'éval de LlamaIndex visualisent la chaîne d'appels. C'est critique pour le débogage en production — quel agent a appelé quel outil, où la latence explose-t-elle, quel prompt a consommé quels tokens. Si vous écrivez votre propre orchestration, vous devez aussi mettre en place cette télémétrie. Les SDK vous font gagner du temps mais comportent un risque de lock-in.
 
-Pourquoi deux agents feraient ce qu'un seul ne peut pas ? Parce que la **spécialisation** améliore l'efficacité token. Scénario exemple : courrier entrant → catégoriser → rédiger réponse → obtenir approbation. Un prompt monolithique utilise 8K tokens de contexte, répète la même instruction pour chaque e-mail. Divise cela en 3 agents : **classifier** (catégoriser), **drafter** (rédiger réponse), **validator** (logique d'approbation). Chacun a son petit prompt. Total tokens : 8K → 2K+2K+1.5K = 5.5K. Baisse de 31%.
+## Tool Use : Au-delà du Function Calling
 
-La topologie parallèle offre un autre avantage : **réduction de latence**. Exemple : pipeline de génération de contenu — un agent analyse les mots-clés SEO, un autre parse le guide de ton et style, un troisième scrape le contenu concurrent. En sériel, tu as 3× la latence. En parallèle (avec le `StateGraph` de LangGraph + nœud `map`), la latence max = celle de l'agent le plus lent. Mais la coordination devient plus difficile. La sortie de quel agent a la priorité ? S'il y a un conflit, qui décide ? C'est pourquoi un **agent arbitre** est nécessaire — couche méta qui reçoit les résultats parallèles et prend la décision finale.
+Le tool use, c'est quand un LLM génère une sortie structurée pour faire des requêtes vers des API externes. OpenAI function calling, Anthropic tool use, Google function calling — tous implémentent le même principe avec des formats de schéma différents. La partie intéressante, c'est quand les outils sont **interdépendants**.
 
-La topologie sérielle offre l'isolation des erreurs. Si l'agent A échoue, B et C ne s'exécutent pas. Tu peux construire une chaîne de secours : si A échoue, bascule à A2. En parallèle, il y a un scénario de défaillance partielle : 2 agents sur 3 réussissent, un timeout. Comment le système continue-t-il ? Là, il faut une logique state machine. Chez LangGraph, tu routes avec `conditional_edges` : si l'agent réussit, "next" (suivant), sinon "retry" (réessayer) ou "fallback" (secours).
+Exemple simple : un agent d'automatisation de campagne e-mail. Premier outil : `list_segments` (récupère la liste des segments depuis le CRM). Deuxième outil : `get_segment_stats` (retourne les métriques du segment). Troisième outil : `create_campaign` (crée l'objet de campagne). Vous devez exécuter ces trois outils en **série** car la sortie de chacun alimente l'entrée du suivant.
 
-### Guide de Choix de Topologie
+Exemple complexe : un agent d'analyse de données. Vous pouvez exécuter `query_bigquery`, `fetch_gsc_data` et `fetch_ga4_events` en **parallèle** car ils sont indépendants les uns des autres. L'exécution parallèle réduit la latence de production, mais l'orchestrateur doit gérer les limites de concurrence et de débit. Le SDK Anthropic peut effectuer des appels d'outils parallèles, mais OpenAI function calling est séquentiel (au Q2 2026). Dans ce cas, vous écrivez vous-même l'orchestrateur.
 
-| Scénario | Topologie | Raison |
-|----------|-----------|--------|
-| Dépendance séquentielle (sortie de A = entrée de B) | Sérielle | Surcharge de coordination en parallèle |
-| Sous-tâches indépendantes | Parallèle | Réduction de latence |
-| Risque d'échec élevé | Sérielle + secours | Isolation des défaillances |
-| Coût token critique | Hybride (fetch parallèle, process sériel) | Collecte de données sans partage de contexte |
+Un trade-off critique du tool use : **déterminisme versus flexibilité**. Si vous dites au LLM « choisissez l'un de ces trois outils », il peut choisir différemment à chaque exécution. Si vous hard-codez la séquence d'outils, vous perdez en flexibilité mais gagnez en reproductibilité. En production, c'est généralement **hybride** : hard-codez le chemin critique, laissez le LLM décider pour les choix optionnels.
 
-## Gestion d'État et Pruning Contextuel
-
-Le problème le plus critique d'un système multi-agent : **bloat d'état**. Chaque agent conserve l'historique de conversation, le context window grandit à chaque itération. 10 agents × 5 itérations = 50 messages. Même le context window 200K de Claude peut être saturé. Résultat : latence augmente (le coût de calcul token est O(n²)), coût augmente, certains modèles timeout.
-
-Solution : **orchestration avec état** et **mémoire sélective**. La fonctionnalité `checkpointing` de LangGraph écrit l'état dans un store externe (Redis, PostgreSQL). Chaque agent lit uniquement son contexte pertinent. Exemple : l'agent drafter voit la sortie du classifier, mais pas l'historique d'approbation du validator — sauf s'il en a besoin.
-
-Un autre pattern : **agent de summarisation**. Il intervient tous les N itérations, réduit la conversation à 3-4 phrases. La `ConversationSummaryMemory` de LangChain fait ce travail mais attention : la summarisation elle-même exige un appel LLM, coût supplémentaire. C'est pourquoi le seuil de déclenchement doit être bien calibré. Dans notre pipeline production, on lance une summarisation tous les 12 itérations — au lieu de 200 tokens de contexte, on en garde 50, économie de 75%.
-
-Le pruning contextuel est une autre option : supprime les messages non pertinents. Exemple : la sortie du classifier est juste le label de catégorie, mais le modèle retourne aussi la chaîne de raisonnement entière. Avant d'envoyer au drafter, tu supprimes le raisonnement, ne gardes que le label. Chez LangChain, `MessagesPlaceholder` + fonction filter personnalisée le fait. C'est du travail manuel, mais ça réduit les tokens de 40-50%.
-
-## Fiabilité et Observabilité en Production
-
-Un système multi-agent = N× la surface de défaillance. Un agent timeout, un autre reçoit un rate limit, un troisième hallucine. Pour gérer ce chaos, **circuit breaker** et **logique de retry** sont obligatoires. LangChain a un wrapper `RunnableRetry`, mais si tu veux un contrôle granulaire, la bibliothèque Tenacity est plus flexible : backoff exponentiel, jitter, max attempts.
-
-Sans observabilité, tu ne peux pas déboguer. Des outils comme LangSmith, LangGraph Studio, Weights & Biases visualisent la trace de l'agent : quel agent a été appelé quand, ce qu'il a retourné, combien de tokens il a coûté. Dans notre stack, on utilise LangSmith + un exportateur Prometheus personnalisé : on affiche les métriques latence agent, décompte token, taux d'erreur sur Grafana. Seuil d'alerte : latence P95 >3s ou taux d'erreur >5%.
-
-Un autre problème production : **non-déterminisme**. Même entrée, sortie différente — parce que le modèle est stochastique. Même avec temperature=0, l'infrastructure du fournisseur introduit de la variation. C'est pourquoi une [architecture de données first-party](https://www.roibase.com.tr/fr/firstparty) fiable est obligatoire : si l'entrée est structurée, la sortie est plus cohérente. De plus, un framework d'eval est requis : lance des tests de régression à chaque déploiement, mesure la qualité de sortie. Tu peux utiliser l'`EvaluatorChain` de LangChain ou l'eval basée sur modèle d'Anthropic.
-
-## Optimisation des Coûts et Compromis
-
-Un système multi-agent est cher. Un appel agent unique = 2K tokens = $0.006 (prix Claude Sonnet 3.5). La même tâche avec 3 agents : 3× appel API, 6K tokens total, $0.018. 3× le coût. Les scénarios qui justifient cela : réduire le contexte long (grand doc → chunk → process parallèle), spécialisation (chaque agent utilise un petit modèle, total moins cher), isolation des erreurs (risque de défaillance monolithe élevé).
-
-Façons de réduire le coût token : **distillation de modèle** (grand modèle fine-tune petit modèle, petit modèle en production), **caching** (même contexte retour = réponse en cache — le prompt caching d'Anthropic offre 90% de réduction), **traitement par batch** (au lieu de real-time, execution async, préfère modèle bon marché).
-
-Compromis latence vs coût : topologie parallèle réduit latence mais augmente coût. Tu peux paralléliser le critical path et sérialiser le non-critique. Exemple : user query → classifier en parallèle (réponse rapide), mais agent reporting en sériel (background job). Cette approche hybride maintient latence P95 <2s tout en réduisant le coût de 35%.
-
-## Exemples d'Orchestration et Code
-
-Chaîne sérielle simple (LangChain) :
+### Exemple de Chaîne d'Appel d'Outil
 
 ```python
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
-from langchain_anthropic import ChatAnthropic
-
-classifier = LLMChain(
-    llm=ChatAnthropic(model="claude-3-5-sonnet"),
-    prompt=PromptTemplate.from_template("Catégorise : {text}")
-)
-
-drafter = LLMChain(
-    llm=ChatAnthropic(model="claude-3-5-sonnet"),
-    prompt=PromptTemplate.from_template("Rédige une réponse : {category}, {text}")
-)
-
-category = classifier.run(text=user_input)
-response = drafter.run(category=category, text=user_input)
+# Chaîne d'outils en série (chaque étape alimente l'entrée de la suivante)
+def orchestrate_campaign(prompt: str, client: AnthropicClient):
+    # 1. Lister les segments
+    segments = client.tool_use("list_segments", {})
+    
+    # 2. Récupérer les stats pour chaque segment (batch parallèle)
+    stats_calls = [
+        client.tool_use("get_segment_stats", {"segment_id": s})
+        for s in segments["ids"]
+    ]
+    stats = asyncio.gather(*stats_calls)
+    
+    # 3. Créer une campagne pour le segment avec le meilleur engagement
+    best_segment = max(stats, key=lambda x: x["engagement"])
+    campaign = client.tool_use("create_campaign", {
+        "segment_id": best_segment["id"],
+        "message": prompt
+    })
+    return campaign
 ```
 
-Exécution parallèle (LangGraph) :
+Dans cet exemple, il y a une structure `list_segments` → `get_segment_stats` (parallèle) → `create_campaign` (série). Le LLM n'intervient que dans la génération du message final — c'est une architecture **semi-autonome** où l'orchestrateur gère la logique des appels d'outils.
 
-```python
-from langgraph.graph import StateGraph
+## Topologie d'Agent Parallèle vs. Série
 
-def parallel_tasks(state):
-    seo_result = seo_agent.invoke(state["content"])
-    tone_result = tone_agent.invoke(state["style_guide"])
-    return {"seo": seo_result, "tone": tone_result}
+Dans les systèmes multi-agent, il existe deux topologies fondamentales : **parallèle** (plusieurs agents fonctionnent simultanément, leurs sorties sont fusionnées) et **série** (chaque agent produit l'entrée du suivant).
 
-workflow = StateGraph()
-workflow.add_node("parallel", parallel_tasks)
-workflow.add_node("merge", merge_agent)
-workflow.set_entry_point("parallel")
-workflow.add_edge("parallel", "merge")
-app = workflow.compile()
-```
+La topologie **parallèle** est généralement utilisée pour la **spécialisation**. Exemple : un pipeline de génération de contenu. L'agent A rédige le titre, l'agent B génère les paragraphes du corps, l'agent C optimise la meta description SEO. Les trois reçoivent le même brief en entrée, leurs sorties sont fusionnées. L'avantage : chaque agent se spécialise dans son domaine, les prompts sont plus courts, le coût en tokens diminue (le contexte n'est pas partagé). L'inconvénient : overhead de coordination. Si les sorties sont incompatibles, une réconciliation manuelle est nécessaire.
 
-Ce code exécute 2 agents en parallèle, puis passe le résultat à un agent merge. LangGraph gère automatiquement l'état, écrit les checkpoints sur Redis.
+La topologie **série** est utilisée pour le **raffinement** ou la **validation**. L'agent A génère un brouillon, l'agent B effectue une vérification des faits, l'agent C corrige le ton. Chaque agent traite la sortie du précédent. L'avantage : chaque étape améliore la précédente, la structure de raisonnement linéaire est facile à déboguer. L'inconvénient : latence — chaque agent doit attendre le précédent. Le temps total est N × latence moyenne de l'agent.
 
-L'orchestration multi-agent n'est pas un but en soi, c'est un outil. Si tu automatises un autre canal de croissance ou construis un pipeline de décision, choisis une topologie agent, mais clarifie les métriques : token/tâche, latence, taux d'erreur. En production, le succès c'est que le système fonctionne avec 95% d'uptime et que le coût token reste dans le budget. Si tu construis un système multi-agent pour la génération de contenu, intègre-le à une stratégie d'[Optimisation Moteur Générative](https://www.roibase.com.tr/fr/geo) — les agents collectent des données de citation, alimentent les métriques GEO, le ROI devient mesurable. Sinon, c'est juste un wrapper API compliqué.
+Roibase utilise un modèle hybride dans ses opérations marketing : dans les processus d'**[Optimisation de Contenu Géographique (GEO)](https://www.roibase.com.tr/fr/geo)**, des agents en parallèle scrapent les citations de différents moteurs de recherche (ChatGPT, Perplexity, Gemini), tandis qu'une chaîne d'agents en série apparie ces citations aux patterns de mentions de marque. La partie parallèle accélère la collecte de données, la partie série fournit la profondeur d'analyse.
+
+### Comparaison des Topologies
+
+| Architecture | Latence | Spécialisation | Débogage | Cas d'Usage |
+|---|---|---|---|---|
+| Parallèle | Faible (durée max de l'agent) | Élevée | Logique de fusion complexe | Collecte de données, analyse multi-sources |
+| Série | Élevée (somme des durées d'agent) | Faible | Trace linéaire | Raffinement, validation, raisonnement multi-étapes |
+| Hybride | Moyenne | Élevée | Complexe | Pipelines de production |
+
+## État d'Orchestration et Rejouabilité
+
+Quand vous mettez en place un système multi-agent, la décision la plus critique est : **où allez-vous stocker l'état ?** Il y a trois options.
+
+**Orchestration sans état (stateless)** : chaque agent est indépendant, l'orchestrateur garde les sorties intermédiaires en mémoire. Avantage : rejouer est facile, la montée en charge horizontale est possible. Inconvénient : pression mémoire — avec une longue chaîne, vous stockez des GBo d'historique de conversation.
+
+**Orchestration avec état (stateful)** : vous persistez l'état intermédiaire dans un magasin externe (Redis, PostgreSQL). Avantage : utilisation mémoire faible, la récupération en cas de panne est possible. Inconvénient : overhead I/O, la garantie de cohérence est requise.
+
+**Hybride (checkpointing)** : vous persistez l'état à certains jalons. Par exemple, tous les 5 appels d'agent, créez un checkpoint. En cas de panne, vous reprenez à partir du dernier checkpoint. Avantage : équilibre entre performance et fiabilité. Inconvénient : implémentation complexe.
+
+En production, un pattern courant pour **[l'Architecture de Données et Mesures First-Party](https://www.roibase.com.tr/fr/firstparty)** est d'écrire l'état d'orchestration dans un flux de logs. Chaque appel d'agent devient un log structuré dans BigQuery ; pour rejouer, vous utilisez l'event sourcing. De cette façon, vous pouvez analyser rétrospectivement la chaîne d'attribution — quelle sortie d'agent a influencé quelle métrique en aval.
+
+## Eval et Observabilité : Débogage d'Orchestration
+
+Le débogage d'un système multi-agent est difficile car il y a de nombreux points de défaillance. L'agent A a-t-il choisi le mauvais outil, l'agent B a-t-il mal parsé l'entrée, la logique de fusion de l'orchestrateur est-elle défectueuse ? Une **pile d'observabilité** est obligatoire.
+
+Les métriques dont vous avez besoin :
+- **Latence au niveau de l'agent** (p50, p95, p99) — quel agent est le goulot ?
+- **Taux de réussite de l'outil** — quel appel API échoue fréquemment ?
+- **Utilisation de tokens par agent** — attribution des coûts
+- **Score d'eval** — utilisez LLM-as-judge pour évaluer chaque sortie d'agent sur une échelle 0-1
+
+Pour l'eval, un pattern que nous utilisons : **scoring sans référence**. Un LLM « superviseur » (par exemple GPT-4) évalue chaque sortie d'agent avec des scores « completion de tâche » et « hallucination ». Ces scores sont stockés comme des séries temporelles ; les régressions sont détectées. Par exemple, si le score de hallucination de l'agent A passe de 0,1 à 0,3, vous restaurez la version précédente du prompt.
+
+Une autre technique recommandée par Anthropic : **Claude comme évaluateur**. Grâce à sa fenêtre de contexte large, passez toute la chaîne d'agents à Claude dans un seul prompt et demandez : « y a-t-il une erreur logique dans cette chaîne ? » Cette méta-évaluation est utilisée dans le processus d'assurance qualité avant la production.
+
+## Trade-offs d'Orchestration et Matrice de Décision
+
+Quand vous choisissez votre architecture multi-agent, vous considérez ces trade-offs :
+
+**1. Complexité versus contrôle :** Utiliser un SDK accélère l'implémentation mais obscurcit le débogage. Écrire un orchestrateur personnalisé donne du contrôle mais augmente la charge de maintenance.
+
+**2. Latence versus spécialisation :** Les agents parallèles sont rapides mais engendrent un overhead de coordination. Les agents en série permettent un raisonnement plus profond mais sont plus lents.
+
+**3. Coût versus qualité :** Chaque appel d'agent consomme des tokens. Augmenter le nombre d'agents peut améliorer la qualité mais le coût croît linéairement. En production, vous devez trouver le « nombre minimal viable d'agents ».
+
+**4. Déterminisme versus adaptabilité :** Les séquences d'outils hard-codées sont reproductibles mais ne gèrent pas les cas limites. Laisser le LLM choisir les outils est adaptatif mais non-déterministe.
+
+La matrice de décision utilisée chez Roibase :
+
+| Cas d'Usage | Topologie | SDK | Gestion d'État |
+|---|---|---|---|
+| Collecte de données | Parallèle | LlamaIndex | Sans état |
+| Raffinement de contenu | Série | Personnalisé | Checkpointing |
+| Inférence temps réel | Hybride | SDK Anthropic | Cache Redis |
+| Traitement par batch | Parallèle | LangChain | PostgreSQL |
+
+## Déployer l'Orchestration en Production
+
+Quand vous déployez un système multi-agent en production, prêtez attention à trois choses.
+
+**Limitation de débit :** Les agents parallèles peuvent dépasser la limite de débit des API. Utilisez le pattern token bucket ou semaphore dans l'orchestrateur. Si l'API Anthropic a une limite de 50 req/min, limitez par débit le nombre d'agents parallèles en conséquence.
+
+**Stratégie de secours :** Que faites-vous si un agent échoue ? La logique de retry est basique, mais ajoutez l'exponential backoff + jitter. Si l'agent n'est pas critique (par exemple, un générateur optionnel de meta tag SEO), utilisez le circuit breaker et basculez en mode sûr.
+
+**Suivi des coûts :** Loggez le coût en tokens de chaque appel d'agent. En production, suivez la métrique $/request par agent. Si un agent provoque un pic de coûts, optimisez son prompt ou désactivez-le.
+
+La puissance de l'orchestration multi-agent ne réside pas dans « faire plus qu'un seul LLM », mais dans la capacité à **r
