@@ -1,87 +1,148 @@
 ---
-title: "Server-Side Conversions: Configurer correctement Meta CAPI de zéro"
-description: "Architecture sGTM + Conversion API, logique de déduplication et optimisation de l'Event Match Quality — fondation technique de l'attribution post-iOS 17."
-publishedAt: 2026-06-16
-modifiedAt: 2026-06-16
+title: "Server-Side Conversions: Configurer Meta CAPI Correctement dès le Départ"
+description: "Guide de configuration de l'API de conversion Meta avec GTM server-side. Qualité d'appairage d'événements, déduplication et architecture de données first-party — infrastructure indispensable pour l'attribution post-iOS 17."
+publishedAt: 2026-07-04
+modifiedAt: 2026-07-04
 category: marketing
-i18nKey: marketing-001-2026-06
-tags: [conversion-api, server-side-gtm, meta-ads, attribution, event-match-quality]
-readingTime: 8
+i18nKey: marketing-001-2026-07
+tags: [meta-capi, server-side-tracking, gtm, first-party-data, attribution]
+readingTime: 9
 author: Roibase
 ---
 
-Depuis iOS 14.5, le pixel côté client a perdu 30 à 40% de fiabilité. Les taux d'opt-in ATT s'établissent autour de 25%, Safari ITP efface les cookies en 7 jours, Chrome Privacy Sandbox est en préproduction. Selon le propre rapport de Meta, les comptes n'utilisant pas Conversion API envoient en moyenne 20% de signaux de conversion en moins — cela rend l'algorithme d'enchères aveugle. Le suivi des conversions côté serveur n'est plus optionnel, c'est l'artère vitale de la performance des campagnes. Mais le configurer correctement, c'est bien plus que deux lignes de code : il faut une architecture sGTM, une logique de déduplication, un score d'Event Match Quality et une intégration de pipeline de données first-party.
+Depuis iOS 14.5, le suivi côté navigateur enregistre une perte de données de 60 à 70 %. Le nombre de conversions capturées par le pixel Meta peut ne représenter que la moitié des ventes réelles. L'API de conversion côté serveur est l'unique solution pour combler cette lacune — mais les mauvaises configurations polluent les données, créent des erreurs de déduplication qui faussent l'attribution et handicapent l'apprentissage algorithmique. La configuration sGTM + CAPI n'est plus un luxe pour le marketing post-cookie, c'est une infrastructure obligatoire.
 
-## Pourquoi le pixel côté client ne suffit plus
+## Pourquoi le Suivi Côté Serveur est Critique Maintenant
 
-Meta Pixel fonctionne dans le navigateur depuis son lancement en 2018 : quand un utilisateur clique sur le bouton « Acheter », le code JavaScript déclenche `fbq('track', 'Purchase')`, et le navigateur envoie une requête HTTP directement aux serveurs de Meta. Cette architecture porte trois fragilités fondamentales.
+Les pixels côté navigateur dépendaient des cookies tiers. L'ITP (Safari), l'ETP (Firefox) et le Privacy Sandbox de Chrome en 2024 ont détruit ce fondement. Avec l'ATT (App Tracking Transparency), 75 % des utilisateurs iOS refusent le suivi. Résultat : le nombre de conversions affiché dans Ads Manager reste 40 à 50 % en dessous du nombre réel de ventes. L'optimisation du budget de campagne redistribue l'argent vers les mauvais canaux en se basant sur ces données incomplètes.
 
-La première est ATT (App Tracking Transparency). 75% des utilisateurs iOS 14.5+ refusent le suivi, et les signaux de conversion provenant de ce segment ne parviennent jamais à Meta. La deuxième est ITP (Intelligent Tracking Prevention). Safari supprime les cookies tiers après 7 jours, cassant l'attribution cross-domain — si un utilisateur a vu une annonce sur Instagram il y a 10 jours et achète aujourd'hui après avoir cliqué depuis Google, cette connexion est perdue. La troisième est la pénétration des bloqueurs de publicités. Plus de 40% des utilisateurs desktop utilisent uBlock Origin ou Brave, les requêtes du pixel sont bloquées au niveau du réseau.
+Le suivi des conversions côté serveur récupère ces pertes car il fonctionne en dehors des limites du navigateur. Depuis votre domaine first-party (par exemple `track.brandname.com`), vous envoyez une requête à votre propre serveur, qui envoie un POST HTTP à Meta. Dans ce flux, il n'y a pas de problème de consentement aux cookies, de bloqueur de publicités ou d'ITP. Selon le rapport 2024 de Meta, les annonceurs utilisant CAPI capturent en moyenne 38 % plus de signaux de conversion.
 
-Résultat : l'algorithme d'enchères de Meta fonctionne avec des données incomplètes. Une campagne peut générer 100 ventes mais la plateforme n'en voit que 60-70. L'algorithme ne peut pas optimiser les 30-40 restantes — le CPA affiché au tableau de bord est rouge alors qu'il est atteint en réalité. Dans ce contexte, vous réduisez le budget ou pivoter vers des lookalikes incorrects.
+Mais « configurer CAPI » ne suffit pas. Si la qualité d'appairage d'événements est faible, Meta ne peut pas faire correspondre l'événement à un utilisateur. Sans déduplication, la même vente est comptabilisée deux fois — une fois depuis le pixel, une fois depuis CAPI. Si le conteneur GTM côté serveur est mal configuré, vous subissez des timeouts de requête. Le détail fait toute la différence.
 
-## Architecture server-side GTM + Conversion API
+## Construire Correctement l'Infrastructure du Conteneur sGTM
 
-Conversion API (CAPI) fonctionne via une requête HTTP serveur-à-serveur — pas le navigateur, mais votre backend qui envoie l'événement à Meta. Cependant, déclencher CAPI directement depuis le backend n'est pas scalable : chaque framework nécessite une intégration SDK distincte, une validation du schéma d'événement, une logique de retry, un mapping des signaux de consentement. C'est ici que Google Tag Manager côté serveur (sGTM) intervient.
+Le serveur de marquage Google Tag Manager côté serveur (sGTM) est la fondation de CAPI. Il s'agit de la couche proxy qui envoie les données du navigateur vers votre serveur. Vous l'hébergez sur Cloud Run (GCP) ou App Engine et le rendez accessible via un sous-domaine personnalisé.
 
-sGTM est un serveur de gestion des tags containerisé qui fonctionne sur Google Cloud Run. Votre conteneur GTM côté client (sur le web) déclenche un événement GA4 ou Meta Pixel, mais au lieu d'envoyer directement à un tiers, il redirige vers votre endpoint sGTM : `https://gtm.yourdomain.com/g/collect`. sGTM reçoit cet événement et, via une étiquette serveur, le POST vers Meta CAPI. La différence clé : la requête provient de votre domaine first-party, le cookie s'écrit dans un contexte first-party, ITP ne bloque pas.
+Première étape : déployer le conteneur Cloud Run. Utilisez l'image officielle de Google `gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable`. Minimum 2 CPU, 2 Go de RAM — le système doit pouvoir s'adapter aux pics de trafic. Pointez l'URL du serveur de marquage vers un sous-domaine first-party comme `https://track.brandname.com` (via un enregistrement CNAME). Si vous utilisez un domaine tiers, la durée de vie des cookies diminue et Safari ITP les bloque à nouveau.
 
-L'architecture typique fonctionne ainsi : GTM côté client → endpoint sGTM → étiquette CAPI (Meta Conversions API) + étiquette GA4 (Measurement Protocol). Les deux canaux reçoivent le même événement mais dans un contexte serveur. L'avantage critique de sGTM : il peut lire l'état du consentement côté serveur, ajouter en toute sécurité le hash IP + user-agent comme paramètre d'événement, générer automatiquement un token de déduplication.
+Dans le conteneur sGTM, configurez un **client GA4** et un **tag Meta Conversion API**. Le client GA4 écoute les requêtes `/g/collect` en provenance du navigateur et analyse la charge utile d'événement. Le tag Meta CAPI fait correspondre cette charge utile à l'ID d'événement Pixel Meta et l'envoie au point d'extrémité `https://graph.facebook.com/v21.0/{pixel-id}/events`. La sécurité du jeton d'accès est critique à ce stade — stockez-le dans une variable de conteneur, ne le commitez jamais dans votre dépôt.
 
-### Déduplication : ne pas compter deux fois le même événement
+```javascript
+// Variable personnalisée sGTM — enrichissement user_data pour la qualité d'appairage
+const eventData = {
+  event_name: data.event_name,
+  event_time: Math.floor(Date.now() / 1000),
+  event_id: data.event_id, // obligatoire pour la déduplication
+  user_data: {
+    em: data.user_data.email_address ? hashSHA256(data.user_data.email_address) : undefined,
+    ph: data.user_data.phone_number ? hashSHA256(data.user_data.phone_number) : undefined,
+    fn: data.user_data.first_name ? hashSHA256(data.user_data.first_name) : undefined,
+    ln: data.user_data.last_name ? hashSHA256(data.user_data.last_name) : undefined,
+    external_id: data.user_data.external_id, // customer_id (hashed)
+    client_ip_address: data.ip_override,
+    client_user_agent: data.user_agent,
+    fbc: data.user_data.fbc, // cookie _fbc
+    fbp: data.user_data.fbp  // cookie _fbp
+  },
+  custom_data: {
+    currency: data.currency,
+    value: parseFloat(data.value)
+  },
+  action_source: 'website'
+};
+```
 
-Quand le pixel côté client et CAPI s'exécutent simultanément, deux requêtes différentes vont à Meta — l'une du navigateur, l'autre du serveur. Meta sait les fusionner en un seul événement, mais pour cela, les paramètres `event_id` et `event_time` doivent être identiques. Si le client envoie `fbq('track', 'Purchase', {...}, {eventID: 'xyz123'})`, la requête CAPI doit aussi avoir `event_id: 'xyz123'`. Meta cross-reference ces ID's dans les 48 heures qui suivent, comptabilisant une seule fois la paire event_id + event_name.
+Ce hachage doit être effectué dans sGTM avec une variable de modèle SHA-256 — le hachage côté client pose des risques en matière de conformité RGPD. Extrayez automatiquement l'adresse IP du header `req.headers['x-forwarded-for']` : le GTM côté serveur peut capturer cela.
 
-Sans déduplication, deux scénarios sont possibles : (1) Meta compte les deux requêtes séparément, la métrique de conversion gonfle de 100%, le ROAS s'effondre à moitié. (2) Meta, par prudence, ignore les deux, aucune attribution ne se produit. Le deuxième scénario est rare mais possible — notamment si la différence d'event_time dépasse 5 secondes.
+## Architecture de Qualité d'Appairage d'Événements et de Déduplication
 
-## Event Match Quality Score : qualité des données = qualité des enchères
+Le succès de l'API de conversion Meta dépend du score de qualité d'appairage d'événements (EMQ). L'EMQ est un score de 0 à 10 — 7+ est bon, 9+ est excellent. Un EMQ faible : Meta ne peut pas faire correspondre l'événement à l'utilisateur, il n'entre pas dans l'optimisation de campagne.
 
-Meta calcule un score Event Match Quality (EMQ) pour chaque événement CAPI, de 0.0 à 10.0. Un score élevé signifie que Meta peut matcher l'utilisateur dans son propre graphe ; un score bas significa l'événement reste « anonyme » et ne participe pas aux enchères. Les facteurs déterminant l'EMQ sont : `email` (hash SHA256), `phone` (hash SHA256), `external_id` (CRM ID), `client_ip_address`, `client_user_agent`, `fbc` (Facebook Click ID), `fbp` (Facebook Browser ID).
+Pour améliorer l'EMQ, envoyez **au moins 4 identifiants** :
+1. `em` (e-mail, haché SHA-256)
+2. `external_id` (ID client CRM, haché)
+3. `fbp` (cookie _fbp — extrait du navigateur)
+4. `client_ip_address` + `client_user_agent`
 
-Les signaux les plus puissants sont `fbc` et `fbp`. `fbc` : si l'utilisateur a cliqué depuis une annonce Meta, l'URL contient `?fbclid=...`, vous enregistrez cela dans un cookie et l'envoyez à CAPI. `fbp` est un cookie first-party que Meta Pixel écrit automatiquement, mais dans un contexte sGTM, vous le définissez manuellement. Ces deux paramètres présents donnent généralement un EMQ de 8+.
+L'e-mail et `external_id` sont les appaireurs les plus puissants. Si votre flux de paiement capture l'e-mail, poussez cette donnée dans la DataLayer, et sGTM la récupérera. Exemple de push Google Tag Manager sur la DataLayer (page de paiement) :
 
-Deuxième couche : hash email et téléphone. Si l'utilisateur fournit son email lors du paiement, vous le hashisez en SHA256 côté serveur et l'envoyez à CAPI en tant que paramètre `em`. Un hash email présent donne généralement un EMQ de 7+. Troisième couche : IP + user-agent. sGTM ajoute automatiquement ces informations, mais si le forwarding n'est pas correctement configuré côté client (header X-Forwarded-For manquant), sGTM utilise sa propre IP Cloud Run — l'EMQ tombe alors à 3-4.
+```javascript
+window.dataLayer.push({
+  event: 'purchase',
+  event_id: 'txn_' + orderId, // ID unique — obligatoire pour la déduplication
+  user_data: {
+    email_address: customerEmail, // texte brut — sGTM le hachera
+    phone_number: customerPhone,
+    first_name: customerFirstName,
+    last_name: customerLastName,
+    external_id: customerId
+  },
+  ecommerce: {
+    currency: 'USD',
+    value: 149.99,
+    transaction_id: orderId
+  }
+});
+```
 
-Chez Roibase, pour les projets [marketing digital](https://www.roibase.com.tr/fr/dijitalpazarlama), la médiane EMQ atteint 8.2 — parce que l'intégration sGTM + CRM nous permet d'envoyer à la fois les paramètres `fbc/fbp` et `em/ph` sans lacunes. Si l'EMQ descend sous 5, le ROAS de la campagne baisse de 30 à 50%.
+L'**event_id** est critique pour la déduplication. Si le pixel côté navigateur et l'API CAPI côté serveur envoient le même `event_id`, Meta les compte comme un seul événement. Le format `event_id` doit être unique : `{event_name}_{timestamp}_{order_id}`. Si le même événement d'achat est envoyé depuis le pixel et CAPI mais avec des `event_id` différents, Meta les compte comme deux ventes distinctes — votre ROAS gonfle de 100 %.
 
-## Configuration sGTM : checklist pratique
+Dans Event Manager de Meta, consultez Diagnostics > Event Match Quality pour voir la répartition. Si le champ `em` ne correspond que dans 30 % des cas, révisez votre stratégie de capture d'e-mail. `fbp` doit être au-dessus de 90 % — un taux inférieur indique que votre banneau de consentement aux cookies bloque le chargement des pixels.
 
-La configuration sGTM se décompose en trois étapes : (1) déployer le conteneur Cloud Run, (2) surcharger l'URL de transport dans GTM côté client, (3) configurer l'étiquette CAPI dans le conteneur serveur.
+## Validation via Test de Lift de Conversion
 
-**1. Déploiement Cloud Run :** Dans Google Cloud Console → Tag Manager → Server Containers → Create → Auto-provision. Google crée automatiquement une instance Cloud Run, l'endpoint devient `https://sgtm-xxxxxx.a.run.app`. Vous reliez un domaine personnalisé (ex. `gtm.yourdomain.com`) via CNAME. SSL est automatique. Coût : environ 50 USD/mois pour 100K événements/jour (compute Cloud Run + egress réseau).
+Ne mettez jamais CAPI en production sans l'avoir testé. Lancez un test de lift de conversion Meta : assignez 10 % de votre audience à un groupe de contrôle et ne lui envoyez pas le signal CAPI. Après 14 jours, comparez le taux de conversion du groupe de contrôle à celui du groupe exposé. S'il n'y a pas de lift statistiquement significatif, la qualité du signal CAPI pose problème.
 
-**2. URL de transport côté client GTM :** Dans le conteneur web, dans le tag de configuration GA4, ajoutez `server_container_url: "https://gtm.yourdomain.com"`. Cela oblige GA4 à envoyer les événements à votre sGTM au lieu de directement `google-analytics.com`. Pour Meta Pixel, de façon similaire, dans le code de base du pixel : `fbq('set', 'autoConfig', false, 'YOUR_PIXEL_ID')` + `fbq('dataProcessingOptions', [])` + surcharge d'endpoint personnalisée.
+Pour un test de lift, vous avez besoin d'un minimum de 10 000 impressions (selon les directives de Meta). Durée du test : au moins 2 semaines — les périodes plus courtes ne produisent rien en raison de la variance. Un lift d'environ +15 % signifie que CAPI fonctionne correctement. Un lift inférieur à +5 % est du bruit — le pixel côté navigateur capture peut-être déjà suffisamment de signal.
 
-**3. Étiquette CAPI :** Dans le conteneur serveur, ajoutez le template de tag Meta (depuis la Community Gallery : « Facebook Conversions API »). À l'intérieur du tag : Pixel ID, Access Token (généré depuis Events Manager), mapping d'événements (event_name côté client → event_name CAPI), paramètres de données utilisateur (`em`, `ph`, `fbc`, `fbp`). Pour la déduplication par Event ID : l'événement côté client envoie `eventID` dans le header `x-ga-mp1-ev` vers sGTM, l'étiquette serveur l'utilise comme `event_id`.
+Si le test de lift est négatif, les causes possibles incluent :
+- Erreur de déduplication — le même événement est comptabilisé deux fois, l'algorithme est confus
+- EMQ faible — Meta ne peut pas faire correspondre l'événement
+- Timeout sGTM — la réponse du serveur dépasse 3 secondes, Meta abandonne la requête
 
-### Test : Event Manager Diagnostic
+Pour résoudre les problèmes de timeout, augmentez le paramètre **request concurrency** de Cloud Run à 80 et activez la mise à l'échelle automatique. Pour les sites avec un trafic élevé, déployez le conteneur sGTM dans plusieurs régions (par exemple us-central1 + europe-west1).
 
-Meta Events Manager → onglet Test Events affiche les requêtes CAPI en temps réel. Chaque événement porte un badge « Event Match Quality » : vert (8+), jaune (5-7), rouge (<5). Si c'est rouge, vérifiez les paramètres `user_data` — si `em`, `ph`, `client_ip_address`, `client_user_agent` manquent, ajoutez-les. En mode Preview sGTM, vous inspectiez la payload d'événement : cliquez sur le bouton Preview en haut à droite du conteneur sGTM, naviguez sur votre site, effectuez un paiement, regardez le console Preview — l'étiquette CAPI y déclenche.
+## Optimisation du Budget de Campagne et Stratégie de Fenêtre d'Attribution
 
-## Pipeline first-party data : intégration CRM → sGTM
+Une fois CAPI configuré, l'algorithme d'optimisation du budget de campagne (CBO) de Meta reçoit des données plus propres. Auparavant, comme les conversions des utilisateurs iOS étaient perdues, le CBO accordait davantage de poids à Android. Avec le signal côté serveur, les conversions iOS deviennent visibles — la répartition du budget s'améliore.
 
-La puissance de CAPI réside dans la capacité d'envoyer le hash email/téléphone depuis le backend. Mais sans code manuel, il faut une intégration webhook CRM → sGTM. Scénario exemple : l'utilisateur paie, le webhook de commande Shopify se déclenche, vous passez via un middleware (Segment, Hightouch ou Lambda custom) en POST-ant cet événement vers votre endpoint sGTM : `POST https://gtm.yourdomain.com/g/collect` + body contenant `event_name: "Purchase"`, `user_data: {em: "sha256_hash", ph: "sha256_hash"}`, `custom_data: {value: 150, currency: "USD"}`.
+Réexaminez le paramètre de fenêtre d'attribution. Meta utilise par défaut 7 jours de clic, 1 jour de vue. Si votre cycle de vente est plus long (par exemple B2B, 30+ jours), élargissez la fenêtre d'attribution : 28 jours de clic. Mais attention — une fenêtre large crée un biais last-touch, qui peut masquer la contribution des canaux en haut de l'entonnoir. Effectuez des tests d'incrémentalité pour mesurer le véritable lift de chaque canal.
 
-sGTM reçoit, déclenche l'étiquette CAPI, envoie à Meta. L'avantage : l'événement se transmet même navigateur fermé — récurrences d'abonnement, ventes en magasin offline, leads high-value ajoutées manuellement en CRM. Meta marque ces événements « offline conversion » mais les inclut dans le graphe d'attribution.
+Une infrastructure de données first-party est critique pour alimenter CAPI. Si vous n'avez pas d'intégration de plateforme de données clients (CDP) ou de CRM, vous n'utilisez que 50 % du potentiel de CAPI. Si vous n'alignez pas votre stack de [marketing de performance](https://www.roibase.com.tr/fr/dijitalpazarlama) sur cette architecture de données, vous frappez le plafond de la qualité du signal.
 
-## Consent Mode v2 : compatibilité RGPD avec sGTM
+## Pipeline de Vérification des Conversions avec BigQuery
 
-Depuis 2024, Consent Mode v2 est obligatoire en EEA (pour Ads + Analytics). sGTM y brille : l'état de consentement côté client (`ad_storage`, `analytics_storage`) est passé à sGTM comme paramètre, l'étiquette serveur envoie données complètes si consentement présent, sinon événement anonyme. Pour Meta : consentement → hash email + fbc/fbp transmis, pas de consentement → seul `client_ip_address` (hashé) → EMQ tombe à 3-4 mais l'événement participe toujours aux enchères (via conversion modélisée).
+L'écart entre le nombre d'événements envoyés par CAPI et le nombre de conversions affiché dans Ads Manager est normalement de 5 à 10 % (délai de traitement + validation). Un écart de 20 % ou plus indique un problème. Pour vérifier cela, configurez un pipeline de vérification dans BigQuery.
 
-Dans l'étiquette CAPI, section « Consent Settings », relisez la variable `ad_storage`, si non accordé, le bloc `user_data` s'envoie vide. Meta reçoit, ne peut matcher, donc marque « low confidence ». L'API Aggregated Measurement (AEM) intervient — Meta utilise son propre modeling pour mapper ces événements à audiences similaires. Même sans consentement complet, récupérer 60-70% du signal est possible.
+Transmettez les logs du conteneur sGTM vers BigQuery (via un sink Cloud Logging). Analysez les codes de réponse de l'API Meta CAPI — 200 OK signifie l'événement a été livré, 400 signifie erreur de validation. Exemple de requête BigQuery :
 
-## Compromis : latence et coût
+```sql
+SELECT
+  DATE(timestamp) AS event_date,
+  event_name,
+  COUNT(*) AS sent_count,
+  COUNTIF(response_code = 200) AS delivered_count,
+  COUNTIF(response_code >= 400) AS error_count,
+  ROUND(SAFE_DIVIDE(COUNTIF(response_code = 200), COUNT(*)) * 100, 2) AS delivery_rate
+FROM `project.dataset.sgtm_logs`
+WHERE event_name IN ('Purchase', 'AddToCart', 'InitiateCheckout')
+  AND DATE(timestamp) >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+GROUP BY event_date, event_name
+ORDER BY event_date DESC;
+```
 
-sGTM consomme du compute Cloud Run pour chaque événement — environ 150 USD/mois pour 1M événements (config par défaut : 1 vCPU, 512 MB RAM). Volume 10M+/mois → scaling horizontal nécessaire, Cloud Run scale automatiquement mais coût egress réseau augmente (0.12 USD/GB). Alternative : sampling d'événements — seuls les critiques (Purchase, AddToCart) passent par sGTM, top-funnel (ViewContent) restent en pixel côté client.
+Si le taux de livraison est inférieur à 95 %, une erreur Meta API ou un timeout sGTM survient. Inspectez le détail error_count — erreurs fréquentes :
+- `(#100) Invalid parameter` — champ user_data manquant ou format incorrect
+- `(#190) Application rate limit` — vous envoyez 100+ événements par minute, utilisez des requêtes batch
+- `(#2) Invalid access token` — le jeton a expiré
 
-Deuxième compromis : latence. Pixel côté client → Meta directement (50-100 ms), sGTM allonge la chaîne : client → sGTM (150 ms) → CAPI (100 ms) = 250 ms total. Cette latence ne perturbe pas les enchères real-time (Meta process batch), mais côté expérience utilisateur (ex. redirection après checkout), 200 ms extra peut apparaître. Solution : webhook asynchrone — après checkout, le backend envoie l'événement à sGTM, l'utilisateur redirigé sans attendre.
+L'utilisation de requêtes batch réduit la charge du trafic. Vous pouvez empaqueter 50 événements dans un seul POST HTTP (limite Meta : 1 000 événements/requête). Créez une file d'attente batch dans sGTM avec un modèle de tag personnalisé.
 
-## Paramètres d'événement : custom data et catalog produit
+## Stratégie Long Terme : Conversions Modélisées et Attribution Respectueuse de la Vie Privée
 
-L'objet `custom_data` envoyé à CAPI est critique pour les annonces dynamiques Meta (catalog-based remarketing). `content_ids` (SKU produits), `content_type` (product/product_group), `value`, `currency`, `num_items` doivent être transmis sans lacunes. Meta utilise ces données pour injecter dans la creative dynamique les produits de l'utilisateur.
+Les conversions modélisées de Meta (conversions prédites par apprentissage automatique) dépendent directement de la qualité du signal CAPI. EMQ élevé = modélisation plus précise. En 2025, environ 30 à 40 % des conversions rapportées par Meta sont modélisées (rapport Meta Q4 2024). Ce pourcentage augmentera — car le signal du navigateur diminue.
 
-Exemple : l'utilisateur ajoute des chaussures bleues au panier, l'événement CAPI porte `content_ids: ["SKU-12345"]`, `content_name: "Chaussures Bleues"`, `value: 120`, `currency: "EUR"`. Meta reçoit, affiche à l'utilisateur sur Instagram le produit exact avec un CTA « -10% ». Ce niveau de granularité existe aussi côté client mais s'avère moins fiable en contexte sGTM — pas de cookie bloqué, bloqueur d'annonces contourné.
+Pour l'attribution respectueuse de la vie privée, utilisez Aggregated Event Measurement (AEM). Sur les appareils iOS 14.5+, SKAdNetwork fournit des données limitées (délai de 24 heures, 64 buckets de valeur de conversion). L'AEM rapporte les conversions iOS au niveau agrégé au lieu du niveau utilisateur — un signal cohort, pas un signal individuel. CAPI alimente ce signal agrégé.
 
-## sGTM + CAPI : infrastructure désormais fondamentale
-
-Le suivi des conversions côté serveur était un « nice-to-have » en 2024 ; en 2026, c'est du « must-have ». Le rapport Q4 2025 de Meta montre que les comptes sans CAPI ont un CPA en moyenne 28% plus élevé
+À long terme, une stratégie de données first-party est obligatoire. Augmentez le taux de capture d'e-mails (si vous capturez l'e-mail de 80 % des utilisateurs au paiement, l'EMQ de CAPI peut augmenter de 40 %). Construisez un modèle de prédiction de valeur vie client (LTV) — créez une audience lookalike à valeur élevée sur Meta. Lorsque cette strat

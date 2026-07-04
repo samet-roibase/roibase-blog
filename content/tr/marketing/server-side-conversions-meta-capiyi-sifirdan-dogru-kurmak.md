@@ -1,89 +1,150 @@
 ---
 title: "Server-Side Conversions: Meta CAPI'yi Sıfırdan Doğru Kurmak"
-description: "sGTM + Conversion API mimarisi, deduplication mantığı ve event match quality optimizasyonu — iOS 17 sonrası attribution'ın teknik temeli."
-publishedAt: 2026-06-16
-modifiedAt: 2026-06-16
+description: "Meta Conversion API'yi server-side GTM ile kurma rehberi. Event match quality, deduplication ve first-party veri mimarisi — iOS 17 sonrası attribution için zorunlu altyapı."
+publishedAt: 2026-07-04
+modifiedAt: 2026-07-04
 category: marketing
-i18nKey: marketing-001-2026-06
-tags: [conversion-api, server-side-gtm, meta-ads, attribution, event-match-quality]
+i18nKey: marketing-001-2026-07
+tags: [meta-capi, server-side-tracking, gtm, first-party-data, attribution]
 readingTime: 8
 author: Roibase
 ---
 
-iOS 14.5'ten bu yana client-side pixel'in güvenilirliği %30-40 kayıp yaşadı. ATT opt-in oranları %25'lerde seyrediyor, Safari ITP cookies'i 7 günde siliyor, Chrome Privacy Sandbox preprod'da. Meta'nın kendi raporuna göre Conversion API kullanmayan hesaplar ortalama %20 daha az dönüşüm sinyali gönderiyor — bu bidding algoritmasını kör ediyor. Server-side conversion tracking artık opsiyonel değil, kampanya performansının can damarı. Ama doğru kurmak iki satır kod yazmaktan çok daha karmaşık: sGTM mimarisi, deduplication mantığı, event match quality score ve first-party data pipeline entegrasyonu gerekiyor.
+iOS 14.5'ten bu yana browser-side tracking %60-70 veri kaybı yaşıyor. Meta Pixel'in capture ettiği conversion sayısı gerçek satış sayısının yarısı bile olmayabiliyor. Server-side Conversion API bu boşluğu kapatmanın tek yolu — ama yanlış kurulumlar veriyi kirletir, attribution'ı bozan deduplication hataları yaratır ve algoritma öğrenimini bozar. sGTM + CAPI kurulumu artık post-cookie pazarlama için optional değil, zorunlu altyapı.
 
-## Client-Side Pixel Neden Artık Yetmiyor
+## Server-Side Tracking Neden Şimdi Kritik
 
-Meta Pixel 2018'de lansmanından beri browser'da çalışıyor: kullanıcı "Satın Al" butonuna tıkladığında JavaScript kodu `fbq('track', 'Purchase')` tetikliyor, browser doğrudan Meta sunucularına HTTP request atıyor. Bu yapı üç temel kırılganlık taşıyor.
+Browser-side pixel'lar üçüncü parti cookie'lere bağımlıydı. ITP (Safari), ETP (Firefox) ve 2024'teki Chrome Privacy Sandbox bu temeli kırdı. ATT (App Tracking Transparency) ile iOS kullanıcılarının %75'i tracking reddediyor. Sonuç: Ads Manager'da görünen conversion sayısı gerçek satış sayısının %40-50 altında kalıyor. Campaign budget optimization bu eksik veriyle yanlış kanala para aktarıyor.
 
-İlk kırılganlık ATT (App Tracking Transparency). iOS 14.5+ kullanıcılarının %75'i tracking'i reddediyor, bu kesimden gelen conversion sinyalleri Meta'ya hiç ulaşmıyor. İkinci kırılganlık ITP (Intelligent Tracking Prevention). Safari third-party cookie'leri 7 gün sonra siliyor, cross-domain attribution kırılıyor — kullanıcı Instagram'da reklam görmüş, 10 gün sonra Google'dan site'ye gelip satın almışsa bu connection kaybolmuş oluyor. Üçüncü kırılganlık ad-blocker penetrasyonu. Desktop'ta %40+ kullanıcı uBlock Origin veya Brave kullanıyor, pixel request'leri network seviyesinde bloklanıyor.
+Server-side conversion tracking bu kayıpları geri kazandırır çünkü browser sınırlamalarının dışında çalışır. First-party domain'inden (örn. `track.brandadi.com`) kendi sunucuna istek atarsın, sunucu Meta'ya HTTP POST gönderir. Bu akışta cookie consent, ad blocker, ITP sorunu yok. Meta'nın 2024 raporuna göre CAPI kullanan advertiser'lar ortalama %38 daha fazla conversion sinyali capture ediyor.
 
-Sonuç: Meta'nın bidding algoritması eksik veriyle çalışıyor. Kampanya 100 satış yapmış olabilir ama platform yalnızca 60-70 tanesini görüyor. Algoritma geri kalan 30-40'ı optimize etmeye çalışmıyor — CPA hedefi gerçekte tutuyorken dashboard'da kırmızı görünüyor. Bu durumda ya budget kesiyor ya da yanlış lookalike'lara pivot yapıyorsunuz.
+Ama "CAPI kur" demek yetmiyor. Event match quality düşükse Meta eventi kullanıcıyla eşleştiremez. Deduplication yoksa aynı satış hem pixel hem CAPI'den iki kez sayılır. Server-side GTM container'ı yanlış yapılandırılırsa request timeout'lar yaşanır. Burada detay fark yaratır.
 
-## Server-Side GTM + Conversion API Mimarisi
+## sGTM Container Altyapısını Doğru Kurmak
 
-Conversion API (CAPI) sunucu-to-sunucu HTTP request'i üzerinden çalışıyor — browser değil, sizin backend'iniz Meta'ya event gönderiyor. Ancak CAPI'yi doğrudan backend'den tetiklemek ölçeklenebilir değil: her framework için ayrı SDK entegrasyonu, event şeması validasyonu, retry mantığı, consent sinyali mapping. Bu noktada Google'ın server-side Tag Manager (sGTM) devreye giriyor.
+Server-side Google Tag Manager (sGTM) CAPI'nin altyapısı. Browser'dan sunucuna veri gönderen proxy katmanı. Cloud Run (GCP) veya App Engine üzerinde host ediyorsun, custom subdomain ile erişilir hale getiriyorsun.
 
-sGTM, Google Cloud Run üzerinde çalışan containerized tag yönetim sunucusu. Client-side GTM container'ınız (web'de çalışan) GA4 veya Meta Pixel event'i tetikliyor ama doğrudan üçüncü tarafa göndermek yerine kendi sGTM endpoint'inize yönlendiriyor: `https://gtm.yourdomain.com/g/collect`. sGTM bu event'i alıyor, server-side tag ile Meta CAPI'ye POST ediyor. Aradaki fark: request first-party domain'inizden geliyor, cookie first-party context'te yazılıyor, ITP bloğu yok.
+İlk adım: Cloud Run container deployment. Google'ın resmi `gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable` image'ını kullan. Minimum 2 CPU, 2GB RAM — traffic spike'larda scale etmeye hazır olmalı. Tagging Server URL'ini `https://track.brandadi.com` gibi first-party subdomain'e yönlendir (CNAME kaydıyla). Third-party domain kullanırsan cookie lifetime kısalır, Safari ITP yine kapar.
 
-Tipik mimari şöyle: Client-side GTM → sGTM endpoint → CAPI tag (Meta Conversions API) + GA4 tag (Measurement Protocol). Her iki kanal da aynı event'i alıyor ama server-side bağlamda. sGTM'nin kritik avantajı: consent state'ini server-side okuyabiliyor, IP + user-agent hash'ini güvenli şekilde event parametresi olarak ekleyebiliyor, deduplication token'ı otomatik generate edebiliyor.
+sGTM container'da **GA4 Client** ve **Meta Conversion API Tag** kur. GA4 Client browser'dan gelen `/g/collect` requestlerini dinler, event payload'unu parse eder. Meta CAPI Tag bu payload'u Meta Pixel Event ID'siyle eşleştirip `https://graph.facebook.com/v21.0/{pixel-id}/events` endpoint'ine gönderir. Bu noktada access token güvenliği kritik — container variable'ına kaydet, repo'ya commit etme.
 
-### Deduplication: Aynı Event'i İki Kez Saymamak
+```javascript
+// sGTM Custom Variable — Event Match Quality için user_data zenginleştirme
+const eventData = {
+  event_name: data.event_name,
+  event_time: Math.floor(Date.now() / 1000),
+  event_id: data.event_id, // deduplication için zorunlu
+  user_data: {
+    em: data.user_data.email_address ? hashSHA256(data.user_data.email_address) : undefined,
+    ph: data.user_data.phone_number ? hashSHA256(data.user_data.phone_number) : undefined,
+    fn: data.user_data.first_name ? hashSHA256(data.user_data.first_name) : undefined,
+    ln: data.user_data.last_name ? hashSHA256(data.user_data.last_name) : undefined,
+    external_id: data.user_data.external_id, // customer_id (hashed)
+    client_ip_address: data.ip_override,
+    client_user_agent: data.user_agent,
+    fbc: data.user_data.fbc, // _fbc cookie
+    fbp: data.user_data.fbp  // _fbp cookie
+  },
+  custom_data: {
+    currency: data.currency,
+    value: parseFloat(data.value)
+  },
+  action_source: 'website'
+};
+```
 
-Client-side pixel ve CAPI aynı anda çalıştığında Meta'ya iki farklı request gidiyor — biri browser'dan, biri sunucudan. Meta bunu tek event olarak birleştirmeyi biliyor ama bunun için `event_id` ve `event_time` parametreleri aynı olmalı. Client-side `fbq('track', 'Purchase', {...}, {eventID: 'xyz123'})` gönderiyorsa, CAPI request'inde de `event_id: 'xyz123'` olmalı. Meta bu ID'leri 48 saat içinde cross-reference ediyor, aynı event_id + event_name çiftini bir kez sayıyor.
+Bu hash işlemi sGTM'de SHA-256 template variable'ıyla yapılmalı — client-side hash'lemek GDPR açısından riskli. IP address'i `req.headers['x-forwarded-for']` header'ından otomatik oku, server-side GTM bunu capture edebiliyor.
 
-Deduplication olmadan iki senaryo mümkün: (1) Meta her iki request'i de ayrı event sayıyor, conversion metriği %100 şişiyor, ROAS yarıya düşüyor. (2) Meta güvensizlikle her iki request'i de ignoreliyor, hiçbir attribution olmuyor. İkinci senaryo daha nadir ama mümkün — özellikle event_time farkı 5+ saniye olduğunda.
+## Event Match Quality ve Deduplication Mimarisi
 
-## Event Match Quality Score: Veri Kalitesi = Bidding Kalitesi
+Meta Conversion API'nin başarısı Event Match Quality (EMQ) skoruna bağlı. EMQ 0-10 arası bir skor — 7+ iyi, 9+ mükemmel. Düşük EMQ: Meta eventi kullanıcıya eşleştiremez, campaign optimization'a girmiyor.
 
-Meta her CAPI event'i için Event Match Quality (EMQ) skoru hesaplıyor: 0.0 ile 10.0 arası. Skor yüksekse Meta kullanıcıyı kendi graph'ında match edebiliyor, skor düşükse event "anonim" kalıyor ve bidding'e girmiyor. EMQ'yu belirleyen faktörler: `email` (SHA256 hash), `phone` (SHA256 hash), `external_id` (CRM ID), `client_ip_address`, `client_user_agent`, `fbc` (Facebook click ID), `fbp` (Facebook browser ID).
+EMQ'yu artırmak için **en az 4 identifier** gönder:
+1. `em` (email, SHA-256 hashed)
+2. `external_id` (CRM customer ID, hashed)
+3. `fbp` (_fbp cookie — browser'dan al)
+4. `client_ip_address` + `client_user_agent`
 
-En güçlü signal `fbc` ve `fbp`. `fbc` kullanıcı Meta reklamından tıklamışsa URL'de `?fbclid=...` olarak geliyor, bunu cookie'ye kaydedip CAPI'ye gönderiyorsunuz. `fbp` ise first-party cookie, Meta Pixel otomatik yazıyor ama sGTM context'inde siz manuel set ediyorsunuz. Bu iki parametre varsa EMQ genelde 8+ oluyor.
+Email ve `external_id` en güçlü matcher'lar. Eğer checkout flow'unda email capture ediyorsan bu veriyi DataLayer'a push et, sGTM oradan alsın. Örnek GTM DataLayer push (checkout sayfasında):
 
-İkinci katman: email ve telefon hash'i. Kullanıcı checkout sırasında email veriyorsa backend'de SHA256 hash'leyip CAPI'ye `em` parametresi olarak gönderiyorsunuz. Email hash varsa EMQ 7+ çıkıyor. Üçüncü katman: IP + user-agent. sGTM bu bilgiyi automatic olarak ekliyor ama client request'inde forwarding doğru yapılmazsa (X-Forwarded-For header eksik) sGTM kendi Cloud Run IP'sini kullanıyor — bu durumda EMQ 3-4'e düşüyor.
+```javascript
+window.dataLayer.push({
+  event: 'purchase',
+  event_id: 'txn_' + orderId, // unique ID — deduplication için
+  user_data: {
+    email_address: customerEmail, // plaintext — sGTM hash'leyecek
+    phone_number: customerPhone,
+    first_name: customerFirstName,
+    last_name: customerLastName,
+    external_id: customerId
+  },
+  ecommerce: {
+    currency: 'USD',
+    value: 149.99,
+    transaction_id: orderId
+  }
+});
+```
 
-Roibase'in [Performans Pazarlaması](https://www.roibase.com.tr/tr/ppc) projelerinde EMQ mediyan'ı 8.2 — çünkü sGTM + CRM entegrasyonu ile hem `fbc/fbp` hem de `em/ph` parametrelerini eksiksiz gönderiyoruz. EMQ 5'in altındaysa kampanya ROAS'ı %30-50 düşük kalıyor.
+Deduplication için **event_id** kritik. Browser-side Pixel ile server-side CAPI aynı `event_id` gönderirse Meta ikisini tek event sayar. `event_id` formatı: `{event_name}_{timestamp}_{order_id}` gibi unique olmalı. Eğer aynı purchase event'i hem pixel hem CAPI gönderiyor ama `event_id` farklıysa Meta iki ayrı satış sayar — ROAS %100 şişer.
 
-## sGTM Kurulumu: Pratik Checklist
+Meta Event Manager'da Diagnostics > Event Match Quality'de breakdown inceleyebilirsin. Eğer `em` field'i %30 match ediyorsa email capture stratejini gözden geçir. `fbp` %90+ olmalı — düşükse cookie consent banner'ın pixel load'ı engelliyor demektir.
 
-sGTM kurulumu üç aşamadan oluşuyor: (1) Cloud Run container deploy, (2) client-side GTM'de transport URL override, (3) server-side container'da CAPI tag konfigürasyonu.
+## Conversion Lift Test ile Doğrulama
 
-**1. Cloud Run Deploy:** Google Cloud Console'da Tag Manager → Server Containers → Create → Auto-provision. Google otomatik Cloud Run instance açıyor, endpoint `https://sgtm-xxxxxx.a.run.app` oluyor. Custom domain (ör. `gtm.yourdomain.com`) CNAME ile bağlıyorsunuz. SSL otomatik sağlanıyor. Maliyet: 100K event/gün için ~$50/ay (Cloud Run compute + network egress).
+CAPI kurulumunu test etmeden live'a almak hata. Meta Conversion Lift çalıştır: audience'inin %10'unu holdout grubuna al, onlara CAPI sinyali gönderme. 14 gün sonra holdout grubun conversion rate'ini exposed grubunkiyle karşılaştır. İstatistiksel olarak anlamlı lift yoksa CAPI signal quality'nin sorunu var demektir.
 
-**2. Client-side GTM Transport URL:** Web container'da GA4 Config tag'ine `server_container_url: "https://gtm.yourdomain.com"` ekliyorsunuz. Bu GA4'ün event'leri doğrudan `google-analytics.com` yerine sizin sGTM'ye göndermesini sağlıyor. Meta Pixel için benzer şekilde pixel base code'unda `fbq('set', 'autoConfig', false, 'YOUR_PIXEL_ID')` + `fbq('dataProcessingOptions', [])` + custom endpoint override.
+Lift test için minimum 10,000 impression gerekiyor (Meta'nın kılavuzuna göre). Test süresi: en az 2 hafta — daha kısa periyotlar variance yüzünden sonuç vermez. Lift sonucu +%15 civarındaysa CAPI doğru çalışıyor. +%5'in altı gürültü seviyesi — muhtemelen browser-side Pixel zaten yeterli sinyali capture ediyordu.
 
-**3. CAPI Tag:** Server container'da Meta tag template'i (Community Gallery'den "Facebook Conversions API" tag). Tag içinde Pixel ID, Access Token (Events Manager'dan generate), event mapping (client event_name → CAPI event_name), user data parametreleri (`em`, `ph`, `fbc`, `fbp`). Event ID deduplication için: client-side event'te `eventID` variable'ını sGTM'ye `x-ga-mp1-ev` header'ında gönderiyorsunuz, server-side tag bunu `event_id` olarak kullanıyor.
+Eğer lift test negatif çıkarsa olası sebepler:
+- Deduplication hatası — aynı event iki kez sayılıyor, algoritma kafası karışıyor
+- EMQ düşük — Meta eventi match edemiyor
+- sGTM timeout — server response 3 saniyeyi geçiyor, Meta request'i drop ediyor
 
-### Test: Event Manager'da Diagnostic
+Timeout sorunu için Cloud Run'da **request concurrency** ayarını 80'e çek, otomatik scaling'i aktif et. Yüksek traffic sitelerinde sGTM container'ı multi-region deploy et (örn. us-central1 + europe-west1).
 
-Meta Events Manager → Test Events bölümünde CAPI request'leri real-time görünüyor. Her event için "Event Match Quality" badge var: yeşil 8+, sarı 5-7, kırmızı <5. Kırmızıysa `user_data` parametrelerini kontrol edin — `em`, `ph`, `client_ip_address`, `client_user_agent` eksikse eklenmeli. sGTM Preview modunda event payload'ı inceleyebiliyorsunuz: sGTM container sağ üst Preview butonuna tıklayın, web sitenize gidin, checkout yapın, Preview console'da CAPI tag fire'ını görüyorsunuz.
+## Campaign Budget Optimization ve Attribution Window Stratejisi
 
-## First-Party Data Pipeline: CRM → sGTM Entegrasyonu
+CAPI kurduktan sonra Meta'nın campaign budget optimization (CBO) algoritması daha temiz veri alır. Önceden iOS kullanıcılarından gelen conversion'lar kayıp olduğu için CBO Android'e ağırlık veriyordu. Server-side signal gelince iOS conversion'ları da görünür hale geliyor — budget dağılımı düzeliyor.
 
-CAPI'nin gücü backend'den email/telefon hash'i gönderebilmekte. Ama bunu manuel kod yazmadan yapmak için CRM → sGTM webhook entegrasyonu gerekiyor. Örnek senaryo: kullanıcı checkout yapıyor, Shopify order webhook'u tetikliyor, siz bir middleware (Segment, Hightouch veya custom Lambda) ile bu event'i sGTM endpoint'inize POST ediyorsunuz: `POST https://gtm.yourdomain.com/g/collect` + body'de `event_name: "Purchase"`, `user_data: {em: "sha256_hash", ph: "sha256_hash"}`, `custom_data: {value: 150, currency: "USD"}`.
+Attribution window ayarını gözden geçir. Meta varsayılan 7-day click, 1-day view kullanıyor. Eğer satış döngün uzunsa (örneğin B2B, 30+ gün) attribution window'u genişlet: 28-day click. Ama dikkat — geniş window last-touch bias yaratır, üst funnel kanalların katkısını maskeleyebilir. Incrementality testi yaparak her kanalın gerçek lift'ini ölç.
 
-sGTM bunu alıyor, CAPI tag tetikliyor, Meta'ya gidiyor. Bu yaklaşımın avantajı: browser kapalıyken bile event gönderilebiliyor — örneğin recurring subscription yenilemeleri, offline store satışları, CRM'de manuel eklenen high-value lead'ler. Meta bu event'leri "offline conversion" olarak işaretliyor ama attribution graph'a dahil ediyor.
+First-party veri altyapısı CAPI'yi beslemek için kritik. Eğer customer data platform (CDP) veya CRM entegrasyonun yoksa CAPI'nin potansiyelinin %50'sini kullanıyorsun demektir. [Performans pazarlaması](https://www.roibase.com.tr/tr/ppc) stack'ini bu veri mimarisine göre kurmazsan signal quality duvarına çarparsın.
 
-## Consent Mode v2: GDPR Uyumlu sGTM
+## BigQuery ile Conversion Verification Pipeline'ı
 
-2024'ten itibaren Google Consent Mode v2 zorunlu (EEA'da Ads + Analytics için). sGTM bu konuda avantajlı: client-side consent state'i (`ad_storage`, `analytics_storage`) sGTM'ye parameter olarak geçiyor, server-side tag consent varsa tam veri, yoksa anonymous event gönderiyor. Meta için: consent varsa email hash + fbc/fbp gidiyor, yoksa yalnızca `client_ip_address` (hashed) gidiyor — bu durumda EMQ 3-4 oluyor ama hala bidding'e katılıyor (modeled conversion olarak).
+CAPI'den gönderilen event sayısı ile Meta Ads Manager'da görünen conversion sayısı arasında %5-10 fark normal (processing delay + validation). %20+ fark varsa sorun var demektir. Bunu doğrulamak için BigQuery'de verification pipeline kur.
 
-CAPI tag'de "Consent Settings" bölümünde `ad_storage` variable'ını okutuyorsunuz, granted değilse `user_data` objesi boş gönderiliyor. Meta bu event'i alıyor ama match edemediği için "low confidence" olarak işaretliyor. Aggregated Measurement API (AEM) devreye giriyor — Meta kendi modeling'i ile bu event'leri benzer audience'lara map ediyor. Tam consent olmasa bile %60-70 signal recovery mümkün.
+sGTM container log'larını BigQuery'ye stream et (Cloud Logging sink ile). Meta CAPI response code'larını parse et — 200 OK ise event delivered, 400 ise validation error. Örnek BigQuery sorgusu:
 
-## Tradeoff: Latency ve Maliyet
+```sql
+SELECT
+  DATE(timestamp) AS event_date,
+  event_name,
+  COUNT(*) AS sent_count,
+  COUNTIF(response_code = 200) AS delivered_count,
+  COUNTIF(response_code >= 400) AS error_count,
+  ROUND(SAFE_DIVIDE(COUNTIF(response_code = 200), COUNT(*)) * 100, 2) AS delivery_rate
+FROM `project.dataset.sgtm_logs`
+WHERE event_name IN ('Purchase', 'AddToCart', 'InitiateCheckout')
+  AND DATE(timestamp) >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+GROUP BY event_date, event_name
+ORDER BY event_date DESC;
+```
 
-sGTM her event için Cloud Run compute kullanıyor — 1M event/ay ~$150 maliyet (default 1 vCPU, 512MB memory config'inde). Eğer event volume 10M+ ise horizontal scaling gerekiyor: Cloud Run otomatik scale ediyor ama network egress maliyeti artıyor (0.12 USD/GB). Alternatif: event sampling — yalnızca critical event'ler (Purchase, AddToCart) sGTM'den geçiyor, ViewContent gibi top-funnel event'ler client-side pixel'de kalıyor.
+Delivery rate %95'in altındaysa Meta API hatası veya sGTM timeout var. Error_count detayına bak — sık görülen hatalar:
+- `(#100) Invalid parameter` — user_data field'i eksik veya format yanlış
+- `(#190) Application rate limit` — dakikada 100+ event gönderiyorsun, batch request kullan
+- `(#2) Invalid access token` — token expire olmuş
 
-İkinci tradeoff: latency. Client-side pixel doğrudan Meta'ya gidiyor (50-100ms), sGTM ise request chain'i uzatıyor: client → sGTM (150ms) → CAPI (100ms) = 250ms toplam. Bu gecikme real-time bidding'i etkilemiyor (Meta event'i batch process ediyor) ama user experience'ta (ör. checkout sonrası thank-you page redirect) 200ms ekstra delay olabilir. Bu durumda asenkron webhook tercih ediliyor: checkout işlemi bittikten sonra backend sGTM'ye event gönderiyor, kullanıcı beklemeden redirect oluyor.
+Batch request kullanımı traffic yükü azaltır. 50 event'i tek HTTP POST'a paketleyebilirsin (Meta CAPI limit 1000 event/request). sGTM'de custom tag template'i ile batch queue kur.
 
-## Event Parametreleri: Custom Data ve Product Catalog
+## Uzun Dönem Strateji: Modeled Conversions ve Privacy-Safe Attribution
 
-CAPI'ye gönderilen `custom_data` objesi Meta'nın dynamic ad'leri (catalog-based remarketing) için kritik. `content_ids` (ürün SKU'ları), `content_type` (product/product_group), `value`, `currency`, `num_items` parametrelerini eksiksiz göndermelisiniz. Meta bu bilgiyle kullanıcının sepetindeki ürünleri dynamic creative'e inject ediyor.
+Meta modeled conversions (makine öğrenmesiyle tahmin edilen conversion'lar) CAPI signal quality'sine doğrudan bağlı. Yüksek EMQ = daha doğru modelleme. 2025 itibarıyla Meta reported conversion'ların %30-40'ı modeled (Meta Earnings Q4 2024). Bu oran artacak — çünkü browser signal azalıyor.
 
-Örnek: kullanıcı mavi ayakkabıyı sepete eklemiş, CAPI event'i `content_ids: ["SKU-12345"]`, `content_name: "Mavi Ayakkabı"`, `value: 120`, `currency: "TRY"` içeriyor. Meta bu event'i alıyor, kullanıcıya Instagram'da tam o ürünün görselini + "%10 indirim" CTA'sını gösteriyor. Bu seviye granularity client-side pixel'de de mümkün ama sGTM context'inde daha güvenilir — cookie block yok, ad-blocker bypass ediliyor.
+Privacy-safe attribution için Aggregated Event Measurement (AEM) kullan. iOS 14.5+ cihazlarda SKAdNetwork sınırlı veri veriyor (24 saat delay, 64 conversion value bucket). AEM, server-side signal ile iOS conversion'larını aggregate düzeyde raporluyor — kullanıcı-bazlı değil, cohort-bazlı. CAPI bu aggregate signal'i besliyor.
 
-## sGTM + CAPI Artık Temel Altyapı
+Uzun dönem için first-party data strategy zorunlu. Email capture rate'ini artır (örn. checkout'ta %80+ email alıyorsan CAPI EMQ'su %40 yükselir). Customer lifetime value (LTV) prediction modeli kur — yüksek LTV segmentine Meta'da value-based lookalike audience oluştur. Bu strateji [dönüşüm oranı optimizasyonu](https://www.roibase.com.tr/tr/cro) süreçleriyle birleştiğinde compound etkisi %60+ revenue artışı yaratabilir.
 
-Server-side conversion tracking 2024'te "nice to have" iken 2026'da "must have" statüsünde. Meta'nın 2025 Q4 raporunda CAPI kullanmayan hesapların CPA'sı ortalama %28 daha yüksek çıkıyor. Google Ads Performance Max kampanyaları için de benzer trend var — server-side GA4 event'leri enhanced conversion'ları besliyor, bidding algoritması %15-20 daha iyi optimize ediyor.
-
-sGTM + CAPI stack'i kurmak bir günlük iş değil: Cloud infrastructure, consent management, deduplication logic, EMQ optimization, CRM webhook entegrasyonu gerekiyor. Ancak bu altyapıyı bir kez doğru kurduğunuzda hem ROAS hem de attribution güvenilirliği kalıcı şekilde yükseliyor. iOS 17 sonrası pazarda kazanan ekipler first-party signal pipeline'ını kontrol eden ekipler.
+Server-side Conversion API kurmak artık "nice-to-have" değil. iOS privacy enforcement, Chrome cookie deprecation ve platform-bazlı attribution kısıtlamaları browser-side tracking'i kullanılamaz hale getirdi. sGTM + CAPI mimarisi doğru kurulduğunda — yüksek EMQ, temiz deduplication, BigQuery verification pipeline ile — post-cookie pazarlama stack'inin omurgası oluyor. Test et, ölç, incrementality doğrula. Veri mimarisini mühendislik disipliniyle kur.
