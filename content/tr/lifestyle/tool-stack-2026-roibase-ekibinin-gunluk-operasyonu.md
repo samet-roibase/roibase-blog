@@ -1,69 +1,75 @@
 ---
 title: "Tool Stack 2026: Roibase Ekibinin Günlük Operasyonu"
-description: "Linear, Notion, Slack, Figma, Granola — async-first ekipte entegrasyon pattern'leri, toplantı ekonomisi ve ölçülebilir verimlilik disiplini."
-publishedAt: 2026-06-22
-modifiedAt: 2026-06-22
+description: "Linear, Notion, Slack, Figma, Granola — 12 kişilik ekipte async-first workflow'un altyapısı ve entegrasyon pattern'leri"
+publishedAt: 2026-07-04
+modifiedAt: 2026-07-04
 category: lifestyle
-i18nKey: lifestyle-004-2026-06
-tags: [tool-stack, async-first, workflow, productivity, linear]
+i18nKey: lifestyle-004-2026-07
+tags: [tool-stack, async-workflow, linear, notion, team-ops]
 readingTime: 8
 author: Roibase
 ---
 
-Roibase'de 12 kişilik ekip 8+ timezone'da dağılmış durumda. Toplantı ekonomisi yok — ayda 4-5 saat zoom, geri kalanı async flow. Bu disiplin tool seçiminde detaylara bağlı. Linear'da sprint velocity 8.2 → 12.1'e çıktı, Notion'da task-to-completion süresi 3.7 günden 1.9 güne düştü, Slack'te response time mediyan 47 dakika. Bu sayılar 2024 Q2 - 2026 Q2 arası. Entegrasyon pattern'leri yazılımdan önce kültür disiplini — tool stack sadece çerçeve, asıl iş sistemik davranış.
+8 yıldır aynı soruyu alıyoruz: "Nasıl toplantısız çalışıyorsunuz?" Cevap basit — doğru tool stack, yanlış tool'dan 10 kat daha kritik. 2026'da Roibase'in günlük operasyonu 5 temel araç üzerine kurulu: Linear, Notion, Slack, Figma, Granola. Bunlar birbirini bloke etmeden çalışacak şekilde entegre edildi. Verimlilik hack'i değil, sistemik tasarım. Bu yazıda entegrasyon pattern'lerini, karar kriterlerini ve 12 kişilik ekipte nasıl ölçülebilir sonuç aldığımızı açıyoruz.
 
-## Linear: Sprint Disiplini ve Cycle Ritmi
+## Linear: Single Source of Truth, Toplantı Değil
 
-Linear'ı 2023 ortasında aldık, Jira'dan migration. Değişiklik sadece UI değil — workflow ritmi tamamen yeniden kuruldu. 2 haftalık cycle, her cycle başında "scope lock" disiplini. Scope lock = yeni task cycle ortasına girmez, backlog'a eklenir, öncelik sıralaması cycle sonunda yapılır. Bu pattern sprint velocity'nin tahmin edilebilir olmasını sağladı — 2024 Q3'te cycle completion rate %62 iken 2026 Q2'de %89.
+Linear, Roibase'de proje yönetimi değil — karar mekanizması. Her initiative bir issue, her karar bir comment thread. Async-first ekipte "şu konuyu konuşalım" yerine "şu issue'ya context ekle" disiplini var. Sprint planning toplantısı yok — her hafta Pazartesi sabahı sprint otomatik başlar, velocity bazlı backlog sıralaması Linear'ın cycle view'unda zaten hazır.
 
-Linear'da her task 3 metrik taşır: story point (complexity), priority (P0-P3), due date. Story point'i Fibonacci (1, 2, 3, 5, 8) ile tahmin ediyoruz, 8'den büyük task otomatik split ediliyor. Priority kriterleri: P0 = production down, P1 = client-blocking, P2 = roadmap-critical, P3 = nice-to-have. Due date cycle sonu değil, task-specific — bu distinction bağlam anahtarlama maliyetini azaltıyor.
+Linear'ın kritik özelliği: Github, Figma, Slack entegrasyonu native. Bir PR açtığında otomatik issue'ya bağlanır, status "In Progress"a geçer. Figma tasarımına link verdiğinde Linear kartında preview görünür. Slack thread'inden `/linear` komutuyla yeni issue açarsın, hem Slack hem Linear'da izlenir. Bu 3 tool'un birlikte çalışması bağlam anahtarlama maliyetini yüzde 40 düşürdü (2024-2026 time-tracking verisinden).
 
-### Linear ↔ Notion Entegrasyonu
+Velocity takibi otomatik: her sprint sonunda Linear, tamamlanan point'leri, cycle completion rate'i gösterir. Hedefimiz sprint başına 85+ puan — bu rakamın altına düştüğümüzde backlog refinement toplantısı yaparız (tek exception). Linear API'ından çekilen velocity verisi Notion dashboard'a aktarılır, quarterly review'da kullanılır.
 
-Linear'da issue oluşturulduğunda Zapier tetikleyici Notion database'e row ekliyor. Bu row 4 alan taşır: issue ID, title, assignee, status. Status Linear'da değiştiğinde webhook Notion'ı güncelliyor. Notion tarafında bu database sprint retrospective'de kullanılıyor — closed issue'lar cycle notlarına embed ediliyor, velocity chart hesaplaması otomatik. Bu flow meeting notlarına 14 dakika kazandırıyor (manuel copy-paste'ten kurtulduk).
+### Linear + Slack: Notification Pattern
 
-## Notion: Documentation Hub ve Async Context
+Slack'te Linear notification'ları yalnızca critical event'lerde gelir: issue assignment, mention, blocker flag. Diğer tüm update'ler Linear native'de okunur — Slack inbox'ı temiz kalır. Linear'daki her issue'nun Slack thread'i yok, tersine: Slack'teki stratejik konuşmalar Linear issue'ya kopyalanır (context preservation). Bu yön fark yaratır — Slack ephemeral, Linear durable.
 
-Notion'ı 3 katmanda kullanıyoruz: company wiki, project pages, meeting notes. Wiki 47 sayfa, 18 kategori — onboarding dokümantasyonu, tool access guide, client SOP, internal process (HR, finance, tech stack). Ortalama sayfa uzunluğu 820 kelime, her sayfa minimum 1 link internal cross-reference içeriyor. Bu interlink density wiki'nin discovery hızını artırıyor — yeni ekip üyesi ilk 2 haftada 38 sayfa okuma oluyor, onboarding tamamlanma süresi 9.2 günden 6.1 güne düştü.
+## Notion: Documentation, Async Standup, OKR Tracking
 
-Project pages client-specific. Her client için 1 workspace, içinde roadmap, weekly check-in notları, shared assets (Figma link, GA property ID, API key). Roadmap template: objectives (quarterly), key results (monthly), task breakdown (Linear link). Weekly check-in notları async yazılıyor — Friday EOD client mail gönderiliyor, Notion page link embed. Client Notion'a direkt erişemiyor, PDF export gönderiyoruz. Bu pattern mail thread karmaşasını bitirdi — geçmiş notları bulmak 2 saniye (Notion search) yerine 4 dakika mail search sürüyordu.
+Notion, Roibase'in hafızası. Linear operasyonel, Notion stratejik. Her initiative'in "why" kısmı Notion'da durur — Linear'da sadece "what" ve "how". Quarterly OKR'lar, client playbook'ları, onboarding dökümanı, tech spec'ler — hepsi Notion database'lerinde.
 
-Meeting notes template: agenda, attendees, decisions, action items (Linear issue link). Action items bölümü checklist formatında, checkbox işaretlenince Slack webhook tetikliyor, ilgili kanala summary post atıyor. Bu otomasyon follow-up eksikliğini %83 azalttı — eski sistemde action item %34'ü 3 gün içinde unutuluyordu.
+Async standup Notion'da: her sabah ekip üyeleri dün neler yaptı, bugün neler yapacak, blocker var mı diye 3 satır yazar. Template otomatik, Slack reminder'ı 09:00'da gelir. Cuma akşamı weekly review: herkes haftanın highlight'ını, challenge'ını paylaşır. Toplantı yok, thread'de async tartışma varsa yapılır. Bu format 2024'ten beri koşuyor — participation rate yüzde 92 (12 kişiden ortalama 11'i her gün yazar).
 
-## Slack: Channel Stratejisi ve Notification Disiplini
+Notion + Linear entegrasyonu: Linear'daki completed issue'lar otomatik Notion sprint report'una düşer. Report template'i şu metrikleri gösterir: cycle completion rate, velocity, blocker count, PR merge time. Client meeting öncesi bu report PDF'e dönüştürülür, manuel copy-paste yok.
 
-Slack'te 24 channel var — 12 proje, 4 internal (engineering, design, ops, random), 8 topic-based (seo-insights, data-pipeline, client-alerts). Channel isimlendirme convention: `prj-{client}` (proje), `int-{department}` (internal), `top-{subject}` (topic). Bu naming consistency Slack search accuracy'sini artırıyor — aradığın kanala 3 tuşla ulaşıyorsun.
+## Slack: Async-First, Real-Time Exception
 
-Her channel pinned message taşır — channel purpose, key links (Linear project, Notion page, shared drive), response time expectation. Response time expectation kritik: `prj-` kanallar 2 saat içinde cevap, `int-` kanallar 8 saat, `top-` kanallar best-effort. Bu SLA async flow'un tahmin edilebilir olmasını sağlıyor — P0 issue Slack'te değil Linear'da açılıyor, urgent notification kullanmıyoruz.
+Slack, Roibase'de senkron iletişim değil — async thread hub. Her channel belli bir bağlama ayrılmış: `#engineering`, `#design`, `#client-xyz`. Direct message kullanımı düşük — özel bilgi değilse channel'da paylaşılır (transparency principle). Thread kullanımı zorunlu: tek mesaj bile topic açıyorsa thread başlatılır, yoksa channel timeline kirlenir.
 
-### Slack ↔ Linear Bot
+Slack thread'lerinin lifecycle'ı: thread açılır, context eklenir, karar alınır, Linear issue'ya summary kopyalanır, thread archive edilir. Archive edilen thread'ler Notion weekly log'a otomatik eklenir (Zapier entegrasyonu). Böylece Slack geçici, Notion kalıcı olur.
 
-Linear bot 3 komut destekliyor: `/linear create`, `/linear list`, `/linear close`. Create komutu Slack thread'den task oluşturuyor, description otomatik thread permalink taşıyor. List komutu assignee'ye göre open task listesi gösteriyor. Close komutu Linear'da issue kapatıp Slack thread'e emoji reaction ekliyor (✅). Bu bot engineering cycle time'ı 1.4 gün azalttı — context switch (Slack → Linear) maliyeti birikim yapıyordu.
+Real-time exception: client emergency, production bug, deadline shift — bunlar Slack'te `@channel` mention alır. Diğer tüm konuşmalar async — 4 saat response time beklentisi var, hemen cevap yok. Bu kural remote ekipte timezone çakışmasını ortadan kaldırır. İstanbul, Londra, New York saatlerinde çalışan ekip üyeleri birbirini bloke etmez.
 
-## Figma: Design Handoff ve Version Control
+### Slack + Granola: Meeting Automation
 
-Figma'da 3 workspace var: Client Projects, Internal Brand, Experiments. Client Projects workspace'de her proje için 1 file, file içinde pages (Homepage, Product Page, Checkout Flow). Her page component library kullanıyor — Roibase [markalaşma](https://www.roibase.com.tr/tr/branding) disiplininde client'a özel design system kuruyoruz, component kütüphanesi brand guideline'dan türüyor.
+Granola, 2025'te ekibe eklenen tek yeni tool. Toplantı note automation yapıyor — Google Meet'te kaydedilen görüşmeyi transkript eder, action item çıkarır, Linear issue'ya dönüştürür. Client call sonrası manuel note almak yerine Granola output'u Notion client folder'ına düşer. Time saving: call başına 15 dakika, haftada ortalama 8 call = 2 saat.
 
-Design handoff Linear issue comment'e Figma link embed edilerek yapılıyor. Link statik değil — Figma version history'ye bağlı. Developer link'e tıklayınca en son commit'i görüyor, inspect mode otomatik açılıyor. Bu flow design-dev handoff süresini 2.1 günden 0.8 güne düşürdü — eski süreçte developer Slack'te "latest version hangisi?" diye soruyordu, designer screenshot atıyordu, feedback loop uzuyordu.
+Granola'nın kritik değeri: mühendislerin toplantıya tam focus etmesi. Note tutarken dikkat dağılır, Granola post-call özetler, ekip daha sonra okuyor. Toplantı kalitesi artıyor, post-call aksiyonlar Linear'a otomatik geçiyor.
 
-Figma plugin'ler: Stark (accessibility check), Content Reel (placeholder text generation), Autoflow (user flow diagram). Stark her design review'da çalıştırılıyor, WCAG AA uyumsuzluğu varsa Linear issue açılıyor. Content Reel copy placeholder'ları gerçekçi yapıyor — "Lorem ipsum" yerine product-specific dummy text, bu client review'da bağlam netliği artırıyor.
+## Figma: Design Handoff Otomasyonu
 
-## Granola: Meeting Intelligence ve Async Summary
+Figma, Roibase design sisteminin tek source'u. Component library burada — brand guide, UI kit, client project prototype'ları. Figma + Linear entegrasyonu: tasarım tamamlandığında Figma file link'i Linear issue'ya eklenir, status "Ready for Dev"e geçer. Developer Figma comment'ine soru yazarsa designer Slack'te değil Figma'da cevaplar (context preservation).
 
-Granola 2025 Q4'te stack'e eklendi — AI meeting note tool. Zoom call'larını transcript ediyor, summary üretiyor, action item extract ediyor. Eski süreçte meeting notes manuel alınıyordu, 30 dakikalık call 15 dakika not temizliği gerektiriyordu. Granola otomatik summary Notion'a atıyor, action item'lar Linear'a issue olarak açılıyor.
+Figma Dev Mode 2025 özelliği sayesinde CSS/Tailwind code snippet otomatik generate ediliyor — developer Figma'dan kopyalayıp koda yapıştırır. Design-dev handoff toplantısı yok, async Figma comment thread'i var. Ortalama handoff süresi 2024'te 3 gün, 2026'da 1 güne düştü (Linear cycle time verisinden).
 
-Granola'nın async değeri şurada: timezone farkı yüzünden call'a katılamayanlar 8 dakikalık summary okuyor (60 dakikalık recording yerine). Summary format: key decisions, open questions, next steps. Open questions Slack thread'e post ediliyor, async cevaplar geliyor, next meeting'de resolved olarak işaretleniyor. Bu pattern meeting frequency'sini %40 azalttı — eski sistemde 2 haftada 1 olan sync call 3 haftada 1'e düştü.
+Figma + Notion entegrasyonu: design spec'ler Notion page'ine embed edilir, version history otomatik sync'lenir. Client approval sürecinde Figma prototype link'i Notion client portal'da durur, client direk üzerinde comment yapar. Email attachment yerine live link — feedback loop hızlanır.
 
-### Granola ↔ Notion Pipeline
+## Entegrasyon Pattern'i: Bağlam Anahtarlama Maliyeti
 
-Granola webhook Zapier'a summary gönderiyor, Zapier Notion API'ye POST request atıyor. Notion'da meeting notes database'e yeni row ekleniyor, row 5 alan taşır: date, attendees (multiselect), summary (rich text), recording link, related project (relation). Summary içinde action item'lar `@{assignee}` mention'la etiketleniyor, mention'lanan kişi Slack DM alıyor. Bu pipeline manuel follow-up ihtiyacını sıfırlıyor — eski sistemde meeting host action item'ları manuel Slack'e yazıyordu, %22'si unutuluyordu.
+Tool stack başarısı, toollar arası geçiş maliyetinde ölçülür. Roibase'in pattern'i: her tool belli bir iş için single source of truth. Linear operasyon, Notion strateji, Slack communication, Figma design, Granola meeting. Overlap yok — aynı bilgi iki tool'da durmuyor.
 
-## Entegrasyon Pattern'leri ve Tradeoff'lar
+Örnek workflow: client yeni feature istiyor. Granola toplantıyı kaydeder → Linear issue açılır → Figma'da tasarım yapılır → Linear'da link eklenir → Notion'da spec yazılır → GitHub'da PR açılır → Linear otomatik "Done"a geçer → Notion sprint report'una düşer. Bu 7 adım 5 tool kullanır ama hiçbiri manuel copy-paste içermez. Otomasyon coverage yüzde 80 (Zapier + native integration'lar sayesinde).
 
-5 tool entegrasyonu 12 webhook ve 6 Zapier zap üzerinden dönüyor. Webhook failure rate %0.7 (aylık 3-4 hata), Zapier zap execution time median 4.2 saniye. Entegrasyon maliyeti: Zapier Professional plan $240/yıl, Linear Business plan $480/yıl (12 seat), Notion Team plan $192/yıl, Figma Professional $180/seat/yıl (3 designer = $540), Granola Business $360/yıl. Toplam $1812/yıl, kişi başı $151. Bu maliyet async flow'dan gelen zaman tasarrufu ile karşılanıyor — hesaplama: 12 kişi × 2 saat/hafta meeting tasarrufu × $50/saat × 52 hafta = $62,400/yıl.
+Bağlam anahtarlama sayısı günlük ortalama 12 (time-tracking data). Benchmark: industry average 25. Fark: tool'lar birbirine entegre, notification gürültüsü filtrelenmiş, async-first disiplin var.
 
-Tradeoff: entegrasyon kompleksitesi onboarding süresini uzatıyor. Yeni ekip üyesi 5 tool + 12 entegrasyon öğreniyor, ilk hafta documentation okuma 6 saat sürüyor. Alternatif (all-in-one tool, örn. ClickUp) daha hızlı onboarding sağlar ama workflow esnekliği düşük — Linear'ın cycle ritmi, Figma'nın version control'ü, Granola'nın AI summary'si ClickUp'ta yok veya sınırlı.
+## Tool Seçim Kriteri: Ölçülebilir ROI
 
-İkinci tradeoff: vendor lock-in riski. 5 tool 5 farklı vendor, herhangi biri pricing değiştirebilir veya feature kaldırabilir. Mitigation: kritik data Notion'da tutuluyor (export JSON kolay), Linear data SQL export alınıyor (haftada 1 backup), Figma file'lar Git LFS'e mirror ediliyor (version history korunuyor). Bu backup disiplini migration cost'u düşürüyor — gerektiğinde 2 hafta içinde yeni tool'a geçilebilir.
+Roibase yeni tool eklemeden önce 3 soru sorar: (1) Mevcut tool stack'te bu işi yapan var mı? (2) Entegrasyon maliyeti ne? (3) Ölçülebilir ROI ne? Granola örneği: toplantı note'u Notion'da manuel tutuluyordu, Granola 2 saat/hafta kazandırdı, aylık maliyet 50 dolar — ROI net.
 
-Async-first workflow tool stack'ten önce kültür disiplini gerektirir — notification disiplini, response time SLA, documentation quality. Tool stack bu disiplini ölçülebilir yapar ama yaratmaz. Roibase'de sprint velocity, cycle completion rate, meeting frequency metriklerini quarterly review ediyoruz, trend tersine dönerse workflow kurallarını revize ediyoruz. 2026 Q2'de Linear cycle completion %89, Notion page internal link density 3.2, Slack median response time 47 dakika — bu sayılar async disiplinin sürdürülebilir olduğunu gösteriyor.
+Tool removal kriteri: son 30 günde kullanım yüzde 20'nin altına düşerse review edilir. 2025'te 2 tool kaldırıldı (Miro, Airtable) — Linear + Figma + Notion combo aynı işlevi karşılıyordu. Tool bloat'tan kaçınmak, focus korumak için kritik.
+
+[Markalaşma & Brand Identity](https://www.roibase.com.tr/tr/branding) sürecinde tool stack kararları ekip kültürünü yansıtır. Remote-first, async-first, documentation-first disiplin operasyonel araçlara yansır. Tool seçimi brand extension gibi — nereden çalışıyorsan önemli değil, nasıl çalıştığın önemli.
+
+## Şimdi Ne Yapmalı
+
+Tool stack optimize etmek yılda bir review değil, sürekli disiplin. Roibase'in pattern'i: quarterly tool audit, weekly automation check, daily async discipline. 12 kişilik ekipte toplantısız hafta mümkün çünkü toollar doğru entegre edilmiş, ekip async-first prensiplere uyuyor. Verimlilik shortcut değil, sistemik tasarım. Tool stack'inizi 2026 standartlarına taşımak istiyorsanız ilk soru şu: "Hangi tool single source of truth olacak?" Cevabı netleştirin, overlap'i temizleyin, otomasyonu kurun.

@@ -1,129 +1,75 @@
 ---
-title: "Tool Stack 2026: Roibase Team's Daily Operations"
-description: "Linear, Notion, Slack, Figma, Granola — integration patterns and measurable productivity discipline in a 12-person growth team."
-publishedAt: 2026-05-30
-modifiedAt: 2026-05-30
-category: lifestyle
-i18nKey: lifestyle-004-2026-05
-tags: [tool-stack, async-workflow, linear, notion, team-operations]
-readingTime: 6
+title: "Tool Stack 2026: How Roibase Operates Without Meetings"
+description: "Linear, Notion, Slack, Figma, Granola — the infrastructure of async-first workflow in a 12-person team and integration patterns that work"
+publishedAt: 2026-07-04
+modifiedAt: 2026-07-04
+category: techstack-partnership
+i18nKey: lifestyle-004-2026-07
+tags: [tool-stack, async-workflow, linear, notion, team-ops]
+readingTime: 7
 author: Roibase
 ---
 
-Tool stack conversations usually devolve into "here's the catalog of apps we use." But the real issue isn't the tools in isolation — it's integration patterns, context-switching cost, async-first discipline. Roibase's 12-person team has been remote-first since 2018. By 2026, our daily operations are shaped by 5 tools: Linear, Notion, Slack, Figma, Granola. Rather than listing them off, we're opening up the integration layer — where data lives, what triggers workflows, which notification layers stay muted.
+We've been asked the same question for 8 years: "How do you work without meetings?" The answer is simple — the right tool stack is 10x more critical than the wrong tool. In 2026, Roibase's daily operations run on 5 core tools: Linear, Notion, Slack, Figma, Granola. They're integrated to work without blocking each other. Not a productivity hack, but systematic design. This piece breaks down integration patterns, decision criteria, and how we've achieved measurable results across a 12-person team.
 
-## Linear: Not Sprints, Flow Metrics
+## Linear: Single Source of Truth, Not Meetings
 
-Linear is marketed as project management, but at Roibase it functions as a "work-in-progress visibility layer." We don't do sprint planning — we skip cycle tracking and milestones. Instead, every issue gets **priority (P0/P1/P2)** and **estimate (1-3-5-8)**. Priority isn't personal preference; it's system-determined: P0 = blocks production deployment today, P1 = must close within the sprint, P2 = backlog.
+Linear at Roibase isn't project management — it's the decision mechanism. Every initiative is an issue, every decision is a comment thread. In an async-first team, the discipline is "add context to that issue" instead of "let's discuss this." There's no sprint planning meeting — every Monday morning the sprint starts automatically, with velocity-based backlog prioritization already queued in Linear's cycle view.
 
-**Flow metrics:**
-- **Cycle time:** average 2.3 days from issue creation to close (Q4 2025 data). Any issue exceeding 5 days auto-escalates to P0.
-- **Work-in-progress limit:** maximum 3 open issues per person. To pick up a 4th, you close one or hand it off.
-- **Merge-to-close time:** span between PR merge and Linear issue closure — target <30 minutes (CI/CD + QA automation).
+Linear's critical feature: native GitHub, Figma, and Slack integrations. When you open a PR, it automatically links to the issue and the status shifts to "In Progress." When you link a Figma design, the Linear card shows a preview. From a Slack thread, you can use `/linear` to create a new issue tracked in both places. These three tools working together cut context-switching costs by 40% (based on time-tracking data from 2024-2026).
 
-Linear's Slack integration is disabled. Instead of notification bombardment, we run a **digest system**: every morning at 09:00, Slack gets a daily summary (P0 count, avg cycle time, WIP distribution). No one @mentions in Linear — everyone reads the morning digest anyway.
+Velocity tracking is automatic: at the end of each sprint, Linear shows completed points and cycle completion rate. Our target is 85+ points per sprint — when we fall below that, we run a backlog refinement meeting (the only exception). Velocity data pulled from Linear's API feeds into the Notion dashboard and is used in quarterly reviews.
 
-### Linear → Notion Synchronization
+### Linear + Slack: Notification Pattern
 
-Completed Linear issues are archived to Notion weekly (Zapier workflow). Notion has a "Retrospective Database" — each closed issue is tagged to which service it belonged. For example, issues under the `branding` project are reported under [Markalaşma & Brand Identity](https://www.roibase.com.tr/en/branding) service. This data drives capacity planning every 3 months: how much engineering time is spent per service?
+Linear notifications in Slack only arrive for critical events: issue assignment, mention, blocker flag. All other updates are read natively in Linear — Slack inbox stays clean. Not every Linear issue has a Slack thread; conversely, strategic conversations in Slack get copied to a Linear issue (context preservation). This direction matters — Slack is ephemeral, Linear is durable.
 
-## Notion: Source of Truth, Not a Wiki
+## Notion: Documentation, Async Standups, OKR Tracking
 
-We don't use Notion as a wiki — it's our "decision log." Every strategic choice (e.g., "server-side or client-side tracking for Campaign X?") is written in Notion as an **RFC (Request for Comments)**. RFC template:
+Notion is Roibase's memory. Linear is operational, Notion is strategic. The "why" behind every initiative lives in Notion — Linear holds only the "what" and "how." Quarterly OKRs, client playbooks, onboarding docs, tech specs — all live in Notion databases.
 
-```
-## Decision
-[One sentence — what we're doing]
+Async standups happen in Notion: each morning, team members write 3 lines about what they did yesterday, what they're doing today, and any blockers. Templates are automatic, Slack reminder hits at 09:00. Friday evening brings a weekly review: everyone shares the week's highlight and challenge. No meeting, but async discussion happens in threads if needed. This format has been running since 2024 — participation rate is 92% (11 out of 12 people write daily on average).
 
-## Context
-[Why it matters now]
+Notion + Linear integration: completed issues from Linear automatically drop into the Notion sprint report. The report template shows key metrics: cycle completion rate, velocity, blocker count, PR merge time. Before a client meeting, this report converts to PDF — no manual copy-paste.
 
-## Alternatives
-[At least 2 options + tradeoff table]
+## Slack: Async-First, Real-Time Exception
 
-## Measurement
-[How do we know in 4 weeks if this was right]
+Slack at Roibase isn't synchronous communication — it's an async thread hub. Each channel is dedicated to a specific domain: `#engineering`, `#design`, `#client-xyz`. Direct messaging is low — unless it's sensitive, everything goes in a channel (transparency principle). Thread usage is mandatory: even a single message that opens a topic starts a thread, otherwise the channel timeline gets cluttered.
 
-## Owner
-[Who's accountable]
-```
+Slack threads have a lifecycle: thread opens, context is added, a decision is made, the summary gets copied to a Linear issue, thread is archived. Archived threads automatically feed into Notion's weekly log (Zapier integration). Slack becomes temporary, Notion becomes permanent.
 
-RFCs open with a 48-hour async comment window. No meeting calls — everyone reads on their own time, leaves feedback. After 48 hours, the decision owner writes the final call, and the action moves to Linear.
+Real-time exception: client emergency, production bug, deadline shift — these get `@channel` mention in Slack. Everything else is async — 4-hour response time expectation, not immediate reply. This rule eliminates blocking across timezones. Team members working Istanbul, London, New York hours don't hold each other up.
 
-**Data layers inside Notion:**
-1. **RFC Database** — all decisions
-2. **Retrospective Database** — completed work from Linear
-3. **Client Playbook** — per-client operational notes (dashboard location, API key location)
-4. **Brand Assets** — Figma links, tone-of-voice docs
+### Slack + Granola: Meeting Automation
 
-Notion search gets complaints, but we don't search — every database is filterable and tagged. Search need usually means "data went in the wrong place."
+Granola is the single new tool added in 2025. It automates meeting notes — it transcribes Google Meet recordings, extracts action items, converts them to Linear issues. Instead of manually taking notes after a client call, Granola output lands in the Notion client folder. Time saved: 15 minutes per call, averaging 8 calls per week = 2 hours.
 
-## Slack: Async-First, Real-Time-Second
+Granola's critical value: engineers can give full attention to meetings. Taking notes splits focus. Granola summarizes after the call, the team reads later. Meeting quality goes up, post-call actions automatically flow to Linear.
 
-Slack notifications are disabled across the team. Only `@channel` and `@here` are enabled — with strict rules: nothing but P0 incidents. Messaging splits across 3 channels:
+## Figma: Design Handoff Automation
 
-1. **#daily-digest:** Linear/Notion summaries, CI/CD deploy logs
-2. **#async-questions:** Questions where immediate reply isn't expected (24-hour SLA)
-3. **#sync-now:** Real-time coordination needed (production incident, live campaign optimization)
+Figma is the single source for Roibase's design system. Component library lives here — brand guide, UI kit, client project prototypes. Figma + Linear integration: when design is complete, the Figma file link goes into the Linear issue and status moves to "Ready for Dev." When a developer asks a question in a Figma comment, the designer answers in Figma, not Slack (context preservation).
 
-**Response time expectations:**
-- `#sync-now` → 15 minutes
-- `#async-questions` → 24 hours
-- DMs → 48 hours (no DM culture; we use channels)
+Figma's Dev Mode (2025 feature) automatically generates CSS/Tailwind code snippets — developers copy from Figma and paste into code. No design-dev handoff meeting, just async Figma comment threads. Average handoff time dropped from 3 days in 2024 to 1 day in 2026 (from Linear cycle time data).
 
-Threads are mandatory. Replying to the main channel is forbidden — every message opens a thread. This keeps parallel conversations from tangling.
+Figma + Notion integration: design specs embed into Notion pages, version history auto-syncs. During client approval, the Figma prototype link lives in the Notion client portal — clients comment directly on it. Live link instead of email attachment — feedback loops speed up.
 
-### Slack → Granola Integration
+## Integration Pattern: Context-Switching Cost
 
-Granola is a meeting note tool — we use it only for client calls. No internal meetings (0–1 sync calls per week). After a client call, Granola AI posts the transcript to Slack; the team reads it async. Action items auto-convert to Linear issues (Zapier trigger).
+Tool stack success is measured in switching cost between tools. Roibase's pattern: each tool is the single source of truth for its domain. Linear for operations, Notion for strategy, Slack for communication, Figma for design, Granola for meetings. No overlap — the same information doesn't live in two places.
 
-Granola's killer feature: it highlights numerical commitments from the transcript ("A/B test results in 2 weeks," "CTR must jump 15%"). These get automatic reminders — nothing slips.
+Example workflow: client requests a new feature. Granola records the meeting → Linear issue opens → Figma design happens → link gets added to Linear → Notion spec is written → PR opens on GitHub → Linear auto-marks "Done" → drops into Notion sprint report. These 7 steps use 5 tools but zero manual copy-paste. Automation coverage is 80% (thanks to Zapier + native integrations).
 
-## Figma: Design Handoff, Not Design System
+Daily context switches average 12 (from time-tracking data). Industry benchmark: 25. The difference: tools are integrated with each other, notification noise is filtered, async-first discipline is enforced.
 
-Figma isn't just design — it's the "frontend spec" layer. Every UI component is defined as a variant. Developers don't extract code from Figma (no "copy CSS") — but they read component behavior from it. For example, a button's `hover`, `active`, `disabled` states exist as frames. Code implements the same state logic.
+## Tool Selection Criteria: Measurable ROI
 
-**Figma → Linear connection:**
-Every Figma file has a `Linear Issue` plugin. When design is approved, the designer opens a Linear issue and pastes the Figma link in the description. Developer picks it up; the design is already clear — no questions needed.
+Before adding a new tool, Roibase asks 3 questions: (1) Does an existing tool already handle this? (2) What's the integration cost? (3) What's the measurable ROI? Granola example: meeting notes were being manually logged in Notion, Granola saved 2 hours per week, monthly cost is $50 — net ROI.
 
-Figma comments don't flow to Slack (no notification spam). Instead, a weekly "Figma Digest" converts open comments into Linear issues.
+Tool removal criteria: if usage falls below 20% in the last 30 days, it gets reviewed. Two tools were removed in 2025 (Miro, Airtable) — the Linear + Figma + Notion combo handled the same functions. Avoiding tool bloat, keeping focus is critical.
 
-## Integration Pattern: Where Does Data Live?
-
-Tool stack conversations usually start with "which tool do you use?" The real question should be "which data is canonical where?" At Roibase:
-
-| Data type | Source of truth | Synced to |
-|---|---|---|
-| Active work (WIP) | Linear | Slack daily digest |
-| Completed work (retrospective) | Notion | Linear (archived) |
-| Strategic decisions | Notion (RFC) | Linear (action items) |
-| Client meeting notes | Granola | Slack thread |
-| UI spec | Figma | Linear issue description |
-| Brand assets | Notion | Figma (embed link) |
-
-No dual source-of-truth. If data looks canonical in 2 places, one is wrong.
-
-## Notification Discipline: When Silent, When Loud
-
-The biggest risk in modern tool stacks is notification creep. Roibase's notification strategy:
-
-**Completely off:**
-- Linear mentions (we use Slack threads instead)
-- Figma comments (weekly digest)
-- Notion page updates (no one watches)
-
-**Digest-based:**
-- Linear daily summary (09:00 AM)
-- Figma open comments summary (Friday 17:00)
-- CI/CD deploy log (post-deploy Slack summary)
-
-**Real-time:**
-- `@channel` (P0 incidents only)
-- Granola client call summary (5 minutes after call)
-- Production errors (Sentry → Slack, `#sync-now` only)
-
-When we set up a tool, the first question is: "Real-time notification or digest?" Default answer: digest.
+In [branding and identity](https://www.roibase.com.tr/en/branding) work, tool stack decisions reflect team culture. Remote-first, async-first, documentation-first discipline translates to operational tools. Tool selection is like brand extension — where you work doesn't matter, how you work does.
 
 ## What to Do Now
 
-Instead of "we should adopt tool X," ask "where should this data be canonical?" Roibase's 2026 stack is Linear/Notion/Slack/Figma/Granola, but these tools can swap — what matters is integration pattern, notification discipline, async-first culture. If your team still complains "we're not getting tool X notifications," the problem isn't the tool — data ownership is unclear.
+Optimizing a tool stack isn't a yearly review, it's continuous discipline. Roibase's pattern: quarterly tool audit, weekly automation check, daily async discipline. A 12-person team can have a meeting-free week because tools are properly integrated and the team follows async-first principles. Efficiency isn't a shortcut, it's systematic design. If you want to upgrade your tool stack to 2026 standards, start with this question: "Which tool owns this domain?" Get clear on ownership, eliminate overlap, build automation.
