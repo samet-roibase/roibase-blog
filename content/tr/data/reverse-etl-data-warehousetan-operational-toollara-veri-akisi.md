@@ -1,106 +1,173 @@
 ---
 title: "Reverse ETL: Data Warehouse'tan Operational Tool'lara Veri Akışı"
-description: "Hightouch, Census, Segment Reverse ETL araçlarıyla BigQuery/Snowflake'teki datayı CRM, ad platform ve CDP'ye taşımanın mimarisi, use case'leri ve trade-off'ları."
-publishedAt: 2026-05-14
-modifiedAt: 2026-05-14
+description: "Hightouch, Census, Segment Reverse ETL platformlarının use case karşılaştırması. Snowflake/BigQuery'deki customer-360 tablosunu CRM, ad platform ve email aracına taşıma mimarisi."
+publishedAt: 2026-07-05
+modifiedAt: 2026-07-05
 category: data
-i18nKey: data-004-2026-05
-tags: [reverse-etl, data-warehouse, operational-analytics, customer-data, activation]
-readingTime: 8
+i18nKey: data-004-2026-07
+tags: [reverse-etl, data-activation, customer-360, operational-analytics, data-warehouse]
+readingTime: 7
 author: Roibase
 ---
 
-Modern pazarlama organizasyonları datayı BigQuery veya Snowflake gibi warehouse'larda topluyor ama bu veri CRM'de, Meta Ads'de veya müşteri destek platformunda kullanılamıyorsa sadece analiz için duruyor. Reverse ETL bu sorunu çözüyor: warehouse'taki transformation'dan geçmiş datayı downstream operational tool'lara geri taşıyor. 2026'da Hightouch, Census ve Segment Reverse ETL üç ana oyuncu. Bu yazıda her birinin mimari farkını, kullanım senaryolarını ve production'da karşılaştığımız trade-off'ları inceliyoruz.
+Pazarlama ekipleri için en büyük paradoks şu: data warehouse'ta mükemmel bir customer-360 tablosu var, ama Meta Ads Manager'da hâlâ 30 günlük lookback window ile hedefleme yapılıyor. Reverse ETL bu açmaza cevap — analytics katmanındaki zenginleştirilmiş datayı operational tool'lara geri pompalama disiplini. 2026'da Hightouch, Census ve Segment Reverse ETL'in hangi use case'de öne çıktığını, somut tablo yapıları ve sync konfigürasyonları üzerinden karşılaştırıyoruz.
 
-## Reverse ETL Nedir ve Neden Gereklidir
+## Reverse ETL'in Anatomisi: Extract-Transform-Load'un Tersi
 
-Klasik ETL (Extract-Transform-Load) datayı kaynaklardan warehouse'a taşır. Reverse ETL tersi yönde çalışır: warehouse'taki temiz, enriched datayı Salesforce, HubSpot, Google Ads, Braze gibi operasyonel sistemlere gönderir. Bu akış olmadan marketing takımı SQL query'si yazıp manuel CSV export yapıyor veya engineering her yeni entegrasyon için custom script yazıyor.
+Klasik ETL operational sistemlerden (Shopify, CRM, Zendesk) veri çekip warehouse'a yükler. Reverse ETL tam tersi — warehouse'taki analitik tablolardan production sistemlerine veri iter. Mimari basit: (1) source olarak BigQuery/Snowflake/Redshift tablosu, (2) mapping katmanında hangi kolonun hangi destination field'ına gittiğini tanımlarsın, (3) sync schedule belirlenir (hourly/daily/real-time CDC).
 
-Reverse ETL'in değer kattığı üç ana alan var. İlki **audience activation**: warehouse'ta tanımladığın segmenti Meta Custom Audience'a veya Google Customer Match'e otomatik senkronize ediyorsun. İkincisi **lead enrichment**: BigQuery'deki product engagement dataları CRM'e düşüyor, sales temsilcisi hangi feature'ı kullandığını görüyor. Üçüncüsü **personalization sync**: CDP veya e-posta platformuna real-time'a yakın lifecycle stage, RFM score veya LTV prediction gönderiyorsun.
+Kullanım senaryosu şöyle: `customers_360` tablosunda her müşterinin lifetime value, son satın alma tarihi, category affinity, churn skoru var. Bu datayı:
 
-Pipeline olmadan bu operasyonları manuel yapmak 2-3 gün sürüyor ve her güncelleme için tekrar ediliyor. Reverse ETL bunu scheduled (saatlik, günlük) veya event-driven yapıya çeviriyor. Production'da gördüğümüz en tipik kullanım BigQuery → Salesforce lead score sync ve Snowflake → Meta Ads CLTV-based lookalike.
+- **Salesforce'a** itiyor, satış ekibi high-value lead'leri görüyor
+- **Braze/Klaviyo'ya** pompalıyor, email segmentasyonu LTV üzerinden çalışıyor
+- **Meta CAPI'ye** gönderiyorsun, `value_segment=high` event parametresiyle lookalike audience besleniyor
 
-## Hightouch: SQL-Based Sync ve Visual Mapper
+Teknik detay: traditional ETL araçları (Fivetran, Airbyte) genelde iki-yönlü değil. Reverse ETL araçları destination API'ları için özel connector yazmış — Salesforce bulk API, Marketo REST API, Google Ads Customer Match batch upload. Her platform farklı rate limit, field mapping, identity resolution mantığı taşıyor. Census 180+ connector, Hightouch 200+, Segment Reverse ETL ise mevcut event stream'i üzerine kurulu.
 
-Hightouch 2020'de çıktı ve SQL-first yaklaşımı benimsedi. Warehouse'ınızda bir query yazıyorsunuz (veya dbt model'ına referans veriyorsunuz), Hightouch bu query sonucunu destination'a mapping yapıyor. UI'da visual field mapper var: `user_id` → Salesforce `Contact.Email`, `clv_score` → custom field gibi.
+## Hightouch: SQL-First Approach ve Visual Audience Builder
 
-Platform 150+ destination destekliyor (Salesforce, HubSpot, Meta, Google, Braze, Iterable, Zendesk…). Sync mode'lar upsert, insert, update, mirror (warehouse'taki değişiklik destination'da da silinir). Schedule saatlik veya cron expression ile ayarlanabiliyor. Realtime sync için event stream entegrasyonu var ama bu preview stage'de.
+Hightouch'un temel felsefesi "data team SQL bilir, no-code wrapper gerekli değil". Source definition doğrudan SQL sorgusu olabilir:
 
-**Mimari detay:** Hightouch kendi compute layer'ı yok, doğrudan warehouse'ınızın query engine'ini kullanıyor. Bu maliyet verimliliği sağlıyor çünkü BigQuery slot veya Snowflake compute credit'inizi kullanıyorsunuz, ayrı bir processing instance'ı yok. Ama warehouse'ınız busy ise sync query'si kuyrukta bekleyebilir.
+```sql
+SELECT 
+  user_id,
+  email,
+  CASE 
+    WHEN ltv > 1000 THEN 'high'
+    WHEN ltv > 300 THEN 'medium'
+    ELSE 'low'
+  END AS value_segment,
+  DATEDIFF(day, last_purchase, CURRENT_DATE) AS days_since_purchase
+FROM analytics.customers_360
+WHERE email IS NOT NULL
+  AND consent_marketing = TRUE
+```
 
-Hightouch'ın güçlü tarafı **dbt Cloud entegrasyonu**. dbt model'larınızı doğrudan source olarak seçebiliyorsunuz, model lineage takip ediliyor. Örnek: `marts/marketing/user_ltv.sql` dbt model'ınız her gün 08:00'de run alıyor, Hightouch bu modeli 09:00'da çekip Braze'e gönderiyor. Model değişirse lineage bozulmadan devam ediyor.
+Bu query sonucu doğrudan Klaviyo'ya sync olur. Hightouch her satırı `user_id` ile eşleştirir (primary key olarak belirlediğin kolon), Klaviyo profilinde `value_segment` ve `days_since_purchase` custom property'leri güncellenir. Sync mode: upsert (varsa update, yoksa insert).
 
-**Use case:** E-ticaret brand'i BigQuery'de günlük RFM segmentasyonu yapıyor (dbt ile). Her sabah Hightouch bu segmenti Klaviyo'ya sync ediyor, Klaviyo'daki kampanyalar otomatik tetikleniyor. Manual CSV export kaldırıldı, operasyon hatasız.
+**Visual Audience Builder:** Hightouch'ta SQL yazmadan UI'da segment kurabilirsin — "LTV > 500 AND category_affinity CONTAINS 'electronics'". Arka planda SQL'e çevrilir ama non-technical marketer kullanabilir. Census'ta benzer özellik var (`Segment`), Segment'te yok (orada trait sync doğrudan SQL üzerinden).
 
-## Census: Identity Resolution ve Segment Hub
+**Use case:** Multi-destination sync. Tek `customers_360` tablosundan aynı anda 8 araca veri itiyorsun — Salesforce, HubSpot, Intercom, Google Ads, Meta, Braze, Amplitude, Mixpanel. Her biri farklı mapping:
 
-Census 2018'de kuruldu, Hightouch'tan biraz daha erken piyasaya girdi. Temel fark **Segment Hub** özelliği: Census kendi içinde minimal bir identity graph tutuyor ve farklı tool'lardaki ID'leri match ediyor. Örneğin warehouse'ta `email`, Meta'da `hashed_email`, Salesforce'ta `Contact.Id` — Census bunları ortak bir entity'ye bağlıyor.
+- Salesforce → `Account.Custom_LTV__c`
+- Google Ads → Customer Match list, email hash
+- Braze → `custom_attributes.ltv`
 
-Census de SQL-based ama **Audience Hub** diye bir UI katmanı var. Marketing takımı SQL yazmadan UI'da filter yapabiliyor ("son 30 gün içinde 3+ sipariş vermiş, LTV > $500"). Bu audience'ı seçip destination'a gönderebiliyor. SQL bilmeyen kullanıcılar için pratik ama karmaşık logic için yine warehouse'ta dbt model tercih ediliyor.
+Hightouch'ta her destination için sync ayrı configure edilir, aynı source query paylaşılır. Orchestration workflow ile "önce Salesforce sync, sonra Meta" sıralaması kurabilirsin. Rate limit yönetimi built-in — Google Ads 500K row/day limiti var, Hightouch batch'leri otomatik böler.
 
-Census 100+ destination destekliyor, sync mode'lar benzer (upsert, mirror, append). Realtime streaming desteği var (Kafka connector) ama çoğu kurulum batch sync ile çalışıyor. **Operational Analytics** özelliği: Census warehouse'taki tabloya lookup yapan bir REST API sağlıyor. Yani CRM'den gelen `user_id` ile warehouse'taki LTV'yi API call ile çekebiliyorsun (bu Hightouch'ta yok).
+## Census: dbt Integration ve Data Observability
 
-**Mimari trade-off:** Census kendi compute instance'larını kullanıyor (warehouse'tan data çekip kendi pipeline'ında transform ediyor). Bu warehouse load'unu azaltıyor ama Census'ın infrastructure maliyetini fiyatlamaya yansıtıyor. Fiyatlama genellikle sync row count bazlı.
+Census dbt ile native entegre. dbt Cloud hesabın varsa Census doğrudan model catalog'undan source seçebilir. `dbt run` sonrası Census sync otomatik tetiklenir (dbt Cloud webhook ile). Data lineage görünür — hangi dbt model'ın hangi destination'a beslendiğini görsel graf'ta izlersin.
 
-**Use case:** SaaS şirketi Snowflake'te product usage event'larını session'lara aggregate ediyor. Census bu session datasını Intercom'a sync ediyor, support ekibi user'ın hangi feature'ı ne zaman kullandığını görüyor. Aynı datayı Salesforce'a da gönderiyor, sales ekibi product qualified lead (PQL) tanımlıyor.
+```yaml
+# dbt model: models/marketing/customers_360.sql
+{{ config(
+  materialized='table',
+  tags=['marketing', 'census_sync']
+) }}
 
-## Segment Reverse ETL: CDP Entegrasyonu ve Event Stream
+SELECT 
+  user_id,
+  email,
+  ltv,
+  churn_probability,
+  preferred_channel
+FROM {{ ref('base_users') }}
+LEFT JOIN {{ ref('ltv_predictions') }} USING (user_id)
+```
 
-Segment 2011'den beri tag management ve CDP tarafında liderdi, 2021'de Reverse ETL özelliğini ekledi. Segment'in farkı **unified profile**: Segment zaten customer data platform olarak çalışıyordu, Reverse ETL ile warehouse'taki profile attributes'ları Segment profile'ına merge edip tüm downstream destination'lara (200+) gönderebiliyorsun.
+Census'ta bu model'i source seçersin, her `dbt run` sonrası tablodaki değişiklik otomatik sync olur. Incremental sync için `updated_at` kolonu kullanılır — sadece son sync'ten sonra değişen satırlar gönderilir. Full refresh her gün, incremental her saat çalışabilir.
 
-Segment Reverse ETL iki modda çalışıyor: **Model Sync** (warehouse'tan scheduled query çek) ve **Profiles Sync** (Segment Profile'ına warehouse'taki attribute'ları merge et, sonra downstream'e yolla). İkinci mod daha güçlü çünkü Segment'in identity resolution engine'i devreye giriyor. Örneğin warehouse'ta `user_id`, Segment'te `anonymous_id` + `user_id` merge oluyor, bu enriched profile tüm tool'lara gidiyor.
+**Data Observability:** Census sync logları detaylı. Hangi satır başarısız, neden (invalid email format, Salesforce field limit aşımı, rate limit) görünür. Alert kurabilirsin — "sync failure rate %5'i geçerse Slack'e yaz". Hightouch'ta benzer log var ama Census'un observability suite daha kapsamlı (data freshness, schema drift monitor).
 
-**Event-driven sync:** Segment zaten event stream olduğu için Reverse ETL'den gönderilen attribute'lar event property olarak da eklenebiliyor. Yani warehouse'tan gelen `ltv_tier` attribute'u Braze'e user property olarak gittiği gibi, sonraki `Order Completed` event'ının içine de eklenebiliyor. Bu downstream attribution için kritik.
+**Use case:** Salesforce + Marketo operasyonu. Census Salesforce object mapping'i güçlü — custom object, junction table, parent-child relationship destekler. `Opportunity.Stage` değiştiğinde Marketo'da lead score update tetikleyebilirsin (bi-directional workflow). Hightouch'ta tek yönlü sync daha rahat, Census ise karmaşık CRM operasyonlarında öne çıkıyor.
 
-**Mimari:** Segment kendi infra'sını kullanıyor, warehouse'tan veri Segment cloud'una çekiliyor. Fiyatlama MTU (Monthly Tracked Users) bazlı ama Reverse ETL için ayrı SKU var (contact for pricing). Eğer zaten Segment kullanıyorsan ek maliyet makul, yoksa sadece Reverse ETL için Segment almak pahalı.
+[CDP & Retention Engineering](https://www.roibase.com.tr/tr/retention-engineering-cdp) süreçlerinde Census'un operasyonel CRM ile warehouse arasında sürekli veri alışverişi sağlaması kritik — customer lifecycle stage'leri warehouse'tan CRM'e, interaction history CRM'den warehouse'a akar.
 
-**Use case:** Mobil oyun şirketi BigQuery'de daily session count, ARPU, churn probability hesaplıyor. Bu datayı Segment Profiles'a sync ediyor, Segment bu profile'ları Braze, Leanplum, AppsFlyer'a gönderiyor. Aynı datayı Amplitude'ye de yolluyor, cohort analizi yapılıyor. Tek pipeline, dört destination.
+## Segment Reverse ETL: Event Stream ile Entegre Identity Resolution
 
-### Karşılaştırma Tablosu
+Segment'in Reverse ETL modülü klasik ETL araçlarından farklı — event stream mimarisine oturur. Segment'te zaten `identify()`, `track()`, `page()` çağrılarıyla first-party data toplanıyor. Reverse ETL bu event stream'e warehouse'tan gelen trait'leri ekler.
 
-| Özellik | Hightouch | Census | Segment Reverse ETL |
-|---|---|---|---|
-| Compute Layer | Warehouse'ın engine'i | Census infra'sı | Segment infra'sı |
-| Destination Sayısı | 150+ | 100+ | 200+ (Segment ecosystem) |
-| dbt Entegrasyonu | Native, lineage tracking | Var ama daha basit | Model sync var |
-| Identity Resolution | Yok (downstream'de çözülür) | Census Hub (minimal graph) | Segment Profiles (güçlü) |
-| Realtime Streaming | Preview | Kafka connector var | Event stream native |
-| Fiyatlama | Row count + plan tier | Row count | MTU + Reverse ETL SKU |
+Mimari: Segment Profiles API warehouse'tan `users` tablosunu okur, her user_id için trait'leri Segment identity graph'ine merge eder. Örnek:
 
-## Hangisi Ne Zaman Kullanılmalı
+```sql
+-- Warehouse: analytics.user_traits
+SELECT 
+  user_id,
+  ltv,
+  subscription_tier,
+  churn_risk_score
+FROM analytics.customers_360
+```
 
-**Hightouch tercih edilmeli** şu durumlarda: dbt altyapınız sağlam, data transformasyon warehouse'ta oluyor, downstream tool'lara sadece sync yapacaksınız, maliyeti düşük tutmak istiyorsunuz (çünkü warehouse compute kullanıyor). Örnek: E-ticaret, BigQuery + dbt, günlük segment sync Meta/Google Ads.
+Bu query Segment'e sync olunca her `user_id` için trait'ler Segment profilinde birleşir. Ardından Segment'in mevcut destination'larına (Braze, Mixpanel, Amplitude) otomatik akar. Yani Reverse ETL → Segment → 300+ downstream tool.
 
-**Census tercih edilmeli** eğer: marketing takımı SQL bilmiyor ve UI'dan audience oluşturacak, identity resolution warehouse'ta değil de Census'ta olsun istiyorsunuz, operational analytics API kullanacaksanız (CRM'den warehouse'a lookup). Örnek: B2B SaaS, sales-marketing alignment, CRM-centric operasyon.
+**Identity Resolution:** Segment Unify (eski Personas) warehouse tablosundaki `user_id` ile web/app event'lerindeki `anonymous_id`'yi otomatik merge eder. Hightouch/Census'ta identity matching manuel configure edersin (hangi kolon email, hangi kolon external_id). Segment'te bu merging built-in.
 
-**Segment Reverse ETL tercih edilmeli** eğer: Zaten Segment kullanıyorsanız ve CDP profile'ları merkezde tutuyorsanız, event stream + profile sync birlikte gerekiyorsa, 200+ destination'a tek noktadan gönderim yapacaksanız. Örnek: Mobil uygulama, Segment zaten mevcut, warehouse dataları Segment Profiles'a merge edilecek.
+**Trade-off:** Segment Reverse ETL Snowflake/BigQuery/Redshift destekler ama SQL flexibility sınırlı. Source olarak tablo seçersin, complex join yapamazsın (warehouse'ta view oluşturman gerekir). Hightouch/Census raw SQL yazabilir. Segment'in avantajı downstream entegrasyonu — zaten Braze, Iterable, Customer.io bağlıysan yeni connector yazmana gerek yok.
 
-Hiçbiri mükemmel değil. Hightouch'ın realtime streaming'i henüz beta, Census biraz pahalı, Segment sadece Reverse ETL için abonelik mantıklı değil. Çoğu kurulumda hibrit yaklaşım görüyoruz: Hightouch batch sync + custom Pub/Sub pipeline realtime kritik event'lar için.
+**Use case:** Omnichannel activation. Web'de anonymous visitor → email capture → warehouse'ta LTV hesaplanıyor → Segment profilinde trait update → mobile app'te push notification "high-value user" tagı ile göndermek. Segment event stream + warehouse trait'i merge ediyor, tek identity üzerinden tüm channel'lar besleniyor.
 
-## Production'da Karşılaşılan Sorunlar
+## Platform Karşılaştırması: Hangi Senaryo Hangisini Seçmeli
 
-**Schema drift:** Warehouse'taki tablo schema'sı değişince (yeni column eklendi veya type değişti) Reverse ETL sync hata veriyor. Census ve Hightouch schema detection yapıyor ama manual mapping güncelleme gerekiyor. Çözüm: dbt model'larında schema test yazın, breaking change CI/CD'de yakalansın.
+| Kriter | Hightouch | Census | Segment Reverse ETL |
+|--------|-----------|--------|---------------------|
+| **SQL flexibility** | ✅ Raw SQL, CTE, window function | ✅ dbt model + SQL | ⚠️ Tablo/view seçimi |
+| **Connector sayısı** | 200+ | 180+ | 300+ (Segment ecosystem) |
+| **Identity resolution** | Manuel mapping | Manuel + dbt macro | Built-in (Unify) |
+| **dbt entegrasyonu** | Webhook | Native Cloud catalog | Yok (view kullan) |
+| **Real-time sync** | CDC (Snowflake stream) | CDC (dbt incremental) | Event stream merge |
+| **Observability** | Log + alert | Data quality suite | Segment Debugger |
+| **Fiyatlandırma** | MAR (monthly active rows) | MTR (monthly tracked rows) | MAU (monthly active users) |
 
-**Rate limiting:** Destination API'leri rate limit koyuyor (Salesforce 15k request/day, Meta Ads 200 request/hour). Büyük segment sync'i bu limitleri aşabiliyor. Census ve Hightouch otomatik retry ve batching yapıyor ama yine de sync delay oluyor. Çözüm: sync frequency'yi düşürün (saatlik yerine günlük), incremental sync kullanın (tüm tablo yerine changed rows).
+**Senaryo 1 — Data team owns everything:** Hightouch. SQL-first, orchestration workflow güçlü, API connector detaylı. Teknik ekip full control istiyor.
 
-**Identity mismatch:** Warehouse'taki `user_id` ile destination'daki identifier aynı değilse upsert başarısız oluyor. Örneğin Meta Ads hash'lenmiş email istiyor, warehouse'ta plain email var. Hightouch field transformation yapabiliyor (SHA256 hash) ama bu warehouse query'sinde yapılmalı. Çözüm: dbt model'ında destination-specific transform columnları hazırlayın.
+**Senaryo 2 — dbt + data observability:** Census. dbt model lineage, schema drift monitor, data quality test entegrasyonu. Analytics engineer'lar dbt üzerinde çalışıyor, sync otomatik.
 
-**Cost:** BigQuery slot kullanımı %40 arttı diye görüyoruz bazı kurulumda çünkü Hightouch her saat query çalıştırıyor. Snowflake'te compute credit tüketimine dikkat. Census'ın kendi infra'sı bu sorunu çözdü ama fiyatlamaya yansıyor. Çözüm: sync frequency optimize edin, incremental query yazın (full table scan yerine `WHERE updated_at > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)`).
+**Senaryo 3 — Event-driven omnichannel:** Segment Reverse ETL. Zaten Segment event stream var, warehouse trait'lerini mevcut identity graph'e merge etmek yeterli. Downstream 50+ tool bağlı, yeni connector yazmak istemiyorsun.
 
-## Roibase Yaklaşımı: First-Party Data Pipeline ile Entegrasyon
+**Senaryo 4 — Salesforce heavy operation:** Census. Complex object mapping, bi-directional sync, CRM workflow tetikleme. Hightouch temel upsert yapar ama Census Salesforce'a özel feature'lar sunuyor.
 
-Roibase'de Reverse ETL'i [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) kurulumunda varsayılan olarak öneriyoruz. BigQuery'de event stream → dbt transformation → enriched user table → Hightouch/Census sync Meta Ads pipeline'ı 3 hafta içinde production'a alıyoruz. Identity resolution kısmını BigQuery'de `user_stitching` dbt package ile yapıyoruz (Census Hub'a ihtiyaç kalmıyor).
+**Senaryo 5 — Ad platform Customer Match:** Hightouch veya Census eşit. Her ikisi de Google Ads, Meta, TikTok, LinkedIn batch upload destekler. Email hash, phone hash, address match otomatik. Rate limit yönetimi built-in.
 
-Tipik setup: Google Analytics 4, server-side GTM, Shopify event'ları BigQuery'de birleşiyor. dbt ile customer lifecycle, RFM, LTV hesaplanıyor. Hightouch bu tabloyu günlük Meta'ya sync ediyor (value-based lookalike için), HubSpot'a lead score gönderiyor. Aynı datayı [Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/tr/verianalizi) kapsamında Looker dashboard'larına da bağlıyoruz.
+## Sync Optimization: Incremental, CDC ve Batching
 
-Retention-critical kullanım senaryolarında (mobil app, subscription) Census + [CDP & Retention Engineering](https://www.roibase.com.tr/tr/retention-engineering-cdp) kombinasyonu tercih ediyoruz çünkü identity graph ve operational API Braze/Iterable entegrasyonlarını kolaylaştırıyor.
+Reverse ETL'de cost kontrol kritik — her sync BigQuery'de sorgu maliyeti, destination'da API quota kullanır. Optimization stratejileri:
 
-## Gelecek: Realtime ve Semantic Layer Entegrasyonu
+**1. Incremental sync:** `updated_at > last_sync_timestamp` ile sadece değişen satırlar gönderilir. Hightouch/Census bunu otomatik yönetir, Segment'te event stream zaten incremental.
 
-2026 sonu 2027 başı için Hightouch ve Census realtime streaming kapasitelerini genişletiyor. Kafka/Pub/Sub connector'lar stable'a geçerse event-driven sync warehouse batch'inden daha pratik olacak. Örneğin kullanıcı checkout yapınca 5 dakika içinde CRM'de lead score güncellenebilir (şu an 1 saat batch delay var).
+**2. Change Data Capture (CDC):** Snowflake Stream, BigQuery Change Stream kullanılır. Tablo her update/insert/delete'i CDC feed'ine yazar, Reverse ETL bu stream'i okur. Real-time'a en yakın yöntem — değişiklik saniyeler içinde sync olur. Hightouch Snowflake Stream destekler, Census BigQuery CDC beta'da.
 
-İkinci trend **semantic layer entegrasyonu**. dbt Semantic Layer veya Cube.js gibi araçlar metric definition'ları merkezileştiriyor. Reverse ETL bu semantic layer'dan okursa downstream'e tutarlı metric gönderilir. Örneğin "Active User" tanımı hem Reverse ETL'de hem dashboard'da aynı olur. Hightouch dbt Semantic Layer entegrasyonunu beta'da test ediyor.
+**3. Batching:** Destination API rate limit varsa batch size optimize edilir. Google Ads Customer Match 500K row/day, Census 10K'lık batch'ler halinde iter, Hightouch adaptive batching (API response'a göre dinamik boyut). Salesforce bulk API 10K record/batch limiti var, her platform için farklı.
 
-Üçüncü gelişme **AI-powered field mapping**. Şu an warehouse column'unu destination field'ına manuel map ediyorsun. GPT-4 tabanlı öneri motorları "bu `customer_lifetime_value` column'u muhtemelen Salesforce'taki `CLV__c` custom field'ına gitmeli" diye önerebilir. Census bu tür özellikler üzerinde çalışıyor.
+**4. Field-level incremental:** Sadece değişen kolonları gönder. Örnek: `ltv` kolonu değişti ama `email` aynı kaldı — sadece `ltv` field'ı update et. Hightouch "Smart Updates" özelliği bunu yapar, Census'ta manuel configure edebilirsin.
 
-Reverse ETL artık "nice to have" değil, modern data stack'in zorunlu katmanı. Warehouse'taki datayı operasyonel sisteme taşımak manuel değil, otomatik ve güvenilir olmalı. Hightouch SQL-first ve maliyet avantajı, Census identity resolution ve UI kolaylığı, Segment mevcut CDP ekosistemi entegrasyonu sunuyor. Hangisini seçeceğiniz mevcut altyapınıza ve organizasyonunuzun data maturity seviyesine bağlı. Production'a alırken schema drift, rate limit ve identity mismatch'e hazır olun. İyi kurulmuş bir Reverse ETL pipeline pazarlama takımının velocity'sini 3-5 kat artırıyor çünkü engineering bottleneck kalkıyor.
+**Maliyet senaryosu:** 10M row `customers_360` tablosu, daily full refresh. BigQuery scan maliyeti ~$50 (column-based pricing), Salesforce API quota 5M call/day. Incremental sync ile sadece 100K row değişiyor, maliyet $0.50. CDC ile real-time olunca batch overhead azalıyor ama Snowflake Stream compute ayrı maliyet getiriyor.
+
+## Privacy & Compliance: GDPR Delete Request ve Consent Sync
+
+Reverse ETL GDPR/CCPA compliance için kritik. Kullanıcı silme talebi geldiğinde warehouse'taki satır silinir ama downstream tool'larda profil kalıyor. Reverse ETL bu sync'i sağlamalı:
+
+```sql
+-- Silme talebi gelen user_id'ler
+DELETE FROM analytics.customers_360
+WHERE user_id IN (SELECT user_id FROM gdpr_delete_requests);
+```
+
+Hightouch/Census soft delete destekler — satır silindiğinde destination'da da delete tetiklenir (Salesforce record delete, Braze profile remove). Segment'te `identify()` trait'ini `null` set ederek profili temizleyebilirsin ama hard delete Segment Profiles API'de manuel.
+
+**Consent sync:** KVKK/GDPR consent değişikliği warehouse'a geldiğinde tüm destination'lara yayılmalı. Örnek: kullanıcı email consent'ini geri çekti — `consent_email = FALSE` warehouse'ta update edilir, Klaviyo/Braze'de otomatik unsubscribe olmalı. Hightouch consent field mapping yapabilir, Census dbt macro ile consent logic'i model'a gömebilir.
+
+**Audit log:** Her sync'in kim tarafından, ne zaman, hangi data üzerinde çalıştığı loglanmalı. Hightouch Enterprise plan'da audit log var (SOC 2 compliant), Census'ta data lineage graf audit için kullanılabilir. Segment Replay log tüm trait update'leri tutar.
+
+## Operational Analytics: Warehouse-First Decision Making
+
+Reverse ETL'in nihai hedefi "operational analytics" — karar mekanizmasını warehouse'a taşımak. Geleneksel BI dashboard'ları retrospective (geçmişe bakıyor), Reverse ETL prospective (geleceğe yönelik aksiyon tetikliyor).
+
+Örnek workflow: churn prediction model BigQuery'de dbt ile çalışıyor, her gün `churn_probability` kolonu update ediliyor. Reverse ETL bu skoru Intercom'a itiyor, CSM ekibi high-risk müşterilere proaktif outreach yapıyor. Dashboard'ta "churn %15 arttı" görünmek yerine, aksiyonel veri operation tool'da.
+
+[First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) katmanında reverse ETL kritik rol oynar — cookie-less environment'ta warehouse tek truth source, tüm activation bu katmandan beslenir. Meta CAPI, Google enhanced conversion, TikTok Events API warehouse'tan direkt beslenmeli ki attribution doğru çalışsın.
+
+**Next-best-action engine:** Warehouse'ta her müşteri için optimal aksiyonu hesaplıyorsun (email gönder / push notification / SMS / sales call). Reverse ETL bu decision'ı ilgili tool'a routing yapıyor — email Klaviyo'ya, push Braze'e, sales lead Salesforce'a. Tek source of truth, çok kanal execution.
+
+Modern pazarlama stack'i artık "tool-first" değil "data-first". Reverse ETL bu dönüşümü operational hale getiriyor — warehouse'taki analitik derinlik production sistem'de aksiyona dönüşüyor, gerçek zamanlı. Platform seçimi use case'e göre yapılmalı: SQL flexibility, dbt entegrasyonu, identity resolution, destination ecosystem — her ekip kendi constraint'lerine göre Hightouch, Census veya Segment Reverse ETL'i tercih ediyor.
