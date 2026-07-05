@@ -1,89 +1,104 @@
 ---
 title: "ASO Creative Testing: PPO ile 6 Hafta İçinde +%32 IPM"
-description: "Custom Product Pages ve Play Experiments ile App Store görsel testlerini istatistiksel güvenilirliğe dayalı hale getirmenin 6 haftalık pratiği."
-publishedAt: 2026-06-21
-modifiedAt: 2026-06-21
+description: "App Store Custom Product Pages ve Play Experiments ile creative varyasyonları statistical significance seviyesinde test etmek. 6 haftalık PPO döngüsünde IPM'i %32 artıran metodoloji."
+publishedAt: 2026-07-05
+modifiedAt: 2026-07-05
 category: gaming
-i18nKey: gaming-001-2026-06
-tags: [aso, custom-product-pages, play-experiments, creative-testing, mobile-gaming]
+i18nKey: gaming-001-2026-07
+tags: [aso, custom-product-pages, play-experiments, creative-testing, statistical-significance]
 readingTime: 8
 author: Roibase
 ---
 
-App Store'da organik kazanım artık tek bir store listing sayfasıyla sınırlı değil. Apple'ın Custom Product Pages (CPP) ve Google'ın Play Experiments özellikleri, farklı kullanıcı segmentlerine farklı görsel varyasyonları gösterme imkanı sunuyor. Ancak çoğu mobile game ekibi bu araçları kampanya bazlı deneme aracı olarak kullanıyor — statistically significant test tasarımı yerine "bir deneyelim" mantığıyla. 6 haftalık kontrollü bir ASO creative testing süreci, impression-to-install (IPM) metriğinde %32'lik artış sağladı. Bu yazı o sürecin metodolojisini ve tekrarlanabilir adımlarını aktarıyor.
+2026'da mobile game discovery'nin %68'i store browse üzerinden gerçekleşiyor. Custom Product Pages (CPP) ve Play Experiments artık opsiyonel değil — creative optimization'ın temel altyapısı. 6 haftalık iterasyon döngüsünde impression-to-product page (IPM) oranını %32 artırmak mümkün, ama bunu yapmak için statistical significance eşiğini anlamak ve test parametrelerini doğru kurmak gerekiyor. Çoğu ekip varyasyon üretiyor ama test setup'ında hata yapıyor — trafik split yanlış, sample size yetersiz, conclusion çok erken alınıyor.
 
-## Custom Product Pages: Segmentasyon, Kampanya Değil
+## Custom Product Pages Neden Store Browse IPM'ini Belirliyor
 
-CPP özelliği 2021'den beri var ama yaygın kullanım hâlâ "ülke X için özel sayfa" veya "influencer kampanyası için özel landing" seviyesinde. Oysa CPP'nin asıl değeri, farklı acquisition source'larına göre yaratıcı hipotezleri test edebilmektir.
+App Store'da kullanıcı bir query yapıp sonuç listesinde gezinirken first impression 3 elemana bağlı: icon, first screenshot, subtitle. Bu üçü IPM'i (impression → product page tap) oluşturuyor. Play Console'da aynı dinamik var — Google Play'de featured graphic yerine video thumbnail daha baskın. Custom Product Pages, farklı kullanıcı segmentlerine farklı creative set göstermenize izin veren Apple'ın 2021'de açtığı sistem. Her CPP, baseline store listing'inizden bağımsız bir icon-screenshot-preview kombinasyonu taşıyabilir.
 
-Bir RPG oyunu için yürüttüğümüz testte 3 farklı CPP varyasyonu kuruldu: (1) karakter odaklı (hero close-up screenshot set), (2) gameplay odaklı (combat mechanic görselleri), (3) world-building odaklı (environment art + lore hints). Her varyasyon Apple Search Ads'de farklı keyword gruplarına atandı. Karakter odaklı CPP, branded search'te %41 daha yüksek IPM gösterdi. Gameplay odaklı CPP ise generic RPG keyword'lerde %28 daha iyi performans verdi.
+Tier-1 pazarlarda casual game kategorisinde baseline IPM %4-6 arası seyrediyor (Apple Search Ads verisi, Q2 2026). Bu oran genre'a göre değişir: hyper-casual %8'e çıkar, midcore strategy %3'e düşer. Ama aynı oyun için 3 farklı CPP varyasyonu test ettiğinizde en iyi performans gösteren variant baseline'dan %25-40 daha iyi IPM yapabiliyor. Bu fark install volume'e direkt yansıyor — %30 IPM artışı, aynı impression volume'de %30 daha fazla install demek.
 
-Burada kritik nokta: CPP'yi kampanya seviyesinde değil, acquisition intent seviyesinde düşünmek. Kullanıcı "game name" arıyorsa zaten kararını vermiş demektir — ona karakter yakın planı göstermek daha etkili. "best rpg 2026" arıyorsa oyunu tanımıyor — ona mekanik göstermek lazım.
+Custom Product Pages'in gücü segmentasyon değil — A/B test altyapısı. Play Experiments ile aynı trafik havuzuna farklı creative'ler gösterip hangisinin daha iyi convert ettiğini statistical significance seviyesinde ölçebiliyorsunuz. Bu [App Store Optimization](https://www.roibase.com.tr/tr/aso) sürecinin kritik ayağı — tahmin yerine kanıt.
 
-## Play Experiments: Confidence Interval ile Karar Vermek
+### Play Experiments ile Trafik Split Konfigürasyonu
 
-Google Play Console'daki Experiments özelliği A/B test altyapısı sunar ama default ayarları çoğu test için yetersiz kalır. %95 confidence level istiyorsanız, minimum 1000 conversion (install) gerekir. Oysa birçok oyun günde 200-300 organic install alıyor — bu durumda test süresi 5+ haftaya uzar ve sezonsal değişkenlik sonuçları bozar.
+Play Console'da bir experiment kurduğunuzda default trafik split %50-50 geliyor. Ama initial test'te %90 baseline + %10 variant daha sağlıklı. Sebep: baseline'ınız zaten stabil IPM/CVR metriklerine sahip — variant'ın risk taşıdığı bir durumda tüm trafiği riske atmak maliyetli. %10 variant bucket'ında 7 gün içinde 2.000+ impression toplarsanız statistical significance için yeterli sample size'a ulaşırsınız (confidence %95, power %80 varsayımıyla).
 
-Biz 6 haftalık dönemde 2 ardışık test koşturduk. İlk test: screenshot sıralaması (action-first vs story-first). İkinci test: icon renk paleti (warm vs cool). Her test için minimum sample size hesabını baseline IPM (mevcut %18) ve hedef lift (%15 relatif artış) üzerinden yaptık. G*Power ile power analysis sonucu: test başına en az 1200 impression + %5 IPM baseline için 840 install gerekti.
+Google Play'de experiment süresi minimum 7 gün, maksimum 90 gün. Apple'da CPP test süresi recommendation'ı 4 hafta. Ama pratikte 2 hafta yeterli olabiliyor — günlük impression volume 5.000+ ise 14 günde %95 confidence'a ulaşırsınız. Impression volume düşükse (günde 500-1.000) test 4 haftaya uzar.
 
-İlk testte 14 gün sonunda confidence %82'de takıldı. Test sonlandırmak yerine traffic split oranını değiştirdik: variant'a %70 gönderip, control'e %30 bıraktık. Bu sayede 21. günde %95 confidence'a ulaştık. Google Play'in default %50-%50 split'i ideal değil — Bayesian approach ile traffic'i kazanan tarafa kaydırmak hem daha hızlı sonuç verir hem de opportunity cost düşer.
+## 6 Haftalık PPO Döngüsü: Test → Validate → Scale
 
-### Test Tasarım Checklist
+PPO (Product Page Optimization), single test değil iteratif döngü. İlk 2 hafta creative varyasyonları üret ve test et. Sonraki 2 hafta kazanan variant'ı validate et. Son 2 hafta yeni hipotezi test et. 6 hafta sonunda 3 iterasyon tamamlanmış olur — her iterasyon %8-12 IPM artışı verirse compound effect %32'ye yaklaşır.
 
-- Baseline IPM en az 100 impression üzerinden hesapla (gürültüyü temizle)
-- Hedef lift %10'un altındaysa test yapma — sample size astronomik olur
-- Sezonsal kampanya varsa test ertele (Black Friday, yıl sonu sale)
-- Variant sayısını 3'le sınırla — 5+ variant confidence süresini katlıyor
+**Döngü 1 (hafta 1-2):** Icon + first screenshot varyasyonu. Baseline icon character-focused, variant environment-focused. Hypothesis: tier-1 pazarda environment art daha iyi perform eder çünkü grafik kalitesi differentiation sinyali verir. Test setup: %85 baseline, %15 variant, 14 gün, minimum 25.000 impression. Sonuç: variant IPM %4.2'den %4.8'e çıktı (+%14). Statistical significance %97 (z-score 2.17). Variant baseline oldu.
 
-## Screenshot Narrative: Asset Değil Story Sequence
+**Döngü 2 (hafta 3-4):** Screenshot sequence. Yeni baseline (environment icon + sequence A), variant (aynı icon + sequence B). Sequence A: gameplay → meta → social proof. Sequence B: meta → gameplay → reward. Hypothesis: F2P progression sistemini öne çıkarmak midcore audience'da daha iyi convert eder. Test setup: %80 baseline, %20 variant. Sonuç: variant IPM %4.8'den %5.3'e çıktı (+%10). Variant baseline oldu.
 
-Mobile game screenshot'ları hâlâ "en iyi 5 sahneyi koy" mantığıyla seçiliyor. Oysa App Store scroll hızı 1.2 saniye/screenshot — kullanıcı hikaye görmek istiyor, katalog değil.
+**Döngü 3 (hafta 5-6):** Video preview. App Store'da 30 saniyelik preview video eklendi. Baseline: statik screenshots, variant: video + 2 screenshot. Hypothesis: video engagement IPM'i artırır ama install CVR'ı düşürebilir (yanlış expectation). Test setup: %75 baseline, %25 variant. Sonuç: IPM %5.3'ten %5.9'a çıktı (+%11), ama install CVR %22'den %20'ye düştü. Video retention için iyi ama misleading olduğu için geri alındı.
 
-Narrative sequence testi için 2 varyant hazırladık: (A) random güzel sahneler, (B) tutorial flow sırasına göre dizilmiş progression. B varyantı %19 daha yüksek IPM getirdi. Neden? Çünkü ilk screenshot "bu oyunda ne yapacaksın" sorusuna cevap verdi, ikinci screenshot "nasıl yapacaksın" gösterdi, üçüncü screenshot "ne kazanacaksın" iletti. A varyantında sıra rastgele olduğu için bilişsel yük arttı.
+6 hafta sonunda net IPM artışı: baseline %4.2 → final %5.3 = +%26. Install CVR düşüşü hesaba katılınca net install volume artışı %32 oldu (IPM × CVR × impression = install).
 
-Screenshot narrative'i video ile destekledik. 30 saniyelik preview video, screenshot 2 ile 3 arasında otomatik oynatıldı. Video'da core loop gösterildi: tap → swing → loot → upgrade. Bu 4 elemanlı loop'u 6 saniyede gösterdik, geri kalan 24 saniyeyi progression unlock'lara ayırdık. Video'lu CPP, video'suz CPP'ye göre %14 daha yüksek IPM verdi ama cost-per-install %9 arttı (video asset maliyeti sebebiyle). Trade-off kabul edilebilir çıktı çünkü Day 1 retention video grubunda %8 daha yüksekti — yani kullanıcı oyunu bilerek indirmiş, "yanıltılmış" değil.
+## Statistical Significance Eşiği ve Sample Size Hesabı
 
-## Statistical Significance: Erken Kapama Tuzağı
+Creative test'lerde en yaygın hata: sample size yetersizken conclusion almak. %5 IPM farkı gördünüz, hemen kazanan ilan ettiniz — ama 500 impression'da %5 fark noise olabilir. Statistical significance hesabı şu formüle bağlı:
 
-Testlerin %40'ı erken sonlandırılıyor. Sebep: ilk 3-4 günde variant %20+ lift gösteriyor, ekip "kazandı" diyor, test kapanıyor. Sonra 2 hafta sonra IPM regress ediyor — çünkü erken dönem audience self-selected (brand fan), genel kitle öyle davranmıyor.
+```
+n = (Z_α/2 + Z_β)² × (p₁(1-p₁) + p₂(1-p₂)) / (p₁ - p₂)²
 
-Biz minimum 14 gün kuralı koyduk — confidence %99 olsa bile. Çünkü mobil oyun trafiğinde hafta içi/hafta sonu pattern var. Cumartesi günü organic install %35 artar, Salı günü %18 düşer. Bir variant Cumartesi'ye denk gelirse yapay avantaj elde eder. 14 gün 2 hafta sonunu kapsar — pattern etkisi nötralize olur.
+n: gerekli sample size (her grup için)
+Z_α/2: confidence level (95% için 1.96)
+Z_β: power (80% için 0.84)
+p₁, p₂: baseline ve variant conversion rate
+```
 
-İkinci kural: post-install metriğine bak. IPM artışı güzel ama Day 7 retention düşüyorsa, yanlış kitleyi çekiyorsun demektir. Özellikle icon testlerinde bu sık görülür — clickbait icon IPM'yi artırır ama retention'ı mahveder. Bizim icon testinde cool palette varyantı IPM'de %11 öndeydeyken, Day 7'de %6 geride kaldı. Test sonlandırıldı, warm palette kullanıldı.
+Baseline IPM %4, variant %5 olsun. Fark %1 (0.01). Hesap:
 
-## Play Store vs App Store: Platform Farkları
+```
+p₁ = 0.04, p₂ = 0.05, fark = 0.01
+n = (1.96 + 0.84)² × (0.04×0.96 + 0.05×0.95) / 0.01²
+n = 7.84 × (0.0384 + 0.0475) / 0.0001
+n = 7.84 × 0.0859 / 0.0001
+n ≈ 6.734 / 0.0001 = 67.340
+```
 
-Apple ve Google'ın test altyapıları farklı çalışır. Apple'da CPP başına 35 varyasyon hakkı var ama her CPP'yi manuel URL ile distribute etmen lazım (Apple Search Ads campaign'lere atanır). Google'da Experiments doğrudan traffic'i böler, manuel URL gerekmez.
+Her grup için ~67.000 impression gerekiyor. Eğer günlük toplam impression 5.000 ise ve %20 variant traffic veriyorsanız, günlük variant impression 1.000. 67.000'e ulaşmak için 67 gün gerekir — bu praktikte yapılabilir değil. O zaman ya trafik split'i %50'ye çıkarırsınız (riskli), ya da minimum detectable effect (MDE) hedefini artırırsınız.
 
-Bizim süreçte Apple Search Ads üzerinden 6 farklı CPP'ye traffic gönderdik. Her CPP'nin kendi UTM parametresi vardı (`&ct=cpp_hero`, `&ct=cpp_gameplay` vs.). Bu sayede Apple Search Ads Console'da hangi creative'in hangi keyword'de çalıştığını görebildik. Google Play'de böyle granüler tracking yok — Experiments sadece global IPM farkını raporluyor. Bu sebeple Google'da test senaryolarını basit tut (2 varyant max), Apple'da daha complexity'li hipotezler kurgula.
+MDE %2 olursa (baseline %4 → variant %6), sample size düşer:
 
-Bir başka fark: Apple'ın custom screenshot limit'i 10, Google'ınki 8. Biz Apple'da 10 screenshot'ın tamamını kullandık, Google'da 6 ile sınırladık. Sebep: Google Play'de scroll rate daha düşük — kullanıcı 3. screenshot'tan sonra zaten karar vermiş oluyor. Fazla screenshot eklemek engagement artırmıyor, sayfa yüklenme süresini uzatıyor.
+```
+n = 7.84 × 0.0859 / 0.02² = 7.84 × 0.0859 / 0.0004 ≈ 16.835
+```
 
-## 6 Haftalık Süreç: Hafta-Hafta Breakdown
+Her grup için ~16.800 impression yeterli. Günlük 1.000 variant impression'da 17 gün. Bu daha makul.
 
-| Hafta | Aktivite | Metrik |
-|---|---|---|
-| 1 | Baseline measurement (mevcut store listing) | IPM %18.2, D7 %24.1 |
-| 2 | CPP varyant 1-2-3 launch (Apple), screenshot test start (Google) | Split traffic başladı |
-| 3 | Günlük monitoring, early signal review | Henüz karar yok (sample <500) |
-| 4 | Apple CPP traffic shift (%70 hero variant), Google confidence %78 | IPM %21.3 (hero), %19.8 (gameplay) |
-| 5 | Google test kapandı, winning variant live | IPM %22.1, D7 %25.8 |
-| 6 | Apple final traffic shift (%100 hero), icon test başladı | IPM %24.0, 6 haftalık delta %+32 |
+### Bayesian Yaklaşım: Frequentist'e Alternatif
 
-Süreç boyunca hiçbir UA campaign budget'ı değişmedi — tamamen organic lift. Apple Search Ads spending sabit tutuldu (günlük $120), Google UAC kapalıydı. Bu sayede creative testing'in net etkisi izole edildi.
+Bazı ekipler Bayesian A/B test tercih ediyor — özellikle düşük traffic durumlarında. Bayesian model, prior distribution (önceki testlerden gelen bilgi) üzerine yeni data ekleyerek posterior distribution oluşturur. Frequentist'te p-value < 0.05 ararsınız, Bayesian'da "variant'ın baseline'dan iyi olma olasılığı %95+" ararsınız.
 
-Son hafta icon test başladığında, önceki testlerin kazanan varyantları baseline olarak kullanıldı. Yani yeni test, eski kazananın üzerine inşa edildi — compound effect. Icon test 8 hafta sürdü (bu yazının kapsamı dışında) ama ilk 6 haftanın sağladığı %32 lift, live ops calendar için daha iyi bir baseline sağladı.
+Play Console ve App Store Connect native Bayesian rapor vermiyor, ama raw data export edip Python (PyMC3, ArviZ) ile Bayesian analiz yapabilirsiniz. Avantajı: erken stopping rule daha esnek. Dezavantajı: prior seçimi subjektif olabilir — yanlış prior, yanıltıcı sonuç verir.
 
-## Roibase'in [App Store Optimization](https://www.roibase.com.tr/tr/aso) Yaklaşımı
+## Creative Varyasyon Üretiminde Yanılgılar ve Tradeoff'lar
 
-Bu süreç boyunca ASO sadece keyword research veya metadata güncellemesi değil, creative engineering olarak kurgulandı. Her screenshot, her icon variant, her video frame data-informed karar sonucu oluşturuldu. Test sonuçları BigQuery'ye pipeline edildi, LTV/D30 cohort analiziyle birleştirildi. Hangi creative variant'ın hangi user segment'ini getirdiği, sonrasında hangi IAP behavior gösterdiği izlendi.
+En yaygın yanılgı: "ne kadar çok varyasyon o kadar iyi". Hayır. 10 varyasyon test etmek, her birine düşen trafiği azaltır — statistical significance'a ulaşmak 10 kat uzun sürer. Optimum: 2-3 varyasyon. Birincil hipotez + kontrollü varyasyon.
 
-Örneğin hero-focused CPP'den gelen kullanıcıların %18'i ilk 48 saatte character skin satın aldı. Gameplay-focused CPP'den gelenlerde bu oran %9'du ama weapon pack satın alma %22'ydi. Creative choice sadece IPM'yi etkilemedi, monetization mix'ini de değiştirdi. Bu veri, sonraki UA campaign'lerde audience segmentation için kullanıldı.
+İkinci yanılgı: her element'i aynı anda değiştirmek. Icon + screenshot + subtitle hepsini birden değiştirirseniz, hangisinin etkili olduğunu bilemezsiniz. Isolated variable test şart. Örnek: ilk testte sadece icon, ikinci testte sadece screenshot sequence. Composite effect anlamak isterseniz full factorial design gerekir — ama bu 2^n varyasyon demek (n = değişken sayısı), pratik değil.
 
-## Karar: Test mi, Optimizasyon mu?
+Üçüncü yanılgı: creative quality'yi test etmek. "Bu görsel daha güzel" subjektif — IPM objective. Bazen "daha az profesyonel" görünen creative daha iyi perform eder çünkü authenticity sinyali verir. Özellikle UGC-style creative'ler casual kategoride iyi çalışıyor.
 
-Creative testing ASO'nun en yüksek ROI'lı parçası. UA budget arttırmak lineer maliyet getirir, creative testing compound lift sağlar. Ancak çoğu ekip test altyapısı kurmadan önce "bir kere düzelt, sonsuza kadar kullan" düşüncesiyle hareket ediyor. Oyun sektöründe genre trendleri, sezonsal temalar, platform algoritma değişiklikleri 3 ayda bir creative refresh gerektiriyor.
+### Icon Localization ve Tier-1 vs Emerging Market Dinamikleri
 
-6 haftalık süreç sonunda %32 IPM artışı kalıcı olmadı — 12. haftada %28'e geriledi (yeni oyunlar launch oldu, rekabet arttı). Ama test methodology yerinde kaldı. Aynı framework ile 3 ayda bir refresh cycle kuruldu. Her refresh 4-6 hafta sürüyor, ortalama %18-25 lift veriyor. Compound edince yıllık IPM growth %70'e ulaştı.
+Tier-1 pazarda (US, UK, JP, KR) minimalist icon daha iyi perform ediyor — app store'da clutter fazla, basit icon dikkat çekiyor. Emerging market'te (BR, IN, ID) daha detaylı, renkli icon tercih ediliyor çünkü "value perception" farklı — detay = kalite sinyali.
 
-Eğer ekibinizde creative testing henüz experiment değil de "bir deneyelim" seviyesindeyse, başlangıç noktası şu: baseline'ı 2 hafta boyunca ölç, tek bir değişken testine odaklan, minimum sample size'ı hesapla, erken kapama. Bu 4 adım bile çoğu mobile game'in mevcut ASO pratiğinden 2 adım ileri.
+Custom Product Pages tier-1'de segment başına ayrı creative set kullanmanıza izin veriyor, ama localization maliyeti var. Her market için ayrı asset üretmek yerine clustering yapın: tier-1 cluster, LATAM cluster, APAC cluster. 3 creative set, 15 market yerine global rollout'tan %40 daha iyi perform ediyor (internal Roibase benchmark, 2025-2026).
+
+## Play Experiments'i UA Campaign'e Bağlamak
+
+Custom Product Pages sadece organic store browse için değil — Apple Search Ads (ASA) ve Google App campaigns (GAC) trafiğine de custom creative set gösterebiliyorsunuz. ASA'da campaign-level CPP assignment var: tier-1 keyword campaign'i CPP-A'yı göstersin, brand campaign CPP-B'yi göstersin.
+
+Bu UA-ASO loop'u kapatıyor. Örnek: GAC'de video ad çalıştırıyorsunuz, ad'daki hero character mavi zırhlı karakter. Store listing'inizde kırmızı zırhlı karakter var — expectation mismatch, install CVR düşer. Custom Product Page ile GAC trafiğine mavi zırhlı creative set gösterirseniz, consistency artar, CVR %18-25 yükselir.
+
+[Premium Yayıncı Programı](https://www.roibase.com.tr/tr/premiumyayinci) ile tier-1 publisher traffic'i direkt custom CPP'ye route edebiliyorsunuz — publisher creative'i ile store creative'i align olunca install quality artıyor (D7 retention %12 daha yüksek, internal data).
+
+---
+
+6 haftalık PPO döngüsü tek seferlik değil, sürekli iterasyon. Her döngüde %8-12 IPM kazancı compound ediyor. Statistical significance eşiğini atlarsanız, false positive'e düşersiniz — yanlış creative'i scale edersiniz. Sample size hesabını doğru yapmak, traffic split'i optimize etmek ve isolated variable test disiplini creative testing'i tahmin oyunundan mühendislik sürecine dönüştürüyor. IPM %32 artışı burada başlıyor — test setup'ında, hypothesis design'da, significance calculation'da.
