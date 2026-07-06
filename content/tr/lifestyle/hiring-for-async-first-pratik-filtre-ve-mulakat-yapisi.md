@@ -1,139 +1,85 @@
 ---
 title: "Hiring for Async-First: Pratik Filtre ve Mülakat Yapısı"
-description: "Trial week, written assessment ve sync ön-yargısını silme: uzaktan ekip kurarken adayı gerçek iş disipliniyle test etmenin operasyonel rehberi."
-publishedAt: 2026-06-24
-modifiedAt: 2026-06-24
+description: "Trial week, yazılı değerlendirme ve sync önyargısını silen işe alım yapısı. Remote ekiplerde gerçek uyumu önceden görmek için sistematik protokol."
+publishedAt: 2026-07-06
+modifiedAt: 2026-07-06
 category: lifestyle
-i18nKey: lifestyle-005-2026-06
-tags: [async-first, hiring, remote-work, trial-week, team-building]
+i18nKey: lifestyle-005-2026-07
+tags: [async-first, remote-hiring, trial-week, written-assessment, team-culture]
 readingTime: 8
 author: Roibase
 ---
 
-Async-first ekip kurmak, LinkedIn profilinde "remote-friendly" yazan adayı işe almakla başlamıyor. 2026'da en sık yapılan hata: mülakat sürecini yine senkron toplantılara, "vibe check" oturumlarına ve CV sayfası okumaya dayandırmak. Sonuç: ekip uzaktan çalışıyor ama her gün 4 Zoom toplantısı, her karar için Slack'te anlık yanıt beklentisi, yazılı döküman yerine sözlü talimat. Async ekip kurmak istiyorsan, işe alım sürecini de async disiplinine göre tasarlaman gerekiyor — bu sadece "uygun saatte görüşelim" demek değil, adayın *gerçek async iş yapma kapasitesini* test etmek demek.
+Async-first ekip kültürü kurmak için doğru insanı bulmak, klasik "CV + 3 tur mülakat" modeliyle mümkün değil. Çünkü sync mülakatta parlayan profil, yazılı iletişimde bulanık; hızlı düşünen insan, deep work'te düşüktür. Bu uyumsuzluk ilk 90 günde ortaya çıkar — o zaman hem aday hem ekip zaman kaybeder. Async-first yapı önceden filtre ister: trial week, yazılı case ve sync önyargısını silen protokol. Roibase 8 yıldır bu sistemle ekip kuruyor — maliyet/hata oranı düşük, tutunma oranı yüksek.
 
-## Sync ön-yargısını silmek: ölçülebilir kriter listesi
+## Sync mülakat önyargısı neden işe yaramaz
 
-Async-first hiring'in ilk adımı: hangi yetkinliklerin *gerçekten* senkron etkileşim gerektirdiğini ayırmak. Klasik mülakat süreçleri "bu adam baskı altında düşünebiliyor mu" sorusunu 45 dakikalık video call'da cevaplamaya çalışır. Async ekipte asıl soru şu: bu kişi bağlamı yazıdan okuyup, 4 saat sonra detaylı yanıt verebiliyor mu?
+Klasik mülakat senaryosu: aday 45 dakikada kendini pazarlıyor, soru-cevap dinamiği konuşma hızına kilitli, ekibin günlük çalışma ritmi hiç yansımıyor. Sonuç: "iyi sunum yaptı, alalım" kararı — ama işin %80'i asenkron, aday yazılı briefing okuyup 24 saat içinde tasarım çıkaracak veya kod review'da 3 paragraf analiz yazacak. Sync mülakat o yeteneği ölçmüyor.
 
-Roibase'de 2023'ten beri kullandığımız filtre matrisi 3 kategoriye ayrılıyor:
+İkinci sorun: hiyerarşik durum. Mülakatta founder/lead konuşuyor, aday dinliyor — async ekipte roller eşit, herkes yazarak tartışıyor. Mülakat bu kültürü simüle etmiyor. Üçüncü: zaman baskısı. Sync'te "hemen cevap ver" beklentisi var, async'te "24 saatte düşünülmüş cevap ver" — bunlar farklı beceriler. Sync'te başarılı olan, async'te sessiz kalabiliyor.
 
-**Zorunlu async yetkinlikler:**
-- Yazılı brief'i okuyup sorular sormadan ilk output verme
-- 24 saat içinde Linear task'e response time (gecikirse açıklama yazma disiplini)
-- Figma comment'te 3 paragraf feedback — senkron call talep etmeden
+Önyargıyı silmek için yapısal değişiklik şart: yazılı case + trial week + async iletişim testi. Bu üçlü, işin gerçek dinamiğini önceden gösterir. Ekip adayı 5 gün boyunca Linear ticket'ında, Notion dokümanda, Slack thread'inde görüyor — performans tahmin değil, gözlem.
 
-**Hybrid kabul edilebilir:**
-- İlk hafta onboarding — 2-3 sync oturum normal
-- Stratejik pivot anları — quarterly planning, major feature kickoff
-- Kritik bug/incident — Slack'te anlık ping beklenebilir
+## Yazılı case: Generic değil, operasyonel senaryo
 
-**Async'te ölçülmez yetkinlikler:**
-- Whiteboard brainstorming yeteneği — FigJam async yapılır
-- "Ekip enerjisi" — written culture document'te okunur
-- Hızlı karar verme — karar email thread'inde 48 saat içinde documented edilir
+Yazılı case "3 sayfalık sunum hazırlayın" değil, "Linear'da açık ticket'a çözüm öner, 48 saatte" formatında olmalı. Senaryo gerçek: örneğin growth marketer pozisyonu için "Bu landing page'in CRO oranı %2, benchmark %4,5 — test hipotezi yaz, ölçüm planı kur, 1 haftalık sprint takvimi çıkar." Aday döküman yazacak, Figma mockup ekleyecek, GA4 event listesi verecek — iş tam olarak bunu gerektiriyor.
 
-Aday portföyünü bu matrise göre eleyince, CV'de "remote experience 5 yıl" yazan adayların %60'ının aslında full-time Zoom'da çalıştığını görüyorsun. Bu kişiler async ekipte ilk haftada "neden kimse Slack'te cevap vermiyor" diye frustrasyona giriyor.
+Değerlendirme kriteri 3 katmanlı: (1) Yazı kalitesi — yapı net mi, paragraflar kısa mı, başlıklar işlevsel mi? (2) Derinlik — surface-level tavsiye mi yoksa trade-off analizi mi? (3) Format — aday Notion'da markdown kullanmış mı, görseller inline mı, referans linkleri kırık mı? Bu detaylar async kültürde kritik — kötü format ekibin cognitive load'ını artırır.
 
-İkinci filtre: adayın geçmiş işlerinde *asenkron artifact* üretip üretmediğini sormak. "Bu projede karar sürecinizi nasıl dokümante ettiniz?" sorusuna "haftalık toplantıda tartıştık" yanıtı red flag. "Notion decision log'a 3 seçenek + tradeoff yazdık, 2 gün içinde herkes comment attı" yanıtı green light.
+Yazılı case'in ikinci değeri: adayın zaman yönetimi. 48 saat deadline varsa ve aday 47. saatte yolluyor, bu kötü sinyal — async ekipte "son dakika" yok, erken draft + revizyon döngüsü var. İyi aday 24. saatte ilk draft atar, geri bildirim ister, 48. saatte nihai versiyonu gönderir. Bu davranış pattern'i ölçülebilir.
 
-## Written assessment: gerçek iş simülasyonu
+### Case formatı şablonu
 
-Video call mülakat yerine written assessment koymak, sadece "email gönder" demek değil — adayın ekiple async çalışırken karşılaşacağı *tam* bağlamı simulate etmek demek. Biz bunu 2024'te formalize ettik, şimdi tüm pozisyonlar için zorunlu: aday 48 saat içinde Linear task'e benzer bir brief'e yanıt veriyor, Loom video yerine Notion page hazırlıyor, Figma mock-up'a comment atıyor.
+```markdown
+# Case: Landing Page CRO Sprint Planı
 
-**Assessment formatı (örnek: marketing ops role):**
+**Durum:** /lp/trial sayfası 10K trafik alıyor, %2 conversion (sektör benchmark %4,5).
+**Görev:** 1 haftalık CRO sprint tasarla — hipotez, test planı, metric, takvim.
+**Format:** Notion page (markdown) + Figma mockup (opsiyonel) + GA4 event listesi.
+**Deadline:** 48 saat.
+**Beklenti:** 1000-1500 kelime, en az 2 test hipotezi, trade-off analizi (A/B test vs personalization).
+```
 
-*Brief:* "Client X'in Google Ads ROAS son 4 haftada %18 düştü. Search Console'da 3 core keyword'de impression -22%. Analytics'te bounce rate +9pp. Aşağıdaki dataset'i inceleyip (Google Sheet link) bir haftalık aksiyon planı öner. Format: Notion page, max 800 kelime, en az 1 data visualization."
+Bu case, "stratejik düşünme" gibi soyut kriteri sayısallaştırır. Aday %2 → %4,5 yolunu somut adımlara bölebildi mi? Yazı akışı Linear ticket comment'i gibi mi yoksa PowerPoint slide'ı gibi mi?
 
-*Değerlendirme kriterleri:*
-- **Bağlam okuma:** Sheet'teki 12 tab'i inceleyip doğru metriğe mi odaklandı? (ağırlık: %25)
-- **Yazılı netlik:** Aksiyon planı başka birinin execute edebileceği kadar spesifik mi? (ağırlık: %30)
-- **Async takip:** Sorularını Slack'te değil, Notion comment'te mi sordu? Cevap beklerken diğer kısma mı geçti? (ağırlık: %20)
-- **Deadline:** 48 saat içinde mi tamamladı? Gecikecekse önceden yazdı mı? (ağırlık: %15)
-- **Output formatı:** Notion page'de heading hierarchy, inline chart, bullet list kullanımı (ağırlık: %10)
+## Trial week: Paid, real work, async ritüelleriyle
 
-Bu assessment'ta düşen adayların %40'ı "brief'i okumadan direkt Slack'te 'bu konuda 15dk call yapalım mı?' diye yazan" kategori. Bu kişiler async ekipte ilk haftada blocker olur — her task için sync meeting talep ederler.
+Trial week ücretsiz "test dönemi" değil — ücretli, kısa-süreli sözleşme. Türkiye'de hukuki yol: freelance sözleşme + haftalık ödeme (saatlik değil, deliverable bazlı). Aday o hafta ekibin Linear board'unda, Slack workspace'inde, Notion wiki'sinde — gerçek ticket alıyor, gerçek review döngüsüne giriyor.
 
-Tersine, assessment'ı geçen adaylar ilk Linear task'lerini zaten biliyorlar: Notion'da context okuyup, 6 saat içinde draft PR açıp, Figma comment'te feedback istemişler. Onboarding friction %70 azalıyor.
+Trial week'in yapısı: (1) İlk gün onboarding doküman + async Q&A thread — hiç sync toplantı yok. (2) 2-4. gün: 1-2 küçük ticket (örn. "X landing page'in hero section copy'sini revize et + A/B test hipotezi ekle"). (3) 5. gün: mini retro — aday Loom video + yazılı özet gönderir, ekip Slack thread'te feedback verir. Tüm iletişim yazılı — hiçbir Zoom call yok.
 
-**Anti-pattern:** Assessment'ı "homework" diye sunup sonra video call'da "anlatın bakalım" demek. Bu yine sync'e geri dönüş. Doğru yol: assessment'ı Linear task gibi treat et, tüm feedback'i Notion comment'te ver, soru-cevap async thread'de yürüsün. Aday nasıl async çalışacaksa, hiring de öyle yürümeli.
+Bu yapı ne ölçer? (1) Async response time — aday Linear comment'e 4 saat içinde mi 24 saat içinde mi cevap veriyor? İdeal: 4-8 saat (deep work'ü bölmeden cevap). (2) Yazılı iletişim netliği — aday "anlamadım" mı diyor yoksa "X dokümanın 3. paragrafında Y belirsiz, şöyle mi anlayalım" mı diyor? İkincisi async ekipte hayati. (3) Proaktiflik — aday sadece ticket'ı mı kapatıyor yoksa "bu ticket'la ilgili Z senaryoyu da düşündüm, ekleme yapayım mı" diye soruyor mu?
 
-## Trial week: süreç değil, gerçek sprint
+Trial week'in finansalı: 1 haftalık ödeme genelde pozisyonun aylık maaşının 1/4'ü civarı — hem adayı hem ekibi rahatlatır. Aday "bedava çalışmıyorum" güveni, ekip "ciddi yatırım yaptık, iyi değerlendirme yapalım" sorumluluğu hisseder. Hukuki risk minimum çünkü freelance sözleşme zaten kısa-süreli.
 
-CV + assessment'tan sonraki adım klasik hiring'de "referans kontrol + final interview". Async-first'te bu adım: **ücretli trial week** — aday 5 gün boyunca gerçek Linear sprint'e katılır, gerçek client brief'ine yanıt verir, gerçek Figma file'da çalışır. Simülasyon değil, production.
+## Sync önyargısını silme protokolü
 
-Roibase'de trial week şu kurallara göre işliyor:
+Async-first işe alımda sync mülakat sayısı minimum: sadece 1 kez, trial week sonrası, culture fit kontrolü için. Ama o mülakat bile yazılı protokole bağlı. Şöyle: mülakattan 24 saat önce adaya 5 soru gönder (Notion doküman), aday yazarak cevaplasın, mülakat günü o cevaplar üzerinden derinleşilsin. Örnek sorular: "Async ekipte en zor bulduğun durum ne olur?", "Yazılı iletişimde hangi kurallara dikkat edersin?", "Deep work için gün içinde hangi blokları ayırırsın?"
 
-**Yapı:**
-- **Gün 1-2:** Onboarding dokümanlarda — Notion workspace, Linear project, Figma organization. Slack'te #trial-week kanalı açılır (async, 24 saat response time beklenir). İlk task: mevcut sprint'teki bir "good first issue" — complexity low, context medium. Adayın kod/yazı/tasarım output'u real repo'ya gider.
-  
-- **Gün 3-4:** İkinci task — complexity medium, cross-functional. Örnek: "Client Y için landing page A/B test planla, Figma'da variant yap, Google Optimize setup dokümante et." Bu task'te aday en az 2 ekip üyesiyle async coordinate etmek zorunda (biri design, biri analytics). Coordination kalitesi trial'ın asıl ölçüm noktası.
+Bu format sync önyargısını kırar çünkü aday önceden düşünmüş geliyor — "hemen cevap ver" baskısı yok. Mülakatçı da hazır cevapları okumuş, derinlemesine soru sorabiliyor. Sonuç: 30 dakikalık mülakat, 60 dakikalık sync meeting'den daha verimli.
 
-- **Gün 5:** Retrospective — yine async. Notion page'de "Ne öğrendin? Hangi process unclear'dı? İlk sprint'te neyi değiştirirdin?" soruları. Ekip de aynı formatta feedback veriyor: "Kod quality nasıl? PR description yeterli miydi? Slack response time nasıl?"
+İkinci protokol: trial week sırasında hiç sync meeting yapma. Aday "onboarding call" isterse reddet — "tüm bilgi Notion'da, sorularını Slack thread'te sor" de. Bu sert görünür ama async kültürü test eder. Eğer aday "yazılı doküman okudum ama X belirsiz" diye sorarsa, bu iyi sinyal — okuma + net soru becerisi var. Eğer "çok karışık, call atalım mı" derse, bu async uyumsuzluk sinyali.
 
-**Ödeme:** Trial week minimum $500 (junior role) ile $2000 (senior role) arası flat fee — saat hesabı yok, çünkü async'te saat ölçmek anlamsız. Output'a göre değerlendirme.
+Üçüncü: referans kontrolü de async. Aday önceki işvereninden yazılı referans isteyecek (LinkedIn recommendation yeterli değil — 2 paragraf detaylı feedback). Referans yazıyı da yazılı iletişim kalitesi kriteri olarak değerlendir. Belirsiz referans ("harika çalıştık") yerine somut referans ("X projesinde 6 hafta içinde Y deliverable'ı Z kalitede teslim etti") arıyorsun.
 
-**Red flag sinyalleri trial week'te:**
-- Her task'ten önce "bu konuda call yapalım" mesajı (3+ defa = auto-reject)
-- PR description 2 satır — "fixed bug" (context yok = reject)
-- Slack'te "bu urgent mı?" diye sormadan 2 saat içinde cevap bekleme (async disiplin yok)
-- Figma comment yerine ekran görüntüsü DM'leme (documentation yok)
+## Ekip-aday uyumunu sayısal kılmak
 
-**Green flag sinyalleri:**
-- İlk task'i tamamladıktan sonra kendi inisiyatifiyle related documentation gap'i fix etme
-- Linear task description'a sorduğu soruları kendisi de append edip diğer team member'ların görmesini sağlama
-- 24 saat response SLA'yı tutturma ama her mesaja 10 dakikada cevap vermeme (deep work var)
+Trial week bittiğinde uyum kararı subjektif değil, metrikli. Ekip bu 4 soruyu 1-5 skalada cevaplıyor: (1) Yazılı iletişim netliği (5 = her cümle işlevsel, 1 = belirsiz). (2) Async response quality (5 = 4-8 saat içinde düşünülmüş cevap, 1 = 24+ saat veya yüzeysel cevap). (3) Proaktiflik (5 = ekstra öneri + revizyon teklifi, 1 = sadece ticket kapama). (4) Culture fit (5 = async ritüellere uyum, 1 = sync call talebi).
 
-Trial week'in async ekip kurmanın en kritik noktası olmasının nedeni şu: CV'de "self-starter, autonomous" yazan herkes, ilk real task'te ya anlık feedback bekleyip duruyor ya da tek başına context olmadan yanlış yöne gidiyor. Async disiplin = bağlamı dokümandan okuyup + intermediate checkpoint'lerde async güncelleme + deadline'ı tutturma. Bu yetkinlik sadece trial week'te görülüyor.
+4 soru × 3-4 ekip üyesi = 12-16 veri noktası. Ortalaması 4+ ise aday kalıyor, 3,5-4 arası belirsiz (1 hafta daha trial), 3,5 altı red. Bu sistem önyargıyı kırar çünkü "bana sempatik geldi" yerine "yazılı iletişim skoru 4,2" deniyor.
 
-## Sync mülakat ne zaman gerekli: exception case'ler
+Async uyumu ölçmenin ikinci yolu: adayın trial week sırasında ürettiği yazılı içeriğin kalitesi. Örneğin Linear comment sayısı, Notion doküman revizyon geçmişi, Slack thread'teki cevap uzunluk ortalaması. İyi aday haftada 8-12 Linear comment yazıyor (her biri 2-3 paragraf), Notion dokümanda 3-5 revizyon yapıyor, Slack'te ortalama cevap uzunluğu 50-100 kelime. Bu sayılar tutmuyorsa — az yazıyor veya çok kısa yazıyorsa — async ekipte sessiz kalır.
 
-Async-first hiring full async demek değil — bazı checkpoint'ler sync yapılmalı. Roibase'de şu 3 durumda video call zorunlu:
+Ölçülebilir kriterleri şeffaf paylaş. Adaya trial week başında "bu hafta yazılı iletişim netliği, response time, proaktiflik metriklerine bakacağız" de. Bu baskı yaratmaz, tam tersine rahatlatır — aday neyin değerlendirildiğini biliyor, "gizli kriter" paranoysı yok. Async kültürün temeli zaten şeffaflık.
 
-**1. Cultural alignment check (1 kere, 30dk):** Trial week sonrası, teknik yetkinlik onaylandıktan sonra. Bu call'da konuşulan: "Ekip conflict'i nasıl resolve ederiz? (yazılı mı yoksa call mı?)", "Deadline slip ettiğinde ne yaparsın?", "Async çalışırken isolation hisseder misin?". Bu sorular yazılı cevaplandırılamaz, çünkü ton + tereddüt önemli. Ama bu call hiring decision'ı belirlemez, sadece final onay.
+## Markalaşma ve işe alım dilinin tutarlılığı
 
-**2. Senior leadership role (2-3 call):** Director+ pozisyonlar için async assessment + trial week yeterli olmuyor, çünkü stratejik kararlar ve [markalaşma](https://www.roibase.com.tr/tr/branding) gibi high-context alanlar real-time tartışma gerektirir. Bu call'lar da async prep'li: önceden Notion'da senaryo case gönderilir, call'da derinleşilir, sonra yine written summary yapılır.
+Async-first işe alım sadece operasyonel süreç değil, marka mesajının da parçası. Roibase'in [Markalaşma & Brand Identity](https://www.roibase.com.tr/tr/branding) çalışmasında ekip kültürünü dışarıya yansıtma prensibi var: "nasıl çalışıyorsan öyle ilan ver." Eğer async ekibinse, job posting'de "async-first, yazılı iletişim ağırlıklı, sync meeting minimum" yaz — bu hem doğru profili çeker hem yanlış profili filtreler.
 
-**3. Co-founder/equity conversation:** Equity split, vesting schedule, exit scenario — bunlar async yazışmayla netleşmez. 2-3 sync oturum şart. Ama yine kural: her call öncesi agenda Notion'da, call sonrası karar Linear task'e documented.
+Job posting formatı: soyut değil, operasyonel. "Dinamik ekip arıyoruz" yerine "Linear'da haftada 10-15 ticket kapatan, Notion'da doküman yazan, Slack'te 8 saat içinde cevap veren profil" yaz. Async dilini kullan: "CV + cover letter yerine Notion doküman + Loom video gönder (3 dakika, kendini tanıt + neden async ekipte çalışmak istiyorsun açıkla)." İlk filtre buradan başlar — adayın video + yazılı format uyumu zaten ön eleme.
 
-Bu 3 exception dışında her aşama async. Örnek timeline:
+İlan dilinin ikinci katmanı: sayısal beklentiler. "Yüksek performans" yerine "haftada 40 saat deep work, günde 2 saat async communication, sprint velocity ortalama 15 story point" yaz. Bu spesifiklik hem ciddi adayı çeker hem "rahat iş" arayan profili uzaklaştırır. Async ekip kolay değil — disiplinli zaman yönetimi + yazılı netlik + proaktif iletişim gerekir, bunu ilan safhasında söyle.
 
-| Hafta | Aşama | Format |
-|-------|-------|--------|
-| 1 | CV + portfolio review | Async (Notion comment) |
-| 2 | Written assessment | 48 saat, Notion delivery |
-| 3 | Assessment feedback | Async thread, 24 saat turnaround |
-| 4 | Trial week | Linear sprint, real task |
-| 5 | Retro + culture call | Async retro + 1 video call (30dk) |
-| 6 | Offer | Written, Notion'da negotiate edilir |
+---
 
-Toplam sync time: 30 dakika. Klasik hiring: 6-8 saat video call. Fark: async hiring'de aday gerçek işi görmüş, ekip de gerçek output'u test etmiş. Video call'da "baskı altında düşünebilir mi" teatri yerine, Linear history'de "5 gün boyunca nasıl çalıştı" verisi var.
-
-## Async hiring anti-pattern: yaygın hatalar
-
-İlk kez async hiring deneyen ekiplerin düştüğü 4 tuzak:
-
-**1. "Async mülakat" deyip sadece video call'ı Loom video'ya çevirmek:** Aday Loom'da kendini tanıtıyor, sen Loom'da sorular soruyorsun — bu async değil, asenkron senkronluk. Gerçek async: aday Notion page yazıyor, sen Notion comment atıyorsun, aday 12 saat sonra edit yapıyor. Thread format, video monolog değil.
-
-**2. Trial week'i "ücretsiz freelance proje" gibi kullanmak:** Bazı şirketler "1 hafta test et" deyip real client deliverable veriyor, sonra ücret ödemiyor. Bu illegal + unethical. Trial week = mutual evaluation period. Aday da seni test ediyor — process, tool quality, feedback hızı. Ödeme yapmazsan sadece yasal risk değil, aynı zamanda en iyi adayları kaçırıyorsun (iyi adaylar zaten başka offerları olan, ücret almadan trial yapmayacak kişiler).
-
-**3. Assessment'ta "hızlı cevap" beklentisi:** 48 saat deadline verip, 6 saat içinde teslim edeni favoriliyorsun. Bu async'in tersine çalışır — deep work yerine reactive çalışmayı ödüllendiriyorsun. Doğru metric: deadline içinde + quality yüksek. Teslim zamanı farketmez.
-
-**4. Trial week'te sync standuplar yapmak:** "Async ekibiz ama trial week'te her sabah 15dk sync yapalım ki nasıl gittiğini görelim." Hayır. Trial week async pratiği test etme zamanı — aday Linear task update'ini yazıyla veriyor, sen async feedback veriyorsun. Sync standup eklerseniz async disiplini test edemezsiniz.
-
-## Hiring funnel'da async conversion rate: bizim sayılar
-
-Roibase'de 2024-2026 arası async hiring funnel:
-
-- **CV başvuru:** 100 kişi
-- **Written assessment davet:** 20 kişi (ilk elenme: CV'de async artifact yok)
-- **Assessment tamamlama:** 14 kişi (6 kişi deadline'ı kaçırıyor veya "call yapalım" diyor)
-- **Trial week davet:** 8 kişi (assessment quality filtresi)
-- **Trial week tamamlama:** 7 kişi (1 kişi ilk 2 günde "bu benim için değil" deyip çıkıyor — mutual decision)
-- **Offer:** 3-4 kişi (role'e göre 1-2 hire)
-
-Conversion rate: %3-4. Klasik hiring'dekinden düşük, çünkü async disiplin nadir yetkinlik. Ama hire edilen kişinin ilk 6 ay retention rate: %95 (klasik hiring'de %70). Sebep: hire süreci real iş pratiğini simulate ettiği için, kişi zaten ne yapacağını biliyor. "İş beklendiği gibi değilmiş" surprise'ı yok.
-
-Ayrıca async hiring global talent pool açıyor. 2025'te hire ettiğimiz developer Arjantin'de, designer Polonya'da, marketing ops Tokyo'da. Sync mülakat olsaydı timezone coordination imkansızdı. Async formatı sayesinde aday kendi saatinde assessment yapıyor, trial week'te overlap olmadan çalışabiliyor.
-
-Async-first hiring kurmak, sadece "uzaktan çalışalım" demekten çok daha derin bir disiplin değişimi. Mülakat sürecini Linear sprint gibi, assessment'ı Notion page gibi, trial week'i real production gibi treat ediyorsun. Sonuç: CV'yi değil real output'u, "vibe"ı değil documented contribution'ı, senkron performansı değil async collaboration capacity'yi test ediyorsun. 2026'da remote-first ekip kuracaksan hiring funnel'ını async-first'e çevir — ilk 3 hire sonrası farkı sayılarla göreceksin.
+Async-first işe alım sistemi kısa-yolsuz: trial week + yazılı case + metrikli değerlendirme. Maliyet biraz yüksek (1 haftalık ödeme + ekip zamanı) ama 90 günlük uyumsuzluk maliyetinden çok düşük. Sync önyargısını silen protokol, gerçek uyumu önceden gösterir — tahmin yerine gözlem. Şimdi yapılacak: kendi trial week formatını tasarla, yazılı case şablonu oluştur, ilk adayı bu sistemle değerlendir. İlk deneme %100 mükemmel olmayacak ama her iterasyon sistemi keskinleştirir — async ekip kurma becerisi böyle gelişir.
