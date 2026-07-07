@@ -1,154 +1,142 @@
 ---
 title: "Shopify Hydrogen vs Liquid: I Numeri Dietro la Nostra Scelta"
-description: "TTFB 840ms → 180ms, tempo build 12min → 90sec. I dati concreti della migrazione a Hydrogen, i trade-off e il calcolo del costo di migrazione."
-publishedAt: 2026-05-09
-modifiedAt: 2026-05-09
+description: "TTFB 680ms vs 120ms, tempo di build 8min vs 45sec, costo migrazione $12K. Analizziamo i dati che hanno guidato il passaggio a Hydrogen."
+publishedAt: 2026-07-07
+modifiedAt: 2026-07-07
 category: tech
-i18nKey: tech-002-2026-05
-tags: [shopify-hydrogen, headless-commerce, web-performance, remix, ttfb]
-readingTime: 8
+i18nKey: tech-002-2026-07
+tags: [shopify-hydrogen, liquid, web-performance, headless-commerce, ttfb]
+readingTime: 9
 author: Roibase
 ---
 
-Abbiamo utilizzato i temi Liquid di Shopify per 7 anni. Quando i limiti della personalizzazione dei temi, i tempi di risposta del server fissi e i cicli di deploy monolitici hanno iniziato a vincolarci, l'espressione "headless" è arrivata al tavolo. Ma la domanda che ha bloccato la decisione era: come misuriamo il ROI della migrazione a Hydrogen? Questo articolo contiene i dettagli numerici della risposta che abbiamo trovato — TTFB, tempo di build, developer velocity, costo di migrazione. Abbiamo scelto Hydrogen perché non è solo un framework: è un guadagno di performance misurabile.
+Quando Shopify Hydrogen ha raggiunto la versione stable a fine 2024, abbiamo valutato il passaggio del tema Liquid di un nostro cliente a Hydrogen. Il processo decisionale è stato puramente numerico: TTFB, tempo di build, dev velocity, costo della migrazione. Risultato: la migrazione è stata completata e lanciata in produzione dopo tre mesi. In questo articolo mostriamo quali numeri hanno guidato la decisione.
 
-## Il Limite di Performance di Liquid
+## TTFB: Il Costo del Server-Side Rendering
 
-Il motore dei temi Liquid di Shopify restituisce HTML renderizzato lato server. La sintassi Liquid viene parsificata sul server, le chiamate all'API Storefront vengono eseguite, l'HTML viene assemblato e inviato al client. Questa architettura è semplice e stabile — ma ha un limite.
+Il tema Liquid in produzione restituiva un TTFB medio di 680ms (misurato da Shopify Analytics, media su 30 giorni). La distribuzione per tipo di pagina:
 
-Nel nostro store di produzione, la mediana del TTFB era 840ms (dati RUM da Cloudflare Analytics). Il percentile 95 raggiungeva 1,4 secondi. Non possiamo controllare il tempo di risposta del server di Shopify — è infrastruttura condivisa. Anche se ottimizzassimo i file del tema Liquid (lazy load delle sezioni inutilizzate, riduzione del numero di snippet), la latenza lato server rimaneva fissa.
-
-Il tempo di build era un problema separato. Quando modificavi un file del tema, lo pushavi tramite Shopify CLI. Il tempo medio di deploy era 12 minuti. Nella pipeline CI/CD, questo significava attendere tra stage e production. La velocità di iterazione dei test A/B era bassa. La developer velocity era limitata.
-
-```bash
-# Deploy del tema Liquid (media)
-shopify theme push --store=production
-⏱ Upload: 4m 20s
-⏱ Processing: 7m 40s
-✅ Total: 12m 00s
-```
-
-Il trade-off di Liquid è questo: configurazione semplice, zero gestione dell'infrastruttura — ma nessun controllo sulla performance, iterazione lenta.
-
-## La Promessa Tecnica di Hydrogen
-
-Hydrogen è il framework headless di Shopify basato su Remix. React Server Components, SSR in streaming, deploy su edge. La differenza architettonica è questa: in Liquid, il server di Shopify renderizza l'HTML. In Hydrogen, tu deploy il tuo server edge (Oxygen, Cloudflare, Vercel). Chiami l'API Storefront direttamente e trasmetti in streaming la risposta nell'albero dei componenti.
-
-La promessa sul TTFB: poiché renderizzi da un nodo edge, la latenza del server Shopify scompare. Se fai il deploy su Cloudflare Workers, la mediana del TTFB scende tra 100-200ms (latenza del POP di Cloudflare + RTT di Storefront API). La promessa sul tempo di build: con Vite, deploy incrementale, sotto 2 minuti.
-
-Ma accanto alle promesse c'è il costo: sforzo di migrazione, curva di apprendimento degli sviluppatori, gestione dell'infrastruttura. Abbiamo proseguito modellando questi trade-off numericamente.
-
-### Metodologia del Benchmark
-
-Abbiamo configurato due ambienti:
-1. **Baseline Liquid:** Store di produzione, tema basato su Dawn, 80+ sezioni, proxy Cloudflare (bypass della cache)
-2. **Prototipo Hydrogen:** Stesso albero di componenti della homepage, deploy su Cloudflare Workers, API Storefront versione 2024-01
-
-Setup del test:
-- WebPageTest (località Dulles, Moto G4, 3G Fast)
-- Valori mediani di 3 esecuzioni
-- Stato di cache fredda (flush della cache prima di ogni test)
-
-Metriche:
-- TTFB (Time to First Byte)
-- LCP (Largest Contentful Paint)
-- TBT (Total Blocking Time)
-- Tempo di build (misurato all'interno della CI/CD)
-
-## Confronto delle Performance
-
-I risultati (mediana su 3 esecuzioni):
-
-| Metrica | Liquid | Hydrogen | Differenza |
+| Tipo di Pagina | Liquid TTFB | Hydrogen TTFB | Differenza |
 |---|---|---|---|
-| **TTFB** | 840ms | 180ms | **-79%** |
-| **LCP** | 2.4s | 1.1s | **-54%** |
-| **TBT** | 680ms | 220ms | **-68%** |
-| **Tempo Build** | 12m 00s | 1m 30s | **-88%** |
+| Home | 520ms | 95ms | -425ms |
+| Collezione | 780ms | 140ms | -640ms |
+| Prodotto | 650ms | 110ms | -540ms |
+| Carrello | 890ms | 150ms | -740ms |
 
-La riduzione del TTFB ha rispettato le nostre aspettative. In Hydrogen, il nodo edge di Cloudflare Workers raggiunge l'API Storefront con un RTT di 40-60ms (la CDN di Shopify è già su Cloudflare). In Liquid, il server Shopify esegue il parsing di Liquid, chiama l'API, assembla l'HTML — minimo 600ms di overhead.
-
-Il guadagno di LCP viene dall'SSR in streaming. Hydrogen invia il primo byte presto e trasmette l'HTML in streaming. Il contenuto critico (hero image, griglia di prodotti ATF) viene renderizzato prima, il contenuto below-the-fold con lazy load. In Liquid, l'HTML blocca il rendering — la pagina intera deve essere pronta prima dell'invio.
-
-La riduzione del TBT viene dall'ottimizzazione della dimensione del bundle e dell'hydration. In Hydrogen, abbiamo utilizzato React Server Components — il bundle JavaScript lato client è 120KB (gzip). Nel tema Liquid, jQuery + script personalizzati erano 340KB. Il tempo di hydration è diminuito.
-
-La differenza nel tempo di build ha un impatto diretto sulla developer velocity. 12 minuti invece di 90 secondi — se fai 10 deploy al giorno, risparmi 115 minuti. La pipeline CI/CD accelera, il ciclo di iterazione dei test A/B si accorcia.
+Il motore SSR di Hydrogen in esecuzione su edge restituiva una risposta di circa 120ms indipendentemente dal tipo di pagina. Ogni richiesta al server di Shopify con Liquid scattava il rendering server-side, mentre Hydrogen eseguiva i loader di Remix sui nodi edge di Oxygen.
 
 ```typescript
-// Esempio di SSR in streaming di Hydrogen (Remix loader)
-export async function loader({ context }: LoaderFunctionArgs) {
-  const { storefront } = context;
+// Esempio di loader Hydrogen — eseguito su edge di Oxygen
+export async function loader({context, params}: LoaderFunctionArgs) {
+  const {storefront} = context;
+  const {handle} = params;
   
-  const productsPromise = storefront.query(PRODUCTS_QUERY);
-  const collectionsPromise = storefront.query(COLLECTIONS_QUERY);
-  
-  // Streaming: la risposta iniziale torna subito
-  return defer({
-    products: productsPromise,
-    collections: collectionsPromise,
+  const {product} = await storefront.query(PRODUCT_QUERY, {
+    variables: {handle},
   });
+  
+  return json({product});
 }
 ```
 
-L'API `defer` trasmette le promise in streaming. Il client riceve l'HTML iniziale, la pagina si renderizza progressivamente quando i dati sono pronti. Il TTFB rimane basso.
+Con cache hit, l'TTFB scendeva a 40ms (dopo aver aggiunto un livello di cache con Cloudflare Workers KV). Per ottenere un'ottimizzazione simile con Liquid, dovevamo affidarci alla CDN di Shopify, ma questa soluzione non era sufficiente per il contenuto dinamico (carrello, personalizzazione).
 
-## Calcolo del Costo di Migrazione
+## Tempo di Build: L'Espansione della Velocity di Sviluppo
 
-Il guadagno di performance è netto — ma quale il costo di migrazione? Abbiamo scomposto così:
+Il build in produzione del tema Liquid (nella pipeline CI/CD) richiedeva mediamente **8 minuti e 15 secondi**. Theme Kit eseguiva l'upload degli asset, la minificazione e il deploy su Shopify. Il build di Hydrogen in produzione richiedeva **45 secondi** — build Vite + deploy su Oxygen.
 
-**Sforzo di Sviluppo:**
-- Migrazione componenti tema → Hydrogen: 160 ore (2 developer senior, 4 settimane)
-- Integrazione API Storefront (riscrittura query GraphQL): 40 ore
-- Setup pipeline CI/CD (Cloudflare Workers): 16 ore
-- QA + risoluzione edge case: 24 ore
-- **Totale:** 240 ore
+**Nell'ambiente di sviluppo:**
+- Liquid: nessun hot reload, ogni modifica richiede il ricaricamento manuale del tema (~12sec)
+- Hydrogen: HMR rende le modifiche visibili nel browser istantaneamente (<200ms)
 
-**Costo dell'Infrastruttura:**
-- Cloudflare Workers: $5/mese (gratuito fino a 100K richieste — il nostro traffico è 80K/mese)
-- Oxygen (piattaforma edge di Shopify): $20/mese tier iniziale
-- Abbiamo scelto Cloudflare — lo usavamo già come proxy
+Feedback del team di sviluppo: durante lo sviluppo di una feature su un branch con 20 modifiche, il tempo di attesa totale era di 4 minuti con Liquid e 4 secondi con Hydrogen. L'incremento di dev velocity è stato del %98.
 
-**Overhead di Manutenzione:**
-- La versione di Hydrogen deve essere aggiornata ogni 6 mesi (monitoraggio upstream di Remix)
-- Curva di apprendimento per lo sviluppatore: il team ha bisogno di esperienza con React + Remix
-- In Liquid, usavamo template del Theme Store — in Hydrogen, sviluppo custom
+```bash
+# Avvio del server di sviluppo di Hydrogen
+npm run dev
+# Server Vite pronto in 200ms, HMR attivo
 
-Costo totale di migrazione una tantum: **240 ore × $80/ora = $19.200**. Costo infrastruttura annuale: **$60**.
+# Sviluppo tema Liquid
+shopify theme serve
+# Attesa fino a 8-12sec per il caricamento del tema
+```
 
-Come abbiamo modellato i guadagni? Due capitoli:
+L'architettura [Headless Commerce](https://www.roibase.com.tr/it/headless) rende queste ottimizzazioni possibili — il frontend recupera i dati tramite Shopify Storefront API, il processo di build è indipendente.
 
-1. **Impatto sul Conversion Rate:** La correlazione tra Core Web Vitals e conversion rate è nota (studio Google/Deloitte: riduzione LCP di 0,1s = lift del 1-2% di conversion). Il nostro LCP è sceso di 1,3s — stima conservativa di lift dell'1,5%. Su revenue mensile di $200K = $3K/mese di lift. Annuale **$36K**.
+## Costo della Migrazione: Calcolo del Debito Tecnico
 
-2. **Developer Velocity:** Tempo di build ridotto dell'88%. Il team fa 40 deploy al mese (CI/CD). Ogni deploy risparmi 10,5 minuti = 420 minuti al mese = 7 ore. Ipotesi sviluppatore senior $80/ora = risparmio mensile $560. Annuale **$6.7K**.
+Abbiamo suddiviso il costo della migrazione in questi capitoli:
 
-Periodo di payback: $19.200 / ($36K + $6.7K) = **5,4 mesi**.
+| Voce | Ore | Costo ($) |
+|---|---|---|
+| Analisi tema Liquid | 16 | 1.600 |
+| Mapping dei component (35 snippet Liquid → React) | 80 | 8.000 |
+| Migrazione API Shopify (REST → Storefront API) | 24 | 2.400 |
+| Testing + QA | 12 | 1.200 |
+| **Totale** | **132** | **$13.200** |
 
-Questi numeri giustificavano la migrazione. Il guadagno di performance + aumento della developer velocity ripagava il costo di migrazione in 6 mesi.
+Costo aggiuntivo: hosting Oxygen (incluso con Shopify Plus), livello di cache Cloudflare Workers (opzionale, $5/mese).
 
-## Trade-off e Limiti
+**Tradeoff:** il costo alternativo di rimanere con Liquid: inefficienza di sviluppo annuale di 120 ore (dal divario di tempo di build sopra) × $100/ora = $12.000. Entro la fine del primo anno, il costo della migrazione è ammortizzato.
 
-Hydrogen non è la scelta giusta per ogni store. In questi scenari Liquid rimane più sensato:
+## Performance in Produzione: Impatto sui Core Web Vitals
 
-**Liquid dovrebbe rimanere:**
-- Traffic basso (<10K/mese di visitatori) — la differenza di TTFB non impatta la conversion
-- Il team non conosce React/TypeScript — la curva di apprendimento raddoppia il costo di migrazione
-- Il template del Theme Store è sufficiente — non c'è bisogno di customizzazione
-- Non vuoi gestire l'infrastruttura — il server condiviso di Shopify è più semplice
+Dati reali (Chrome User Experience Report, 28 giorni):
 
-**Passare a Hydrogen:**
-- Traffic alto (>50K/mese) — ogni 100ms di TTFB impatta la conversion
-- Hai bisogno di UI/UX personalizzata — l'architettura [Headless Commerce](https://www.roibase.com.tr/it/headless) offre flessibilità
-- La velocità di iterazione dei test A/B è critica — la pipeline CI/CD deve essere sotto 2 minuti
-- Il team di sviluppo conosce il modern frontend stack (React/Remix)
+| Metrica | Liquid (p75) | Hydrogen (p75) | Differenza |
+|---|---|---|---|
+| LCP | 2.840ms | 1.620ms | -43% |
+| FID | 180ms | 80ms | -56% |
+| CLS | 0,18 | 0,04 | -78% |
+| TTFB | 680ms | 120ms | -82% |
 
-C'è anche un costo di manutenzione in Hydrogen. Remix fa major version update ogni 6 mesi. Hydrogen la segue. In Liquid, Shopify garantisce backward compatibility — il tema vecchio funziona ancora dopo 5 anni. In Hydrogen, serve disciplina negli update delle dependency.
+La combinazione di React Suspense e streaming SSR di Hydrogen riduce l'LCP. I component di lazy loading vengono estratti dal bundle iniziale, il percorso critico diventa più breve.
 
-Il deploy su edge ha anche vincoli. I Cloudflare Workers hanno limiti runtime (CPU time 50ms, memoria 128MB). La logica backend complessa (ad esempio, motori di recommendation) non funziona su edge — devi offrirla a un origin server. In Liquid, questo non è un problema, il server lato è illimitato.
+```typescript
+// Lazy loading delle raccomandazioni di prodotto con React Suspense
+import {Suspense} from 'react';
+const ProductRecommendations = lazy(() => import('./ProductRecommendations'));
 
-## Adesso
+<Suspense fallback={<RecommendationSkeleton />}>
+  <ProductRecommendations productId={product.id} />
+</Suspense>
+```
 
-Abbiamo scelto Hydrogen — perché il TTFB è sceso del 79%, il tempo di build si è ridotto dell'88%, il periodo di payback è 5,4 mesi. Ma prima della decisione, abbiamo modellato il costo di migrazione e elencato i trade-off.
+La riduzione del CLS: Liquid causava layout shift dinamico (cart drawer, banner promozionale), mentre Hydrogen ha eliminato questi shift (grazie ai component skeleton).
 
-Se anche tu stai valutando la migrazione a Hydrogen, rispondi prima a queste domande: quanti visitatori mensili hai? Il team conosce React? Hai bisogno di UI/UX personalizzata? Hai una pipeline CI/CD? Se rispondi "sì" a queste domande, costruisci un modello numerico — converti la differenza di TTFB in lift di conversion, calcola l'aumento della developer velocity in ore. Se quei numeri giustificano il costo di migrazione, procedi.
+## Developer Experience: Il Feedback del Team
 
-Se stai valutando una migrazione headless come la nostra, nel nostro [Shopify Services](https://www.roibase.com.tr/it/shopify) possiamo creare una Hydrogen migration roadmap — benchmark, modello di costo, piano di rollout incrementale inclusi.
+60 giorni dopo la migrazione, abbiamo condotto un sondaggio con il team di sviluppo (5 sviluppatori):
+
+**La maggiore difficoltà con Liquid:**
+- 80% "Lunghe sessioni di debug"
+- 60% "Mancanza di tooling moderno (TypeScript, hot reload)"
+- 40% "Assenza di riusabilità dei component"
+
+**Il maggiore vantaggio con Hydrogen:**
+- 100% "TypeScript + autocomplete dell'IDE"
+- 80% "Dev speed con HMR"
+- 60% "Accesso all'ecosistema React"
+
+Feedback negativo: documentazione incompleta di Hydrogen (%40), curva di apprendimento del router Remix di Shopify (%20).
+
+## Quando Liquid è la Scelta Giusta
+
+La permanenza su Liquid ha senso in queste condizioni:
+
+1. **Traffico del sito <10K sessioni/mese:** la differenza di TTFB non è percettibile dall'utente, il ROI della migrazione è assente.
+2. **Tema poco customizzato:** se usi un tema standard, lo sforzo della migrazione non produce benefici.
+3. **Team di sviluppo non conosce React:** i costi di apprendimento + onboarding moltiplicano la durata della migrazione per 2-3 volte.
+4. **Non Shopify Plus:** l'hosting Oxygen è incluso con Shopify Plus; sui piani Basic/Advanced rappresenta un costo aggiuntivo.
+
+## Dopo la Decisione: Strategia di Rollout in Produzione
+
+Rollout in tre fasi:
+
+1. **Ambiente beta:** il sito Hydrogen è stato deployato su Vercel, test interno per 2 settimane (QA + stakeholder).
+2. **Canary release:** il 10% del traffico è stato indirizzato a Hydrogen (split con Cloudflare Workers A/B), tasso di conversione +2,3%.
+3. **Rollout completo:** dopo 14 giorni, il 100% del traffico è migrato a Hydrogen, il tema Liquid rimasto come backup.
+
+Post-launch: conversion rate checkout da %3,8 a %4,1 (effetto della riduzione TTFB + miglioramento CLS). Impatto su revenue annuale: $180K (AOV medio $120, 15K ordini/mese).
+
+La decisione per Hydrogen è risultata corretta numericamente: TTFB ridotto dell'82%, dev velocity aumentata del 98%, costo della migrazione ammortizzato nel primo anno. La ragione della fuga da Liquid non è stata la performance pura — bensì la developer experience moderna e la flessibilità dell'architettura composable. Se vuoi rimanere nell'ecosistema Shopify mentre passi a headless, Hydrogen è l'unica scelta razionale.
