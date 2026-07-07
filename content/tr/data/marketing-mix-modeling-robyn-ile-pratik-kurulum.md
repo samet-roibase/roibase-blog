@@ -1,254 +1,219 @@
 ---
 title: "Marketing Mix Modeling: Robyn ile Pratik Kurulum"
-description: "Meta'nın Robyn framework'ünde saturasyon eğrisi, adstock decay ve holdout validation ile attribution modeli kurmak. SQL, R ve production pipeline."
-publishedAt: 2026-06-21
-modifiedAt: 2026-06-21
+description: "Meta'nın açık kaynak MMM kütüphanesi Robyn üzerinden saturasyon eğrisi, adstock decay ve holdout validation kurulumunu production data üzerinde gösteriyoruz."
+publishedAt: 2026-07-07
+modifiedAt: 2026-07-07
 category: data
-i18nKey: data-005-2026-06
-tags: [marketing-mix-modeling, robyn, adstock, attribution, mmm]
+i18nKey: data-005-2026-07
+tags: [marketing-mix-modeling, robyn, adstock, saturation-curve, media-attribution]
 readingTime: 8
 author: Roibase
 ---
 
-Cookie deprecation ve privacy regülasyonları attribution'ı deterministik yöntemden olasılıksal modellemeye kaydırıyor. Marketing Mix Modeling (MMM) — 1960'ların istatistik aracı — tekrar merkezde. Meta'nın açık kaynak Robyn framework'ü bu dönüşümün pratik ayağını sağlıyor: Bayesian çıkarım, saturasyon eğrisi ve adstock decay ile haftalık pazarlama harcamasını satışa bağlayan regresyon modelini production'a taşıyorsun. Bu yazı Robyn'i kurarak gerçek veriye model oturtmayı, hyperparameter grid search'ünü ve holdout validation ile overfitting'i nasıl engellediğini gösteriyor.
+Multi-touch attribution modelleri cookie sonrası çağda güvenilirliğini kaybederken, marketing mix modeling tekrar ön plana çıkıyor. Google ve Meta'nın açık kaynak MMM araçları (LightweightMMM, Robyn) pazarlamacıya aggregate seviyede kanal etkinliği ölçme imkanı sunuyor. 2025 başında Meta'nın Robyn 3.11 sürümü Bayesian optimization ve paralel hyperparameter search ile production kullanıma elverişli hale geldi. Bu yazıda Robyn kurulumunu üç temel kavram üzerinden gösteriyoruz: saturasyon eğrisi (diminishing returns), adstock decay (gecikmeli etki) ve holdout validation (model güvenilirliği).
 
-## Robyn nedir ve klasik regresyondan farkı
+## Robyn nedir ve neden şimdi önemli
 
-Robyn, R üzerine yazılmış açık kaynak bir MMM framework'ü. Meta, kendi pazarlama ekibi için 2020'de geliştirmiş ve 2021'de release etmiş. Klasik lineer regresyon ile farkları:
+Robyn, Meta tarafından 2021'de açık kaynak olarak yayımlanan bir R paketidir. Ridge regression üzerine kurulu model, kanal harcama ve dönüşüm verilerini haftalık/günlük agregasyonda alır ve her kanalın artımlı dönüşüm katkısını (incremental conversions) hesaplar. 2024'teki büyük güncellemeyle birlikte model, Prophet'in zaman serisi bileşenlerini entegre etti ve JSON tabanlı model export desteği kazandı — bu sayede Python workflow'larına da bağlanabilir hale geldi.
 
-**Adstock transformasyonu**: Pazarlama etkisi anlık değil — TV reklamı haftalarca zihin payı taşır. Adstock, geçmiş harcamanın bugünkü satışa katkısını exponential decay ile modelliyor. Robyn, geometric ve Weibull adstock fonksiyonunu destekliyor. Geometric basit: `adstock_t = spend_t + θ × adstock_(t-1)`, θ decay parametresi. Weibull daha esnek — peak effect'i gecikmeli konumlandırabiliyorsun.
+Robyn'i diğer MMM yaklaşımlarından ayıran üç özellik var: birincisi, harcama-dönüşüm ilişkisini doğrusal değil Hill-Adstock transformasyonuyla modellemesi (gerçekçi saturasyon); ikincisi, hyperparameter optimizasyonunu genetik algoritma ve gradient-free Nevergrad optimizer'la çözmesi (manuel tuning gerekmez); üçüncüsü, model kalite metriklerini otomatik raporlaması (NRMSE, DECOMP.RSSD, MAPE). Production'da model güvenilirliğini test etmek için built-in holdout validation fonksiyonu kritik — bunu aşağıda göstereceğiz.
 
-**Saturasyon (diminishing returns)**: Harcama-satış ilişkisi lineer değil. İlk 100 bin TL %80 ROI getirirken ikinci 100 bin %40 getirebilir. Robyn, Hill ve S-curve saturasyon fonksiyonlarını uygular. Hill denklemi: `y = V_max × x^n / (K^n + x^n)`, K yarı-maksimum noktası, n eğim. Bu non-linearity, channel bazlı budget optimizasyonu için kritik.
+Marketing mix modeling'in attribution'a göre avantajı şu: aggregate data ile çalıştığı için GDPR/CCPA sınırlamalarından etkilenmiyor ve cross-device journey karmaşıklığını atlıyor. Dezavantajı ise haftalık granülerlikte kalması — intraday campaign optimizasyonu için değil, quarterly budget allokasyonu için kullanılır. Roibase'te [first-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) içinde MMM'i incrementality test sonuçlarıyla birlikte konumlandırıyoruz: bir kanalın MMM'de yüksek ROAS göstermesi yeterli değil, geo-split test veya synthetic control ile doğrulanması gerekir.
 
-**Hyperparameter tuning**: Adstock decay, saturasyon K ve n değerleri bilinmiyor — grid search ile bulunuyor. Robyn, genetic algorithm (NSGAII) kullanarak binlerce model kombinasyonunu deniyor, pareto frontier'dan en iyi trade-off'u seçiyorsun.
+## Veri hazırlığı: kanal harcaması + makro değişken
 
-## Veri hazırlığı: SQL'den haftalık granülarite'ye
-
-Robyn haftalık granülarite'de çalışır. Günlük transaction log'dan haftalık media spend ve revenue'yu aggregate ediyorsun. Örnek BigQuery sorgusu:
-
-```sql
-WITH weekly_revenue AS (
-  SELECT
-    DATE_TRUNC(order_date, WEEK) AS week_start,
-    SUM(revenue) AS revenue
-  FROM `project.dataset.orders`
-  WHERE order_date >= '2024-01-01'
-  GROUP BY 1
-),
-weekly_spend AS (
-  SELECT
-    DATE_TRUNC(date, WEEK) AS week_start,
-    channel,
-    SUM(cost) AS spend
-  FROM `project.dataset.marketing_costs`
-  WHERE date >= '2024-01-01'
-  GROUP BY 1, 2
-)
-SELECT
-  r.week_start,
-  r.revenue,
-  COALESCE(s_google.spend, 0) AS google_search_spend,
-  COALESCE(s_meta.spend, 0) AS meta_paid_social_spend,
-  COALESCE(s_tv.spend, 0) AS tv_spend
-FROM weekly_revenue r
-LEFT JOIN weekly_spend s_google
-  ON r.week_start = s_google.week_start AND s_google.channel = 'google_search'
-LEFT JOIN weekly_spend s_meta
-  ON r.week_start = s_meta.week_start AND s_meta.channel = 'meta'
-LEFT JOIN weekly_spend s_tv
-  ON r.week_start = s_tv.week_start AND s_tv.channel = 'tv'
-ORDER BY 1;
-```
-
-Bu sorgu her satırda 1 hafta, 1 revenue ve N channel spend kolonu üretiyor. Robyn'e CSV olarak verilebilir ama production'da BigQuery'den doğrudan R'ye çekmek daha temiz. `bigrquery` paketi ile:
+Robyn'e girdi olarak minimum şu kolonları içeren bir haftalık zaman serisi verirsiniz:
 
 ```r
-library(bigrquery)
-library(Robyn)
-
-bq_auth()
-df_input <- bq_project_query(
-  "project-id",
-  "SELECT week_start, revenue, google_search_spend, meta_paid_social_spend, tv_spend FROM `project.dataset.mmm_input`"
-) %>% bq_table_download()
+# Örnek veri yapısı (2 yıllık haftalık data)
+data <- data.frame(
+  date = seq(as.Date("2024-01-01"), by = "week", length.out = 104),
+  revenue = rnorm(104, 50000, 8000),
+  facebook_spend = rnorm(104, 5000, 1000),
+  google_search_spend = rnorm(104, 7000, 1500),
+  display_spend = rnorm(104, 3000, 800),
+  competitor_index = rnorm(104, 100, 15),  # makro değişken
+  holiday_flag = sample(0:1, 104, replace = TRUE)
+)
 ```
 
-Minimum veri gereksinimi: 104 hafta (2 yıl). Daha az veri overfitting riski taşır. Robyn'in Bayesian prior'ları 52 hafta ile çalışır ama 104+ hafta seasonality'yi daha iyi yakalar.
+**Kanal kolonu sayısı:** Minimum 2, maksimum 15 kanal önerilir. 20+ kanal olduğunda model overfitting riski artar ve coefficient stabilite düşer. Eğer affiliate, influencer, podcast gibi long-tail kanallar varsa, onları `other_digital` gibi tek kolonda toplamak daha sağlıklı.
 
-## Model kurulumu: robyn_inputs ve hyperparameter grid
+**Makro değişken:** Seasonality, tatil günleri, rakip indeks, ekonomik gösterge gibi kontrol değişkenleri eklemelisiniz — aksi takdirde model tüm dönüşüm artışını medya kanallarına atfedebilir. Robyn'in Prophet entegrasyonu trend ve holiday'leri otomatik yakalıyor ama sektöre özel bir dış şok varsa (örneğin Black Friday, Ramazan) `holiday_flag` eklemek gerekir.
 
-Robyn, `robyn_inputs()` fonksiyonuyla config objesi oluşturur:
+**Veri kalitesi kontrolleri:**
+- Hiçbir kolonun varyansı sıfır olmamalı (sabit harcama = kullanışsız)
+- Missing value toleransı %5 — Robyn otomatik imputasyon yapmaz
+- Haftalık granülarite tercih edilen — günlük data noise artırır, aylık data insufficient observation sayısı demek
+
+Eğer harcama verisi farklı kaynaklardan geliyorsa (Google Ads API, Meta Marketing API, internal finance system) ETL pipeline'ında bir [veri analizi süreci](https://www.roibase.com.tr/tr/verianalizi) kurmalısınız. Bizim production workflow'umuzda BigQuery'de `marketing_spend_weekly` tablosu var; her Pazartesi sabahı dbt model'ı bu tabloyu güncelliyor ve R script'i oradan okuyup Robyn'i tetikliyor.
+
+## Saturasyon ve adstock: Hill-Adstock transformasyonu
+
+Robyn, her kanal harcamasını iki aşamalı bir transformasyondan geçirir: önce adstock (gecikmeli etki), sonra saturation (azalan getiri).
+
+### Adstock decay (geometric veya Weibull)
+
+Bir TV reklamının etkisi anında bitmez — izleyici hafızasında birkaç hafta kalır. Adstock bunu modelliyor. Robyn iki adstock tipi destekliyor: `geometric` (basit, üstel azalma) ve `weibull` (fleksibl, S-eğrisi).
+
+**Geometric adstock:**
+
+```
+adstocked_spend[t] = spend[t] + θ × adstocked_spend[t-1]
+```
+
+Burada `θ` (theta) decay rate'i — 0.5 demek, geçen haftanın etkisinin yarısının bu haftaya taşındığı anlamına gelir. Robyn bu parametreyi 0–0.9 arasında otomatik arar.
+
+**Weibull adstock:** Daha complex — shape ve scale parametreleri var. TV, outdoor, influencer gibi "awareness" kanalları için Weibull daha iyi fit ediyor çünkü etki önce yavaş başlayıp sonra pik yapıp hızlı düşebiliyor.
+
+**Pratik öneri:** İlk model iterasyonunda geometric kullan — convergence daha hızlı. Eğer model performance düşükse (NRMSE > 0.15) ve awareness ağırlıklı mix varsa Weibull dene.
+
+### Saturasyon: Hill fonksiyonu
+
+Harcamayı 2x artırdığınızda dönüşüm 2x olmaz — diminishing returns var. Robyn bunu Hill equation ile modelliyor:
+
+```
+effect = spend^α / (K^α + spend^α)
+```
+
+- `α` (alpha): eğrinin dikligi — küçükse yavaş saturasyon, büyükse hızlı
+- `K`: half-saturation point — harcama bu noktaya geldiğinde maksimum etkinin yarısına ulaşılır
+
+Robyn, her kanal için bu iki parametreyi hyperparameter search sırasında bulur. Sonuç olarak her kanalın "response curve"ünü görebilirsiniz — örneğin Facebook Ads'in 10K€ harcamadan sonra flatte girdiğini, Google Search'ün ise 20K€'ya kadar lineer devam ettiğini.
+
+**Saturasyon eğrisi neye yarar:** Budget reallocation senaryolarında kullanılır. Eğer bir kanalın slope'u zaten düzse (flat bölgedeyse), oradan bütçe kesip daha dik slope'lu kanala taşımak toplam ROAS'ı artırır.
+
+## Model çalıştırma ve hyperparameter tuning
+
+Robyn kurulumu iki satır:
+
+```r
+install.packages("Robyn")
+library(Robyn)
+```
+
+InputCollect fonksiyonunda veri yapısını tanımlıyorsunuz:
 
 ```r
 InputCollect <- robyn_inputs(
-  dt_input = df_input,
-  date_var = "week_start",
+  dt_input = data,
+  date_var = "date",
   dep_var = "revenue",
-  dep_var_type = "revenue",
-  paid_media_spends = c("google_search_spend", "meta_paid_social_spend", "tv_spend"),
-  paid_media_vars = c("google_search_spend", "meta_paid_social_spend", "tv_spend"),
-  context_vars = c("competitor_index", "seasonality"),
+  paid_media_spends = c("facebook_spend", "google_search_spend", "display_spend"),
+  context_vars = c("competitor_index", "holiday_flag"),
   window_start = "2024-01-01",
-  window_end = "2026-06-14",
-  adstock = "geometric",
-  hyperparameters = list(
-    google_search_spend_alphas = c(0.5, 3),
-    google_search_spend_gammas = c(0.3, 1),
-    google_search_spend_thetas = c(0, 0.3),
-    meta_paid_social_spend_alphas = c(0.5, 3),
-    meta_paid_social_spend_gammas = c(0.3, 1),
-    meta_paid_social_spend_thetas = c(0, 0.5),
-    tv_spend_alphas = c(0.5, 3),
-    tv_spend_gammas = c(0.3, 1),
-    tv_spend_thetas = c(0.1, 0.7)
-  )
+  window_end = "2025-12-31",
+  adstock = "geometric"  # veya "weibull"
 )
 ```
 
-**Hyperparameter açıklamaları:**
+**Hyperparameter aralıkları:**
+Robyn her kanal için adstock theta ve saturation alpha/K değerlerini belirttiğiniz range içinde arar. Default range'ler genellikle yeterli ama eğer domain knowledge varsa constraint koyabilirsiniz:
 
-- **alpha**: Hill saturasyon fonksiyonunun slope parametresi (n). Yüksek alpha = geç saturasyon.
-- **gamma**: Hill K parametresi — yarı-maksimum noktası. Düşük gamma = erken saturasyon.
-- **theta**: Geometric adstock decay. 0 = efekt anında biter, 0.7 = %70'i sonraki haftaya taşınır.
+```r
+hyperparameters <- list(
+  facebook_spend_alphas = c(0.5, 3),   # saturasyon slope
+  facebook_spend_gammas = c(0.3, 1),   # saturation inflection
+  facebook_spend_thetas = c(0, 0.5)    # adstock decay (geometric)
+)
+```
 
-Her channel için min-max aralığı veriyorsun. Robyn bu aralıkta grid search yapıyor. TV için theta üst sınırı 0.7 — zihin payı uzun sürer. Paid search için 0.3 — conversion kısa dönemli.
-
-## Model çalıştırma: robyn_run ve pareto optimizasyonu
+Model çalıştırma:
 
 ```r
 OutputModels <- robyn_run(
   InputCollect = InputCollect,
-  cores = 8,
+  iterations = 2000,     # genetik algoritma iteration sayısı
+  trials = 5,            # kaç farklı random seed
+  cores = 4
+)
+```
+
+Bu adım 10–30 dakika sürer (veri boyutuna bağlı). Sonunda Pareto-optimal model setini gösterir — NRMSE (fit quality) ve DECOMP.RSSD (kanal katkı dağılımı smoothness) arasında tradeoff.
+
+**Model seçimi:** Robyn size 10–20 Pareto model önerir. En düşük NRMSE'yi seçmek her zaman doğru değil — bazı modeller overfitting yapabilir. `robyn_outputs()` fonksiyonundaki `robyn_clusters` argümanı ile modelleri kümeleyip en stabil küme merkezini seçebilirsiniz.
+
+## Holdout validation: model güvenilirliğini ölçmek
+
+Robyn'in en kritik özelliklerinden biri built-in holdout validation. Modeli train ederken son N haftayı holdout olarak saklıyorsunuz, ardından o dönem için tahmin yaptırıp gerçek değerle karşılaştırıyorsunuz.
+
+```r
+# Son 8 hafta holdout
+OutputModels <- robyn_run(
+  InputCollect = InputCollect,
   iterations = 2000,
   trials = 5,
-  outputs = FALSE
+  cores = 4,
+  calibration_input = NULL,
+  holdout_periods = 8  # son 8 hafta test seti
 )
 ```
 
-`robyn_run()`, genetic algorithm ile 2000 iterasyon boyunca hyperparameter kombinasyonlarını test ediyor. Her iterasyonda NRMSE (normalized root mean squared error) ve DECOMP.RSSD (decomposition residual sum of squares difference) minimize ediliyor. Pareto frontier'dan 5 model seçiliyor — trade-off: fit quality vs. business logic (örn. TV'nin ROI'si search'ten yüksek olamaz).
+Holdout sonuçları `OutputModels$resultHypParam` tablosunda:
 
-Output objesinde `df_allpareto` tablosu var — her modelin channel-level ROI, ROAS ve CPA değerleri. Satır sayısı = iterations × trials. Şu kolonları içerir:
+| Model ID | Train NRMSE | Holdout MAPE | Holdout NRMSE |
+|---|---|---|---|
+| 1_123_4 | 0.08 | 12.3% | 0.14 |
+| 2_456_1 | 0.07 | 18.5% | 0.21 |
 
-| Kolon | Açıklama |
-|-------|----------|
-| `solID` | Model ID |
-| `nrmse` | Normalized RMSE — düşük = iyi fit |
-| `decomp.rssd` | Decomposition RSSD — düşük = channel katkıları stabil |
-| `mape` | Mean absolute percentage error |
-| `rsq_train` | Training R² |
-| `google_search_spend_roi` | Google Search ROI (revenue/spend) |
-| `meta_paid_social_spend_roi` | Meta ROI |
-| `tv_spend_roi` | TV ROI |
+**Holdout MAPE < %15** genellikle production-ready sayılır. %20'nin üzeri modelin future forecast gücünün zayıf olduğunu gösterir — ya veri quality problemi var ya da hyperparameter range'leri çok geniş.
 
-En iyi modeli NRMSE + DECOMP.RSSD + business logic ile seçiyorsun. Robyn arayüzü Shiny dashboard sunuyor ama production'da programmatic seçim daha kontrollü:
+**Pratik tuzak:** Eğer holdout döneminde büyük bir outlier event varsa (örneğin platform outage, viral kampanya) model o dönemi tahmin edemez ve MAPE patlar. Bu durumda holdout dönemini kaydırıp tekrar test edin veya o haftayı anomaly olarak işaretleyin.
 
-```r
-best_model_id <- OutputModels$allPareto %>%
-  filter(nrmse < 0.1, decomp.rssd < 0.05) %>%
-  arrange(nrmse) %>%
-  slice(1) %>%
-  pull(solID)
-```
+Holdout validation'ın bir yan faydası: incrementality test sonuçlarıyla cross-check imkanı. Örneğin Facebook için MMM %30 ROAS gösteriyorsa, ama geçmişte yaptığınız geo-split test %15 bulmuşsa, MMM muhtemelen o kanala correlate olan bir makro etkiyi (seasonality, organic trend) Facebook'a atfediyor demektir. Bu tür tutarsızlıkları tespit etmek için [CDP & retention engineering](https://www.roibase.com.tr/tr/retention-engineering-cdp) sürecinde MMM output'unu experiment dashboard'a bağlıyoruz.
 
-## Holdout validation: overfitting'i engellemek
+## Budget optimization ve scenario planning
 
-Training veriyle fit edilen model, görünmeyen veriye genelleme yapmıyor olabilir. Robyn'de holdout validation: son 8-12 haftayı training'den çıkarıp test set olarak kullanıyorsun. Model training veriye fit ediliyor, test setinde prediction yapılıyor. MAPE (mean absolute percentage error) test setinde %15'in altındaysa model production'a taşınabilir.
+Robyn model kurduktan sonra iki ana kullanım alanı var: **budget reallocation** (optimal kanal dağılımı) ve **what-if scenario** (bütçeyi %20 artırırsak ne olur).
 
-```r
-InputCollect_train <- robyn_inputs(
-  dt_input = df_input,
-  date_var = "week_start",
-  dep_var = "revenue",
-  window_start = "2024-01-01",
-  window_end = "2026-04-12",  # Son 10 hafta holdout
-  # ... diğer parametreler aynı
-)
-
-OutputModels_train <- robyn_run(InputCollect_train, iterations = 2000)
-
-# Holdout sette prediction
-df_test <- df_input %>% filter(week_start > "2026-04-12")
-predictions <- predict(OutputModels_train, newdata = df_test)
-mape_test <- mean(abs((df_test$revenue - predictions) / df_test$revenue)) * 100
-```
-
-MAPE > %20 ise model overfit. Hyperparameter aralıklarını daraltmak veya context variable eklemek (örn. ekonomik indeks, hava durumu) gerekebilir. Robyn'in Bayesian regularization'ı (ridge penalty) overfitting'i azaltıyor ama holdout validation nihai güvence.
-
-## Adstock decay ve saturasyon eğrilerini görselleştirme
-
-Robyn, `robyn_outputs()` ile adstock ve saturasyon eğrilerini plot ediyor. Production'da bu grafikleri PNG olarak export edip BI dashboard'a gömebilirsin:
-
-```r
-robyn_outputs(
-  InputCollect = InputCollect,
-  OutputModels = OutputModels,
-  select_model = best_model_id,
-  export = TRUE,
-  export_location = "/data/mmm_output/"
-)
-```
-
-Export edilen dosyalar:
-
-- `saturate_curves.png` — Her channel için spend vs. response eğrisi. X ekseninde harcama, Y ekseninde predicted revenue. Eğri saturation noktasında yataylaşıyor.
-- `adstock_curves.png` — Decay profili. X ekseninde hafta, Y ekseninde adstock multiplier. TV için 6-8 hafta decay görülebilir.
-- `waterfall.png` — Revenue decomposition: base + seasonality + channel contribution.
-
-Bu görsellerle CMO'ya "TV harcamasını %30 artır" yerine "TV saturasyon noktasında, search'e %20 kaydırırsan toplam ROI %12 artar" diyebiliyorsun.
-
-## Production pipeline: dbt + Robyn + Looker Studio
-
-MMM tek seferlik analiz değil — haftalık refresh gerekiyor. Roibase'in [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) yaklaşımıyla pipeline şöyle kuruluyor:
-
-1. **dbt**: BigQuery'deki raw event'lerden `mmm_input` tablosu oluşturuluyor (yukarıdaki SQL). Her Pazartesi 00:00'da dbt Cloud scheduled run.
-2. **Robyn R script**: Cloud Run container'ında çalışıyor. `bigrquery` ile `mmm_input` çekiliyor, `robyn_run()` çağrılıyor, output BigQuery'ye yazılıyor (`mmm_output` tablosu: `week_start`, `channel`, `roi`, `predicted_revenue`).
-3. **Looker Studio**: `mmm_output` tablosundan channel ROI trend'i, saturasyon eğrileri ve budget recommendation dashboard'u besleniyor.
-
-Container'ı Dockerfile ile paketliyorsun:
-
-```dockerfile
-FROM rocker/tidyverse:4.2.0
-RUN R -e "install.packages('Robyn', repos='https://cloud.r-project.org')"
-RUN R -e "install.packages('bigrquery')"
-COPY run_mmm.R /app/run_mmm.R
-CMD ["Rscript", "/app/run_mmm.R"]
-```
-
-Cloud Scheduler ile her Pazartesi 06:00'da trigger ediyorsun. Robyn 2000 iteration ~20 dakika sürüyor (8 core makine ile).
-
-## Budget reallocation: pareto frontier'dan karar çıkarmak
-
-Robyn'in en güçlü çıktısı budget optimizer. `robyn_allocator()` fonksiyonu, mevcut bütçeyi channel'lar arasında yeniden dağıtarak toplam revenue'yu maksimize ediyor:
+**Budget allocator:**
 
 ```r
 AllocatorCollect <- robyn_allocator(
   InputCollect = InputCollect,
   OutputCollect = OutputModels,
-  select_model = best_model_id,
-  scenario = "max_response",
-  channel_constr_low = c(0.7, 0.7, 0.5),  # Google, Meta, TV için min %70, %70, %50 korunsun
-  channel_constr_up = c(1.5, 1.5, 2),     # Max %150, %150, %200
-  expected_spend = 500000,                # Toplam bütçe
-  expected_spend_days = 90
+  select_model = "1_123_4",  # seçilen Pareto model
+  scenario = "max_response",  # veya "target_efficiency"
+  channel_constr_low = 0.7,   # her kanal min %70 mevcut bütçe
+  channel_constr_up = 1.5     # max %150
 )
 ```
 
-Output tablosu:
+Çıktı, her kanal için önerilen yeni harcama ve beklenen incremental revenue:
 
-| Channel | Current Spend | Optimized Spend | Delta | Expected Revenue Lift |
-|---------|---------------|-----------------|-------|----------------------|
-| Google Search | 200,000 | 180,000 | -10% | -2% |
-| Meta Paid Social | 200,000 | 220,000 | +10% | +8% |
-| TV | 100,000 | 100,000 | 0% | 0% |
+| Kanal | Mevcut | Önerilen | Delta | Incremental Revenue |
+|---|---|---|---|---|
+| Facebook | 5K€ | 4.2K€ | -16% | -800€ |
+| Google Search | 7K€ | 9.1K€ | +30% | +3.2K€ |
+| Display | 3K€ | 2.7K€ | -10% | -200€ |
 
-Bu tablo ile "Meta'ya %10 kaydırarak toplam revenue %6 artabilir" diyorsun. Constraint'ler (0.7-1.5 çarpanları) business limit'leri yansıtıyor — örneğin TV contract 3 ay sabit, sadece digital esnek.
+Bu tablo, "eğer Google Search'e %30 daha fazla bütçe verip Facebook'u %16 azaltırsanız, toplam revenue'yi 2.2K€ artırabilirsiniz" diyor. Constraint parametreleri (low/up) ile radikal değişiklikleri engelleyebilirsiniz — pratikte bir kanalı bir gecede %50 kesmek operasyonel risk taşır.
 
-## Robyn'in sınırları ve incrementality testlerle kombinasyon
+**Scenario planning:** `expected_spend` parametresiyle total budget'i değiştirebilir ve yeni optimal dağılımı alabilirsiniz. Örneğin Q4'te bütçe %25 artacaksa, Robyn size o senaryonun kanal breakdownunu verir.
 
-MMM correlation-based — causation değil. TV harcaması ile satış aynı anda artıyorsa Robyn pozitif ROI gösterir ama belki satış artışı başka sebepten (ekonomik iyileşme). Incrementality test — geo-experiment, holdout group — causality kanıtı verir. Robyn + incrementality kombinasyonu: Robyn haftalık allocation guidance, incrementality testi yılda 2-3 kez validation.
+Roibase projelerinde MMM output'unu Google Sheets veya Looker Studio dashboard'a otomatik export ediyoruz — CMO weekly budget meeting'inde model recommendation'ları canlı görüyor. JSON export:
 
-Bir diğer sınır: yeni channel. Robyn'e hiç data girmemiş bir channel (örn. podcast) için saturasyon eğrisi çizemezsin. İlk 8-12 hafta test budget ile veri biriktirip modele ekliyorsun.
+```r
+robyn_write(InputCollect, OutputModels, select_model = "1_123_4", export = TRUE)
+```
 
-Son kısıt: granülarite. Robyn haftalık çalışır — günlük veya saat-bazlı kararlar alamazsın. Bunun için [Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/tr/verianalizi) kapsamında real-time bidding model'i devreye giriyor (XGBoost, LightGBM ile).
+Bu `Robyn_[timestamp].json` dosyası üretir; içinde tüm hyperparameter, coefficient, response curve verisi var. Bunu Python script'iyle okuyup Slack notification veya email report haline getirebilirsiniz.
 
-Marketing Mix Modeling 2026'da attribution'ın omurgası. Robyn framework'ü bu omurgayı production pipeline'a taşıyor: BigQuery'den haftalık veri, genetic algorithm ile hyperparameter tuning, holdout validation ile overfitting kontrolü, budget allocator ile karar mekanizması. Saturasyon eğrisi ve adstock decay, pazarlama harcamasını mühendislik disiplinine bağlıyor — tahmin yerine regresyon, iletişim yerine data pipeline, vaat yerine confidence interval. Şimdi yapman gereken: son 2 yılın haftalık spend ve revenue verisini BigQuery'ye toplamak, Robyn container'ını Cloud Run'a deploy etmek ve ilk pareto frontier'ı CMO'ya sunmak.
+## Model refresh ve versiyonlama
+
+MMM statik değil — her çeyrekte yeni data ekleyip model refresh etmelisiniz. Robyn'de "warm start" özelliği var: önceki model hyperparameter'larını seed olarak kullanıp sadece yeni data ile fine-tune yapıyorsunuz.
+
+```r
+# Eski modeli yükle
+InputCollectRefresh <- robyn_refresh(
+  json_file = "Robyn_2025Q4.json",
+  dt_input = new_data,  # son 3 ayın datası
+  refresh_steps = 1000
+)
+```
+
+Bu yaklaşım convergence süresini %60 kısaltıyor ve coefficient drift'i minimize ediyor — yani Facebook'un saturasyon eğrisi bir gecede %50 değişmiyor, smooth transition oluyor.
+
+**Versiyonlama best practice:** Her model refresh'te JSON dosyasını Git'e commit edin veya S3'e timestamp'le yükleyin. Böylece 6 ay sonra "neden o dönem Google'e daha az bütçe verdik" sorusunu model history'den cevaplayabilirsiniz. Bizim workflow'umuzda dbt model runları ile senkronize Robyn refresh schedule'ı var — her Pazartesi sabahı 08:00'de tetikleniyor, BigQuery'den son 104 haftanın verisini çekiyor, modeli refresh ediyor ve Slack'e summary post atıyor.
+
+MMM tek başına karar verme aracı değil — incrementality test, attribution model ve CMO intuition ile birlikte kullanılır. Robyn'in gücü, aggregate seviyede privacy-safe bir "second opinion" vermesi ve long-term trend'leri yakalamakta. Eğer production'da kurulum yapacaksanız, veri pipeline'ınızın sağlam olduğundan emin olun — çöp veri girerse çöp model çıkar, hiçbir Bayesian optimization bunu kurtaramaz.
