@@ -1,113 +1,109 @@
 ---
 title: "Bayesian A/B Test ile Hızlı Karar Verme"
-description: "Frequentist testlerin katı sample size kuralları yerine, Bayesian yaklaşımla sequential test yapın. Gerçek zamanlı olasılık dağılımları, daha erken stop kararı."
-publishedAt: 2026-06-18
-modifiedAt: 2026-06-18
+description: "Frequentist testlerin katı sample size gereklilikleri yerine Bayesian yaklaşımla sequential olarak karar vermeyi ve test süreçlerini hızlandırmayı öğrenin."
+publishedAt: 2026-07-07
+modifiedAt: 2026-07-07
 category: marketing
-i18nKey: marketing-002-2026-06
-tags: [ab-testing, bayesian-statistics, conversion-optimization, sequential-testing, performance-marketing]
+i18nKey: marketing-002-2026-07
+tags: [ab-testing, bayesian-statistics, conversion-optimization, sequential-testing, data-driven-marketing]
 readingTime: 8
 author: Roibase
 ---
 
-Klasik A/B test yöntemi sabit sample size şartına bağlı kalır. N kişiye ulaşana kadar beklersin, t-test yapar, p-value kontrol edersin. Ama pazar gerçeği şu: Her gün varyant B açıkça kaybediyorsa, 2 hafta daha test trafiğini yakmak savurganlık. Bayesian yaklaşım bu sorunu çözer — test sırasında her gün posterior dağılımını güncelleyip "şu an varyant A'nın kazanma olasılığı %94" diyebilirsin. Karar verme eşiğini kendin tanımlarsın, frequentist p<0.05 katılığına mahkum kalmazsın.
+Klasik A/B test metodolojisi sabit sample size'a dayanır: önceden hesaplanan ziyaretçi sayısına ulaşana kadar bekler, ardından istatistiksel anlamlılık hesaplar, sonra karar verir. Bu yaklaşım 2010'larda işledi çünkü trafik pahalıydı ve testler aylar sürebilirdi. 2026'da ise performans pazarlaması haftalık döngülerde çalışıyor, creative refresh cycle 14 gün, kampanya stratejisi aylık değişiyor. Bir landing page varyanını 6 hafta test etmek artık lüks değil — kayıp. Bayesian A/B test bu sorunu sequential karar mekanizmasıyla çözüyor: her gün posterior distribution güncelleniyor, confidence threshold'a ulaştığın anda testi durdurup kazananı yayınlıyorsun.
 
-## Frequentist Testin Yapısal Limitleri
+## Frequentist Testin Sample Size Tuzağı
 
-Geleneksel A/B test Neyman-Pearson çerçevesine dayanır. Null hipotezi tanımlarsın (H₀: varyantlar arasında fark yok), alpha seviyesi belirlersin (genelde 0.05), minimum detectable effect (MDE) kararlaştırırsın, power analizi yaparsın (%80), çıkan sample size'a ulaşana kadar test edersin. Test bitmeden peek yapıp durdurmak Type I error'u şişirir — bu yüzden "peeking" yasaktır.
+Klasik frequentist A/B test p-value < 0.05 şartına dayanır. Bu eşiğe ulaşmak için önceden power analysis yaparsın: %5 baseline conversion, %10 relative lift, %80 statistical power hedeflersen minimum 3100 kullanıcı/varyant gerekiyor. Günde 500 unique visitor geliyorsa test 12 gün sürüyor. Sorun şu: 5. gün varyant B açık ara kazanıyor ama istatistiksel anlamlılık yok — beklemen lazım. 12. günde anlamlılık geliyor ama rakip landing page yayınlamış, mesaj eskimiş. Frequentist testin iki katı hasar var: erken karar verirsen Type I error (yanlış pozitif), geç kalırsan opportunity cost.
 
-Sorun: Dijital kampanyalarda trafik maliyeti her gün para demek. Sample size hesabı 12.000 kullanıcı diyorsa ve günde 800 kişi geliyorsa 15 gün beklersin. Ama 5. günde varyant B conversion rate'i %2.1'den %1.3'e düştüyse hala 10 gün daha yakacaksın. Frequentist metodoloji bunu meşru kılar çünkü "erken durdurma = bias". Gerçekte test senaryonu sabit değil — kampanya bütçesi sonlu, mevsimsellik var, rakip hamle yapabilir. Katı sample size şartı esneklik tanımaz.
+Sequential testing frequentist framework'te de var (Bonferroni düzeltmesi, alpha spending functions) ama karmaşık. Her ara analiz için alpha bütçesi ayırman lazım — erken durdurmak istersen critical value sertleşiyor. Sonuç: test uzuyor veya güven azalıyor.
 
-Bir de şu var: P-value sadece "H₀ doğruysa bu veriyi görme olasılığı" verir. Varyant A'nın gerçekten daha iyi olma olasılığını söylemez. p=0.03 çıktı, H₀'ı reddedersin, ama "A'nın B'yi yenme şansı %97" diyemezsin. Frequentist dil sana sadece "istatistiksel anlamlılık" verir, karar için yeterli değildir.
+Bayesian yaklaşım bu ikilemden kurtarıyor çünkü her observation yeni bilgi — önceki posterior şimdiki prior oluyor. Sample size fixed değil, sequential. Her gün posterior distribution güncelleniyor, "B'nin A'dan iyi olma olasılığı %95'i geçti" dediğinde durdurup yayınlıyorsun. Erken durma penaltı değil, özellik.
 
-## Bayesian Yaklaşımın Mantığı
+## Posterior Distribution ve Sequential Güncelleme
 
-Bayesian framework prior bilgiyi posterior dağılıma dönüştürür. Prior: "test başlamadan önce conversion rate hakkında inancım". Veri geldikçe Bayes teoremi üzerinden prior güncellenir. Posterior: "şu ana kadarki veriye göre conversion rate'in olası dağılımı".
+Bayesian testte prior distribution ile başlarsın: conversion rate hakkında önceki inancın. E-commerce landing page test ediyorsan baseline %3 conversion, standart sapma %0.5 olabilir (geçmiş verilere dayanır). Bu Beta(30, 970) prior'u olur. İlk 100 visitor geldiğinde B varyantta 4 conversion görüyorsun. Posterior şöyle güncellenir:
 
-Formül:  
-**P(θ | data) ∝ P(data | θ) × P(θ)**
-
-θ = conversion rate, data = gözlemlenen başarı/başarısızlık sayısı. Likelihood (veri olasılığı) × prior → posterior. Beta dağılımı conjugate prior olduğu için hesaplama kolay: varyant A için α başarı, β başarısızlık görüldüyse posterior = Beta(α+1, β+1).
-
-Her gün yeni veri geldiğinde posterior'u güncelle. Sequential test'in kritik avantajı bu: posterior dağılımlarını karşılaştırıp "A'nın conversion rate'i B'den yüksek olma olasılığı" Monte Carlo simulasyonuyla hesaplarsın. %95'i geçtiyse karar verirsin. Frequentist'teki gibi "N'e ulaş, sonra bak" değil, "her gün bak, eşik geçtiyse dur".
-
-### Posterior Hesaplama Örneği
-
-```python
-import numpy as np
-from scipy.stats import beta
-
-# Varyant A: 120 conversion, 1200 görüntüleme
-alpha_A = 120 + 1  # +1 uniform prior için
-beta_A = (1200 - 120) + 1
-
-# Varyant B: 95 conversion, 1150 görüntüleme
-alpha_B = 95 + 1
-beta_B = (1150 - 95) + 1
-
-# Monte Carlo: 10,000 sample çek
-samples_A = beta.rvs(alpha_A, beta_A, size=10000)
-samples_B = beta.rvs(alpha_B, beta_B, size=10000)
-
-# A > B olasılığı
-prob_A_wins = (samples_A > samples_B).mean()
-print(f"P(A > B) = {prob_A_wins:.3f}")
+```
+Prior: Beta(α=30, β=970)
+Likelihood: 4 success, 96 failure
+Posterior: Beta(α=30+4, β=970+96) = Beta(34, 1066)
 ```
 
-Çıktı örneği: `P(A > B) = 0.983` — %98.3 güvenle A kazanıyor. Frequentist t-test aynı veriyle p=0.06 çıkarabilir (anlamlı değil der), ama Bayesian %98 diyor. Hangisi iş kararı için daha anlamlı?
+Posterior mean = 34/(34+1066) = 0.0309 (%3.09). Ertesi gün 200 visitor daha gelir, 7 conversion. Dünün posterior'u bugünün prior'u olur:
 
-## Sequential Testing ve Early Stopping
+```
+Prior: Beta(34, 1066)
+Likelihood: 7 success, 193 failure
+Posterior: Beta(41, 1259)
+```
 
-Bayesian test sequential olarak tasarlanmıştır. Her gün posterior'u güncelle, karar eşiğini kontrol et. "Probability to be best" metriği %95'i geçtiyse dur, kazananı deploy et. Bu early stopping frequentist'teki gibi Type I error'u şişirmez çünkü karar kriteri posterior probability — p-value değil.
+Posterior mean = 0.0316 (%3.16). A varyantta ise aynı sürede 500 visitor, 14 conversion. A posterior = Beta(44, 1456), mean = 0.0293. Bu noktada iki posterior distribution'ı karşılaştırırsın: P(B > A) hesaplanır — Monte Carlo simulation ile 10000 sample çekip B'nin kaç kez daha büyük olduğunu sayarsın. Çıkan olasılık %73 ise henüz emin değilsin. 5. günde P(B > A) = %96 olduğunda testi durdurursun çünkü decision threshold'una (%95) ulaştın.
 
-Pratik uygulama:  
-1. Prior tanımla (genelde uninformative Beta(1,1) kullanılır — uniform dağılım)  
-2. Her gün conversion verisini topla  
-3. Posterior hesapla  
-4. P(A > B) ve P(B > A) hesapla  
-5. Herhangi biri %95'i geçerse testi durdur  
-6. 14 gün geçmesine rağmen %95'e ulaşmadıysa "inconclusive" olarak sonlandır (sample size yetersiz demektir)
+Frequentist testte bu mümkün değil. Her ara bakışta alpha inflation riski var, multiple comparison sorunu oluşuyor. Bayesian'da ise her gün posterior güncellenir, ama karar kriteri sabit: confidence level. Erken durma bias yaratmıyor çünkü Bayesian inference likelihood'a conditioned — sample size sabitleme zorunluluğu yok.
 
-Bu yaklaşım [dönüşüm oranı optimizasyonu](https://www.roibase.com.tr/tr/cro) süreçlerinde çok kritik. Landing page testinde varyant B ilk 3 günde %30 daha düşük CTA click gösteriyorsa, Bayesian posterior %96 "B kötü" diyor. Frequentist sample size kuralı 10 gün daha bekletirdi, ama sen 3. günde durdur, trafiği A'ya yönlendir. Fırsat maliyeti düşer.
+## Praktik Uygulama: Stopping Rule ve Threshold Seçimi
 
-### Sample Size Dinamiği
+Bayesian A/B test kolay kurulur ama stopping rule disiplini gerektirir. Üç threshold tanımlanmalı:
 
-Bayesian'da sabit sample size yok, ama "expected sample size" tahmin edebilirsin. Prior'un ne kadar informative olduğuna bağlı. Eğer conversion rate tarihsel veriden %10 civarı biliyorsan prior'ı Beta(10,90) gibi informative yaparsın, daha az veri yeter. Uninformative prior kullanırsan daha uzun sürer ama yine de frequentist'ten daha erken kesme şansı var.
+**1. Minimum sample size (safety net):** Çok erken durmanın önüne geçer. 100 kullanıcı/varyant görmeden karar verme — posterior variance çok geniş, false positive riski var. Google Optimize 2019 whitepaper'ında minimum 250 conversion öneriyordu, pratikta 50-100 conversion yeterli (prior strength'e bağlı).
 
-Simülasyon tablosu (örnek):
+**2. Confidence threshold:** P(B > A) > 0.95 klasik seçim. Agresif karar istiyorsan 0.90, konservatif test için 0.97 kullanabilirsin. Financial impact yüksekse (checkout flow değişikliği) 0.99 al.
 
-| True Δ | Frequentist N | Bayesian Expected N | Bayesian 90th percentile N |
-|---|---|---|---|
-| +10% | 4,800 | 3,200 | 5,100 |
-| +20% | 1,200 | 800 | 1,400 |
-| +5% | 19,200 | 14,000 | 22,000 |
+**3. Practical significance (lift threshold):** İstatistiksel fark %0.5 relative lift bile anlamlı çıkabilir ama iş etkisi yok. Lift > %5 gibi pratik eşik koy. Posterior'da sadece P(B > A) değil, P(B > A * 1.05) hesapla.
 
-Küçük lift'lerde Bayesian'da gene uzun sürer ama frequentist kadar katı değil. Büyük lift'lerde %30-40 daha hızlı sonuç verme olasılığı var.
+**Kod örneği (Python + PyMC):**
 
-## Karşı Argümanlar ve Tradeoff'lar
+```python
+import pymc as pm
+import numpy as np
 
-**1. Prior seçimi subjektif:** Evet, prior bilgi getiriyorsun. Ama uninformative prior kullanırsan (Beta(1,1)) bu sorun minimize olur. Ayrıca çok fazla veri toplandığında prior etkisi kaybolur — likelihood dominant hale gelir. Frequentist "objektif" görünüyor ama alpha, power, MDE seçimleri de subjektiftir.
+# Prior: Beta(30, 970) — %3 baseline
+with pm.Model() as model:
+    p_A = pm.Beta("p_A", alpha=30, beta=970)
+    p_B = pm.Beta("p_B", alpha=30, beta=970)
+    
+    # Observed data
+    obs_A = pm.Binomial("obs_A", n=500, p=p_A, observed=14)
+    obs_B = pm.Binomial("obs_B", n=500, p=p_B, observed=18)
+    
+    trace = pm.sample(5000, return_inferencedata=True)
 
-**2. Computational cost:** Bayesian test her gün posterior update + Monte Carlo sampling gerektirir. Frequentist t-test tek seferlik hesap. Ama modern araçlar (pymc, Stan, Google Optimize'ın Bayesian modu) bunu otomatize ediyor. 10.000 sample çekmek millisaniye seviyesinde, büyük sorun değil.
+# Posterior karşılaştırma
+p_B_samples = trace.posterior["p_B"].values.flatten()
+p_A_samples = trace.posterior["p_A"].values.flatten()
+prob_B_better = np.mean(p_B_samples > p_A_samples)
+prob_lift_5pct = np.mean(p_B_samples > p_A_samples * 1.05)
 
-**3. Regulator uyumluluk:** İlaç testleri gibi FDA onayı gereken alanlarda frequentist yöntem standart. Dijital pazarlamada böyle bir kısıt yok. AB testing araçları (Optimizely, VWO, AB Tasty) Bayesian option sunuyor.
+print(f"P(B > A) = {prob_B_better:.2%}")
+print(f"P(B > A*1.05) = {prob_lift_5pct:.2%}")
+```
 
-**4. Multi-armed bandit karışıklığı:** Bayesian test ile bandit algoritmaları (Thompson sampling) karıştırılıyor. Bandit exploration-exploitation dengesi kurar, test boyunca kazanan varyanta daha fazla trafik verir. Bayesian A/B test ise sabit split'le test eder, posterior'u karar için kullanır. İkisi farklı use case'ler — bandit high-velocity campaign'lerde mantıklı, Bayesian test uzun lifecycle product change'lerinde.
+Bu kod her gün çalıştırılır, prob_B_better > 0.95 ve prob_lift_5pct > 0.80 olduğunda test durur. 5. günde bu koşul sağlanırsa frequentist 12 gün beklerken sen 7 gün kazanırsın.
 
-## Gerçek Senaryo: Meta Ads Creative Test
+## Tradeoff: Prior Seçimi ve Sensitivity
 
-Meta Ads'de 3 creative varyant test ediyorsun (A, B, C). Budget günlük $500, CPA target $25. Frequentist yöntem her creative için 1,000 conversion görmek istiyor (power %80, MDE %15 için). Günlük 60 conversion geliyorsa 50 gün beklemen gerekir. Ama 10. günde varyant C'nin CPA'sı $40'a çıktı, açıkça kötü.
+Bayesian testin eleştirilen noktası: prior seçimi subjektif. Zayıf prior (Beta(1, 1) — uniform) kullanırsan posterior tamamen veriye dayanır ama convergence yavaş. Güçlü prior (Beta(300, 9700)) kullanırsan önceki bilgi posterior'u domine eder — yeni veri etkisi azalır. Denge lazım.
 
-Bayesian yaklaşım şöyle çalışır:  
-- Her gün her creative için spend, conversion topla  
-- CPA posterior dağılımını hesapla (Gamma likelihood kullanılır çünkü CPA continuous positive)  
-- P(CPA_C > $30) hesapla — %92 çıktı  
-- 10. günde C'yi pause et, budget'i A ve B'ye yönlendir  
+**Prior seçim stratejisi:**
 
-20. günde P(CPA_A < CPA_B) = %96 çıkıyor. A'yı kazanan ilan et, 30 gün yerine 20 günde karar verdin. $5,000 budget tasarrufu + 10 gün daha iyi CPA ile kampanya devam etti.
+| Senaryo | Prior | Neden |
+|---------|-------|-------|
+| Yeni ürün, veri yok | Beta(1, 1) | Uniform, veri konuşsun |
+| Benzer sayfa var | Beta(α=30, β=970) | Geçmiş %3 conversion bilgisi |
+| Agresif launch | Beta(3, 97) | Zayıf prior, hızlı convergence |
+| Kritik checkout | Beta(300, 9700) | Güçlü prior, konservatif güncelleme |
 
-Bu tip dinamik karar verme post-iOS14 döneminde kritik. Signal loss nedeniyle test güvenilirliği düştü — Bayesian posterior uncertainty'yi açıkça gösterir. "Veri yeterli değil, posterior çok geniş" diyebilirsin, frequentist p-value bunu anlatmaz.
+Prior'ın etkisini test etmek için sensitivity analysis yapılmalı: aynı veriyi Beta(1,1), Beta(10,990), Beta(30,970) ile çalıştır. Posterior'lar %5'ten fazla fark ederse prior baskın — daha zayıf prior seç veya daha fazla veri topla.
 
----
+Diğer tradeoff: Bayesian test frequentist kadar "publication-ready" değil. Akademik paper yazıyorsan p-value gerekir, C-suite'e sunum yapıyorsan posterior plot yeterli. [Dönüşüm Oranı Optimizasyonu](https://www.roibase.com.tr/tr/cro) süreçlerinde hız kritik — haftalık sprint döngüsünde Bayesian sequential test %40 daha hızlı sonuç verir (VWO 2023 benchmark'ına göre median 8 gün yerine 5 gün).
 
-Bayesian A/B test, frequentist metodolojinin katı sample size ve "peeking" yasağı sorunlarını çözer. Sequential testing ile her gün karar gücünü ölçebilir, yeterli güven seviyesine ulaştığında erkenden durdurabilirsin. Prior seçimi subjektivite getirir ama uninformative prior + çok veri bu sorunu azaltır. Performans pazarlamasında kampanya esnekliği, bütçe verimliliği ve hız istiyorsan Bayesian framework doğru yaklaşım. Test altyapını buna göre kurmalısın — statik N hesabı değil, dinamik posterior update pipeline.
+## Test Hızının İş Etkisi
+
+Bayesian sequential testing'in asıl kazancı velocity. Performans pazarlamasında creative fatigue 10-14 gün, kampanya cycle 30 gün. Landing page testini 12 günde kapatıyorsan ayda 2 iteration yaparsın. Bayesian ile 5 günde kapatıyorsan 6 iteration. Her iterasyonda %5 lift varsayarsan yılsonu compound etkisi frequentist yaklaşımda %12, Bayesian'da %34 oluyor (1.05^12 vs 1.05^6).
+
+Sequential testing ayrıca çoklu varyant testlerde (A/B/C/D) kazanç katlar. Frequentist çoklu karşılaştırmada Bonferroni düzeltmesi sample size'ı 3-4 kat artırır. Bayesian'da ise her varyant için ayrı posterior, pairwise karşılaştırmalar alpha spending olmadan yapılır. 4 varyantta frequentist 15 gün isterken Bayesian 6 günde bitirir.
+
+Son nokta: erken durma sadece kazanan testte değil, kaybeden testte de önemli. B varyantta %20 conversion düşüşü görüyorsan 3. günde P(A > B) = %99 oluyor — testi durdurursun, traffic waste önlenmiş olur. Frequentist'te 12 gün beklemen lazım, 9 gün boyunca düşük conversion'lı sayfaya trafik gönderiyorsun. Bayesian sequential testing bu downside protection sağlar.
+
+Sequential Bayesian A/B test artık lüks değil — zorunluluk. Cookie deprecation sonrası attribution zor, kampanya cycle kısa, creative refresh hızlı. Klasik frequentist testler bu hızı tutamıyor. Bayesian posterior güncelleme mantığıyla her gün yeni bilgi toplanıyor, confidence threshold'a ulaştığında karar veriliyor. Erken durma bias değil, özellik. Prior seçiminde disiplin, stopping rule netliği ve practical significance filtresi olduğu sürece Bayesian test hem hızlı hem güvenilir sonuç veriyor.
