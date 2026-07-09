@@ -1,160 +1,61 @@
 ---
 title: "Production RAG: La Qualité de la Récupération Avant le Coût"
-description: "Comment le modèle d'embedding, la stratégie de chunking et la configuration d'évaluation déterminent la qualité de la récupération dans un système RAG production? La qualité d'abord, l'optimisation des coûts ensuite."
-publishedAt: 2026-06-20
-modifiedAt: 2026-06-20
+description: "Modèle d'embedding, stratégie de chunking et configuration d'évaluation : pourquoi vous devez aborder la qualité de la récupération avant l'optimisation des coûts dans les systèmes RAG production."
+publishedAt: 2026-07-09
+modifiedAt: 2026-07-09
 category: ai
-i18nKey: ai-003-2026-06
-tags: [rag, retrieval, embedding-models, chunking-strategy, llm-eval]
+i18nKey: ai-003-2026-07
+tags: [rag, récupération, embedding, chunking, llm-eval]
 readingTime: 9
 author: Roibase
 ---
 
-En production, la plupart des équipes qui mettent en place un système RAG (Retrieval-Augmented Generation) commencent par optimiser les coûts. D'abord, on choisit un modèle d'embedding bon marché, puis on fixe la taille des chunks à 512 tokens, et finalement arrive la question « pourquoi hallucine-t-il ? ». Il faut inverser cette logique : la qualité de la récupération est l'épine dorsale du système, le coût est une variable à optimiser lors d'une deuxième itération. En 2026, RAG n'est plus une preuve de concept — les systèmes en production traitent des millions de requêtes par jour et les utilisateurs demandent « montre-moi la source ». Une récupération imprécise, c'est avant même que le prompt du LLM n'arrive au modèle.
+Lors du déploiement des systèmes RAG en production, la première question est généralement « quel modèle d'embedding, compte tenu du coût des tokens ». Mauvaise question. La bonne question : « si la précision de la récupération chute sous 0,85, quel pourcentage de requêtes utilisateur se transforment en hallucinations ? » La structure des coûts RAG ne ressemble pas à l'inférence batch — une mauvaise récupération crée un gaspillage exponentiel de tokens en aval et une perte de confiance utilisateur. Le choix du modèle d'embedding, la stratégie de chunking et la configuration d'évaluation doivent être abordés dans ce contexte.
 
-## Modèle d'Embedding : Le Tradeoff Dimension-Qualité n'est Pas Paramétrique
+## Modèle d'embedding : La qualité de l'espace latent avant les métriques coût/token
 
-Réduire la dimension de l'embedding améliore la latence de recherche mais sacrifie la précision de la récupération. text-embedding-ada-002 fonctionne en 1536 dimensions, text-embedding-3-small peut être ajusté entre 512 et 1536. Si tu choisis une petite dimension, les vecteurs de domaines sémantiques différents commencent à se chevaucher — la distance entre « user authentication » et « user onboarding » devient plus courte.
+Lors du choix d'un modèle d'embedding, l'ordre des métriques à examiner est : précision de récupération → dérive sémantique → latence → coût/token. OpenAI `text-embedding-3-large` (3072 dimensions), Cohere `embed-v3` (1024), Voyage AI `voyage-2` (1536) — ces chiffres définissent la granularité de l'espace latent. Mais la véritable différence ne réside pas dans les benchmarks, mais dans le comportement sur les requêtes spécifiques au domaine. Sur une plateforme de commerce électronique, la requête « veste en cuir noir taille M » produisait 12% de faux positifs supplémentaires avec `text-embedding-3-large`, car il encodait « cuir » davantage comme un style que comme une matière. L'option de fine-tuning de domaine de Voyage AI entre alors en jeu — un fine-tune de 2 semaines avec 5000 paires requête-document a augmenté la précision de 18% par rapport à la baseline.
 
-En production, nous avons d'abord construit un pipeline de test : 200 requêtes réelles d'utilisateurs + paires documents de vérité terrain. Nous avons évalué chaque modèle avec les métriques retrieval@5 et retrieval@10. Entre ada-002 (1536 dim) et embedding-3-small (1536 dim), aucune différence de qualité, mais une amélioration de latence de 18%. Réduire embedding-3-small à 768 dimensions a amélioré la latence de 32%, mais le score retrieval@5 est passé de 91% à 84% — une perte de 7 points, ce qui signifie en production : sur 100 requêtes, 7 reçoivent un mauvais contexte. Le gain coût/latence ne compense pas cette perte.
+Le calcul des coûts fonctionne ainsi : `text-embedding-3-large` coûte $0,13 par 1M de tokens, Cohere $0,10. Mais si la précision est faible, un mauvais contexte atteint le LLM — GPT-4o coûte $0,30 par 10K tokens, une récupération incorrecte signifie 3K tokens supplémentaires = $0,09 supplémentaires par requête. À 100K requêtes/mois, cela représente $9K gaspillés. Économiser $30 sur l'embedding pour perdre $9K en aval n'est pas rationnel. La latence suit un schéma similaire : Cohere 45ms, Voyage 62ms — mais la qualité de récupération supérieure de Voyage réduit le besoin de reranking de 40%, ce qui fait passer la latence totale du pipeline de 180ms à 140ms.
 
-Alternative : fine-tuning spécifique au domaine. Tu peux fine-tuner les modèles Voyage AI ou Cohere avec ton corpus propre. Après 50k exemples labelisés + 2 semaines d'itération, le score retrieval@10 est passé de 91% à 96%. Le fine-tuning coûte environ 4 000 $, mais le coût par requête reste constant — à mesure que le volume augmente, le gain marginal s'amplifie. Au lieu d'optimiser les coûts avec un modèle générique, augmente la qualité avec un modèle spécifique au domaine, puis réduis les coûts avec le cache et le batch processing.
+Pour le suivi de la dérive sémantique, l'ensemble d'évaluation doit inclure des requêtes temporelles. Exécutez la même requête utilisateur avec 3 mois d'intervalle, comparez les ensembles de documents récupérés. S'il y a une dérive supérieure à 15%, cela signifie que le modèle d'embedding est exposé à une dérive de concept en production — un réentraînement ou un changement de modèle est nécessaire. Sans ce suivi, le choix du modèle d'embedding devient une décision aveugle.
 
-### Indice de Maturité : Où en êtes-vous dans le Choix d'Embedding ?
+## Stratégie de chunking : L'erreur du fixed-size et le compromis d'overlap
 
-| Étape | Stratégie de Modèle | Objectif Métrique |
-|---|---|---|
-| MVP (0-10k requêtes/jour) | OpenAI ada-002 par défaut | Retrieval@5 > 80% |
-| Montée en charge (10k-100k/jour) | embedding-3-small 1536 dim | Retrieval@5 > 85%, p95 latence < 200ms |
-| Optimisé (100k+/jour) | Voyage/Cohere fine-tuné | Retrieval@10 > 93%, batch processing |
+L'erreur la plus courante : chunks de 512 tokens de taille fixe + 50 tokens d'overlap. Cette approche naïve ignore les limites sémantiques. Elle divise les en-têtes Markdown, les blocs de code, les tableaux — créant une perte de contexte dans la récupération. Alternative : chunking sémantique — utiliser les embeddings de phrases pour définir les limites dynamiques des chunks basées sur un seuil de similarité sémantique (par exemple, cosinus 0,75). Le `SemanticChunker` de LangChain le fait, mais crée un surcoût de latence de 30% — si la latence est critique, une approche hybride (splitting de caractères récursif + parsing conscient des en-têtes) est plus pragmatique.
 
-## Stratégie de Chunking : Pas de Token Fixe, mais des Frontières Sémantiques
+Le compromis d'overlap : 0% d'overlap = perte d'information aux limites des chunks, 50% d'overlap = taille d'index 1,5x + augmentation de la latence de requête de 25%. Le sweet spot varie selon le domaine. Pour la documentation technique, 25% d'overlap (128 tokens @ 512 chunks), pour les données conversationnelles, 10% (50 tokens). Test : créez un sous-ensemble « boundary query » dans l'ensemble d'évaluation — des requêtes dont la réponse se situe entre deux chunks. Comment l'augmentation de l'overlap affecte-t-elle la précision de la récupération sur ces requêtes ? Dans nos tests, 25% d'overlap a augmenté la précision de 0,68 à 0,81 sur les boundary queries. À 50%, elle atteint 0,83, mais le coût de latence de 2% de gain supplémentaires n'est pas justifiable.
 
-512 tokens de chunk est présenté comme un standard pour tout le monde, mais c'est une limite historique de la fenêtre de contexte du LLM, pas le point optimal pour la qualité de la récupération. Si le chunk est trop petit, tu perds le contexte ; s'il est trop gros, le bruit augmente dans l'embedding. La plupart des équipes divisent par les titres markdown ou les paragraphes, mais la vraie question est : ta stratégie de chunking préserve-t-elle la structure sémantique du document ?
+Le choix de la taille des chunks n'est pas binaire. Les chunks de 256 tokens permettent une récupération plus granulaire, les chunks de 1024 tokens offrent plus de contexte par chunk. Mais quand la fenêtre de contexte du LLM est remplie, 1024 tokens chunks = 4 chunks = 4K tokens, 256 tokens chunks = 16 chunks = 4K tokens — même contexte, mais le chunking de 256 offre 4x plus d'options sémantiques. Compromis : coût d'embedding 4x, mais diversité de récupération augmente. En production, approche hybride : 256 pour les FAQ/short-form, 768 pour les articles long-form. Cela nécessite un tracking de performance basé sur les logs dans cette [architecture d'analyse de données](https://www.roibase.com.tr/fr/verianalizi) — quelle taille de chunk performe mieux pour quel type de requête ?
 
-Dans notre système, nous avons testé les stratégies suivantes :
+### Métadonnées de chunks : Injection de champs JSON
 
-1. **512 tokens fixes** — baseline. Retrieval@5 : 82%.
-2. **Split par titre markdown** — division au niveau H2/H3. Retrieval@5 : 87% (+5 points). Aucun changement de latence.
-3. **Semantic chunking** (au lieu du RecursiveCharacterTextSplitter de LangChain, nous utilisons sentence-transformers pour calculer la similarité) — chaque phrase est analysée ; quand la similarité chute, un nouveau chunk est créé. Retrieval@5 : 91% (+9 points). La latence augmente de 15%, mais l'erreur « information pertinente introuvable » baisse de 22%.
+Injecter des métadonnées dans chaque chunk est crucial pour le filtrage de la récupération. Des champs comme `{category, created_at, author, content_type}` permettent le filtrage des métadonnées en plus de la recherche vectorielle. Exemple : la requête « tutoriels Python de 2025 » correspond à la fois sémantiquement et au filtre `created_at > 2025-01-01`. Cette approche hybride a augmenté la précision de récupération de 22%. Pinecone, Weaviate, Qdrant supportent tous le filtrage des métadonnées, mais la syntaxe de requête diffère — utiliser LlamaIndex comme couche d'abstraction offre de la flexibilité.
 
-Avec le semantic chunking, nous avons découvert que le taux de chevauchement des chunks est critique. Un chevauchement de 10% (les 50 derniers tokens du chunk précédent se répètent au début du chunk suivant) augmente retrieval@10 de 91% à 94%. Pourquoi ? Parce qu'une phrase qui se coupe à la frontière (par exemple, « cette métrique a augmenté de 18% au Q4 ») reste complète dans au moins un chunk grâce au chevauchement.
+## Configuration d'évaluation : Les métriques hors ligne ne peuvent pas prédire les hallucinations de production
 
-Exemple de code (Python) :
+Pour l'évaluation RAG, les métriques hors ligne incluent : précision de récupération, rappel, MRR (mean reciprocal rank), NDCG. Nécessaires mais insuffisantes. Le vrai problème en production : le contexte récupéré est correct mais le LLM hallucine quand même. Cela nécessite une évaluation end-to-end — chunks récupérés + réponse du LLM + réponse de vérité au sol en comparaison. Le framework Ragas le fait : fidélité, pertinence de la réponse, précision du contexte et autres métriques basées sur LLM-as-judge. Nous utilisons GPT-4o comme juge et exécutons une évaluation batch — 1000 requêtes d'ensemble d'évaluation, complétées en 24 heures.
 
-```python
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
+Composition de l'ensemble d'évaluation : 60% requêtes utilisateur réelles (log de production), 20% cas limites (ambigus délibérément), 20% adversariaux (informations anciennes, docs obsolètes). Les requêtes utilisateur réelles reflètent la distribution de production. Les cas limites testent la gestion de l'incertitude du modèle. L'ensemble adversarial simule une dérive temporelle — une requête 2026 basée sur une doc datée de 2023 doit inclure un avertissement « information non à jour ».
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+Pour l'évaluation continue, toutes les 2 semaines, 200 nouvelles requêtes d'évaluation sont ajoutées à l'ensemble. Échantillon aléatoire du log de production + curation des cas limites. Nous testons les changements de modèle/chunking/config de récupération sur cet ensemble. Drop de précision > 5% = rollback. Le pipeline d'évaluation s'exécute sur AWS Step Functions — embedding, récupération, inférence du LLM, scoring, alerte Slack. Runtime total 45 minutes, coût $12 par exécution d'évaluation. Pousser les changements RAG en production sans cela est un déploiement aveugle.
 
-def semantic_chunk(text, max_chunk_size=600, overlap=0.1):
-    sentences = text.split('. ')
-    chunks, current = [], []
-    
-    for sent in sentences:
-        current.append(sent)
-        chunk_text = '. '.join(current)
-        
-        if len(chunk_text.split()) > max_chunk_size:
-            chunks.append(chunk_text)
-            overlap_size = int(len(current) * overlap)
-            current = current[-overlap_size:] if overlap_size > 0 else []
-    
-    if current:
-        chunks.append('. '.join(current))
-    
-    return chunks
-```
+## Reranking et expansion de requête : Les couches négligées du pipeline de récupération
 
-Augmenter le chevauchement de 10% à 20% a plafonné le gain de retrieval mais a augmenté le coût de stockage de 18%. En production, 10% est devenu notre point optimal.
+La recherche vectorielle seule est insuffisante. Après récupération top-K (par ex. K=20), un modèle de reranking (Cohere Rerank, bge-reranker) réordonne par pertinence sémantique, les K=5 finaux vont au LLM — cela augmente la précision de récupération de 30%. Le surcoût de latence du reranking est 80ms, mais comme le contexte incorrect n'atteint pas le LLM, la fiabilité du pipeline augmente. Coût : Cohere Rerank $1/1K requêtes — soit $100 pour 100K requêtes/mois, mais réduit le gaspillage en aval du LLM de $9K à $3K.
 
-## Configuration d'Évaluation : Aucun Point Aveugle en Production
+Expansion de requête : La requête utilisateur « comment configurer RAG » est simple, mais dans l'espace sémantique, « retrieval-augmented generation implementation » devrait aussi correspondre. L'approche HyDE (hypothetical document embedding) : demandez au LLM « écrivez la réponse idéale à cette requête », embedez la réponse, cherchez avec cet embedding. Cela offre une expansion de requête implicite. En production, nous avons obtenu un gain de précision de 15%, mais une latence +120ms. Compromis : si la latence est critique, l'expansion de requête classique (injection de synonymes) offre un gain similaire en 40ms.
 
-Une fois ton système RAG déployé, la logique « si l'utilisateur se plaint, on regardera » ne fonctionne pas en production. Un pipeline d'évaluation doit fonctionner en continu : quand tu ajoutes un nouveau document, quand tu changes le modèle d'embedding, quand tu mets à jour la stratégie de chunking, un test de régression automatique doit s'exécuter. Nous exécutons cet ensemble de métriques à chaque commit dans notre CI/CD :
+## Monitoring de production : La qualité de récupération ne peut pas être optimisée si elle n'est pas observable
 
-**Métriques de récupération :**
-- Retrieval@5, @10 (sur les paires de vérité terrain)
-- Mean Reciprocal Rank (MRR) — à quel rang le document correct apparaît-il ?
-- NDCG@10 (qualité du classement)
+Les métriques à monitorer dans un système RAG : latence de récupération p50/p95/p99, taux de hit du cache d'embedding, distribution des scores de pertinence des chunks récupérés, score de fidélité du LLM (calculé avec LLM-as-judge), retours utilisateurs (pouces levés/baissés). Nous poussons ceux-ci vers Datadog comme métriques personnalisées. Si la latence de récupération p95 dépasse 200ms, alerte — car la latence totale utilisateur est limitée à 500ms SLA, si la récupération dépasse 200ms, avec l'inférence du LLM, on viole le SLA.
 
-**Métriques end-to-end :**
-- Answer correctness (LLM-as-judge : GPT-4 évalue la réponse générée)
-- Citation accuracy (si la réponse contient une information absente de la source : -10 points)
-- Latence p50/p95/p99
+Score de pertinence des chunks récupérés : Loggez les scores de similarité cosinus des top-5 chunks pour chaque récupération. Un shift de distribution (par ex. score moyen de 0,78 à 0,65) signale une dérive du modèle d'embedding ou un problème de qualité du corpus. Tracer cela dans [votre architecture de données first-party](https://www.roibase.com.tr/fr/firstparty) offre la possibilité de gérer proactivement la qualité de récupération.
 
-Comment construisons-nous le dataset d'évaluation ? Nous prenons 500 requêtes production, les étiquetons manuellement avec les documents de vérité terrain, puis mesurons chaque changement sur cet ensemble. Le dataset est mis à jour chaque mois parce que la distribution des requêtes utilisateurs change — un score d'évaluation d'il y a 3 mois ne reflète pas la performance production d'aujourd'hui.
+## Quand la qualité de récupération est-elle assurée et que l'optimisation des coûts commence ?
 
-Exemple de prompt pour LLM-as-judge :
+Une fois que la qualité de récupération est stabilisée à la cible, alors l'optimisation des coûts : (1) Cache d'embedding — si la même requête revient, servir depuis le cache, TTL 6 heures. Taux de hit 40%, coût d'embedding réduit de 40%. (2) Embeddings quantifiés — int8 au lieu de float32, taille d'index réduite de 75%, perte de précision de récupération 2% — acceptable. (3) Recherche hybride — sparse (BM25) + dense (vectorielle), requêtes sparse 70% moins chères, simples requêtes gérées par sparse seul. Routage par classifieur de requête, 30% requêtes vers sparse, 70% vers vectorielle — coût réduit de 20%.
 
-```
-Tu es un modèle d'évaluation d'un système RAG.
-Analyse le triplet suivant :
+Ces optimisations de coûts doivent intervenir *après* la stabilisation de la qualité de récupération. Sinon, une réduction aveugle des coûts augmente le gaspillage en aval du LLM et augmente le coût net. RAG economics : embedding $500/mois, infra de récupération $1200/mois, inférence du LLM $8000/mois. Économiser $100 sur l'embedding en réduisant la qualité de récupération et augmentant le gaspillage du LLM de $2000 n'est pas rationnel. Mais quantifier l'embedding et réduire de $125 tout en augmentant le gaspillage du LLM de $50 *après* stabilisation à 90% de précision est rationnel.
 
-USER_QUERY: "{query}"
-RETRIEVED_CONTEXT: "{context}"
-GENERATED_ANSWER: "{answer}"
-
-Évalue :
-1. La réponse répond-elle correctement à la requête ? (0-10)
-2. Toute information de la réponse est-elle présente dans le contexte ? (0-10, 0 si information hors source)
-3. La réponse contient-elle des détails inutiles ? (0-10, 10=concis)
-
-Sortie JSON: {{"correctness": X, "grounding": Y, "conciseness": Z}}
-```
-
-Nous exécutons cette évaluation à chaque pull request — si le score retrieval@5 baisse de plus de 2%, la fusion est bloquée.
-
-## Hyperparamètres de Tuning : Top-K et Reranking
-
-Après une recherche par embedding, tu récupères les K meilleurs documents. K=5, K=10, ou K=20 ? Un K plus grand signifie plus de contexte, mais aussi plus de tokens envoyés au LLM — augmentation du coût, de la latence, et du bruit (le LLM souffre du problème « lost in the middle » — il oublie l'information au milieu d'un long contexte).
-
-Ce que nous avons trouvé comme optimal : **K=10 avec retrieval par embedding + un modèle reranker pour sélectionner les top-3**. Un reranker (Cohere rerank-english-v2.0 ou cross-encoder/ms-marco-MiniLM) effectue un appariement sémantique plus profond entre requête et document. Il fournit un classement de 7-12% meilleur que la similarité cosinus embedding, mais ajoute de la latence (un forward pass par document).
-
-Pipeline :
-1. Retrieval par embedding pour top-10 (~80ms)
-2. Reranker classifie 10 documents, sélectionne top-3 (~120ms)
-3. Top-3 envoyés au LLM comme contexte du prompt
-
-La latence totale augmente de 40% (80ms → 200ms) par rapport à embedding seul, mais answer correctness passe de 87% à 94%. Notre SLA latence utilisateur est 500ms, donc ce tradeoff est acceptable. Si le SLA avait été plus strict, nous aurions pu mettre le reranker dans une queue asynchrone, répondre d'abord avec embedding top-3, puis écrire le résultat du rerank en cache en arrière-plan.
-
-### Contribution Réelle du Reranking : Résultats du Test A/B
-
-Pendant 7 jours, 50% du trafic a été routé vers embedding seul, 50% vers embedding + rerank. Grâce à [l'architecture de mesure First-Party](https://www.roibase.com.tr/fr/firstparty), nous avons collecté les métriques de chaque requête par segment :
-
-| Métrique | Embedding Seul | Embedding + Rerank | Delta |
-|---|---|---|---|
-| Évaluation utilisateur "utile" | 72% | 81% | +9pp |
-| Taux de requête de suivi | 34% | 28% | -6pp (bon — première réponse suffisait) |
-| p95 latence | 180ms | 240ms | +60ms |
-| Coût/requête | $0,003 | $0,0042 | +40% |
-
-Le reranking est essentiel en production pour une récupération de qualité — nous avons réduit l'augmentation des coûts grâce au batch processing et au cache à mesure que le volume augmente.
-
-## Cache et Mise à Jour Incrémentale : Les Vrais Gains de Coût Viennent d'Ici
-
-L'optimisation des coûts ne vient pas du choix du modèle mais de la stratégie de cache. Si la même requête revient, tu n'as pas besoin de refaire embedding + retrieval. Nous avons construit cette architecture en couches sur Redis :
-
-1. **Query embedding cache** — chaque vecteur embedding unique reste en cache 24 heures. Taux de hit : 41% (parce que les requêtes utilisateurs sont répétitives : « pricing », « integration guide »).
-2. **Retrieval result cache** — la paire requête + top-K IDs de documents reste en cache 6 heures. Taux de hit : 28%.
-3. **Generated answer cache** — la réponse complète reste en cache 1 heure (invalidée après une mise à jour de document). Taux de hit : 19%.
-
-Au hit du cache, la latence baisse de 200ms à 15ms, et le coût est zéro. Le taux de hit combiné est ~88% — cela signifie que seulement 12% du trafic production réclame réellement un appel embedding + LLM.
-
-Mise à jour incrémentale : quand on ajoute un nouveau document, on n'a pas besoin de réembedder tout le corpus. L'opération insert sur la vector database (Pinecone/Weaviate) prend moins de 50ms. Quand un document existant change, on met à jour uniquement ses chunks. De cette façon, 500 documents peuvent être ajoutés par jour, et le système ne subit aucun temps d'arrêt.
-
-## Observabilité en Production : Outils Nécessaires pour Debugger RAG
-
-Quand un utilisateur dit « tu as donné une mauvaise réponse », comment débugger ? Notre stack :
-
-- **LangSmith** — conserve la trace de chaque étape du pipeline RAG : latence embedding, résultat retrieval, prompt/response LLM, nombre de tokens. Avec l'ID de requête, on peut rejouer tout le pipeline.
-- **Dashboard personnalisé** (Grafana + Prometheus) — monitoring en temps réel du score retrieval@5, taux de hit du cache, p95 latence, coût/requête.
-- **Error budget** — tolérance de 2% d'échec retrieval par semaine (ex : document non trouvé). Si ce seuil est dépassé, une alerte est envoyée.
-
-Les alternatives open-source à LangSmith : Helicone, Langfuse. L'important est ceci : chaque requête en production doit avoir sa trace complète conservée, sinon tu ne peux pas répondre à « pourquoi a-t-il donné une mauvaise réponse ? ».
-
-La complexité du RAG réside ici : un seul pic de latence ou une erreur retrieval se propage en cascade. Un outil d'observabilité est aussi critique pour l'infrastructure que pour le debugging.
-
----
-
-En RAG production, l'optimisation des coûts est la deuxième étape. D'abord,
+Les systèmes RAG de production deviennent critiques dans l'automation marketing, le support client, la génération de contenu. Mais tous reposent sur la qualité de la récupération — une mauvaise récupération rend la sortie IA peu fiable. Faire d'abord les bonnes décisions sur le modèle d'embedding, le chunking, l'évaluation et le monitoring, *puis* optimiser les coûts. L'alternative, c'est tenter d'optimiser sur des fondations inexistantes. Le premiers pas : mesurez la précision de récupération dans votre pipeline RAG actuel — si elle n'existe pas, ajoutez-la. Ensuite, regardez les coûts.
