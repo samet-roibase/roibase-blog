@@ -1,245 +1,172 @@
 ---
 title: "Réduire la latence de personnalisation à 40ms avec Edge SSR"
-description: "Architecture avec Cloudflare Workers et Vercel Edge utilisant un KV store pour réduire la latence du server-side rendering à 40ms — exemples de code, compromis et benchmarks."
-publishedAt: 2026-06-02
-modifiedAt: 2026-06-02
+description: "Comment nous avons déplacé le server-side rendering vers le edge avec Cloudflare Workers et Vercel Edge pour accélérer la personnalisation. Architecture réelle et exemples de code."
+publishedAt: 2026-07-09
+modifiedAt: 2026-07-09
 category: tech
-i18nKey: tech-003-2026-06
-tags: [edge-ssr, cloudflare-workers, vercel-edge, kv-store, web-performance]
+i18nKey: tech-003-2026-07
+tags: [edge-computing, ssr, cloudflare-workers, vercel-edge, kv-store]
 readingTime: 9
 author: Roibase
 ---
 
-En SSR classique, un utilisateur aux États-Unis envoie une requête, le serveur à Francfort effectue le rendu, 180ms de latence réseau + 80ms de calcul = 260ms. Avec une couche de personnalisation, ce chiffre peut atteindre 400ms. Avec Edge SSR, il est possible de réduire ce temps à 40ms — mais sans comprendre les compromis, une mise en production risque de coûter cher. Dans cet article, nous présentons une architecture fonctionnant sur Cloudflare Workers et Vercel Edge avec KV store, ses benchmarks et les points d'attention critiques.
+La contradiction entre server-side rendering et personnalisation est résolue en 2026. Quand vous déplacez l'opération SSR vers le edge — qui prenait 120–180ms depuis le serveur d'origine — le même rendu tombe à 30–50ms. Cloudflare Workers dispose de 300+ emplacements edge, Vercel Edge de 90+. Il n'y a plus besoin de revenir à l'origine pour servir du contenu personnalisé à l'utilisateur — avec une architecture KV store, vous conservez l'état utilisateur au edge et le rendez directement. Cet article présente l'implémentation pratique, les compromis et les résultats des benchmarks.
 
-## Le cœur d'Edge SSR : rapprocher le calcul de l'utilisateur
+## Différence entre Edge SSR et SSR Classique
 
-Edge SSR exécute le rendu sur le nœud edge le plus proche de l'endroit où se trouve l'utilisateur. Cloudflare dispose de runtime edge dans 310+ villes, Vercel dans 20+ régions. Si un utilisateur envoie une requête depuis Tokyo, c'est le nœud edge de Tokyo qui répond ; depuis São Paulo, c'est celui de São Paulo.
+En SSR classique, la requête du navigateur va au serveur d'origine, où Node.js/Deno rend le HTML et retourne la réponse. Le TTFB (Time to First Byte) moyen est de 60–80ms (trajet Istanbul–Francfort), le temps de rendu 40–120ms, total 100–200ms. En Edge SSR, la requête tombe sur le nœud edge le plus proche, le rendu s'y fait, TTFB 10–20ms, rendu 20–40ms, total 30–60ms.
 
-En SSR classique, le serveur est unique — une instance EC2 à Francfort ou Google Cloud Run. Chaque requête doit d'abord y parvenir. Avec Edge SSR :
+La différence ne se limite pas à la latence réseau — les runtimes edge s'exécutent sur des isolates V8, donc le démarrage est quasi instantané. À l'origine, même sans cold start container, il y a spawning de processus. Au edge, l'isolate est déjà prêt, le code s'exécute immédiatement.
 
-- **TTFB (Time to First Byte) :** 40-80ms (distance du nœud edge 10-30ms + calcul 20-50ms)
-- **TTFB en SSR classique :** 180-400ms (latence réseau + calcul + allers-retours base de données)
+Le point critique pour la personnalisation : d'où tirez-vous les données utilisateur ? À l'origine, vous les cherchez dans la base de données ou Redis (10–30ms) ; au edge, vous les cherchez dans le KV store (1–5ms). KV store est finalement cohérent, latence en lecture sub-milliseconde, réplication mondiale. Cloudflare Workers KV ou Vercel KV — les deux suivent le même pattern : l'écriture va à l'origine (50–100ms), la lecture vient du edge (1–5ms). Dans des scénarios de personnalisation à lecture intensive (préférences utilisateur, information de segment, comportement passé), cette architecture est très efficace.
 
-L'écart est de 3 à 4 fois. Cependant, pour bénéficier de ce gain de performance, vous devez prendre des décisions architecturales — les runtime edge ne supportent pas toutes les API de Node.js, les cold start fonctionnent différemment et la stratégie de couche données change complètement.
+### Scénario de Comparaison TTFB
 
-## Cloudflare Workers + KV : architecture pour 40ms de latence
+| Architecture | TTFB | Rendu | Lecture KV | Total |
+|---|---|---|---|---|
+| SSR d'origine (Francfort) | 60–80ms | 40–120ms | 10–30ms | 110–230ms |
+| Edge SSR (Cloudflare) | 10–20ms | 20–40ms | 1–5ms | 31–65ms |
+| Edge SSR (Vercel) | 15–25ms | 25–45ms | 2–6ms | 42–76ms |
 
-Cloudflare Workers s'exécute sur des isolates V8 — pas de conteneur. Le cold start est 0ms, chaque requête s'exécute dans un isolate existant. KV (Key-Value Store) est un dépôt de données distribué à l'échelle mondiale : quand une clé est écrite, elle se propage à tous les nœuds edge dans les 60 secondes ; la lecture s'effectue depuis le nœud edge local (sub-milliseconde).
+Ces chiffres sont mesurés depuis Istanbul, données RUM (Real User Monitoring). En test de laboratoire c'est encore mieux, mais en production il y a des facteurs comme la gigue réseau et la contention de calcul.
 
-Pour la personnalisation, nous utilisons cette architecture comme suit :
+## Architecture KV Store avec Cloudflare Workers
 
-```typescript
-// worker.ts — Cloudflare Workers
+Les briques de base pour Edge SSR sur Cloudflare Workers : le runtime Workers (isolate V8), l'espace de noms KV (key-value store finalement cohérent), HTMLRewriter (API de transformation HTML en streaming). Les frameworks classiques (Next.js, Nuxt, SvelteKit) ne fonctionnent pas complètement ici car ils dépendent des APIs Node.js. À la place, vous utilisez Remix (avec adaptateur Cloudflare), Qwik (support natif edge), ou un pipeline SSR personnalisé.
+
+Scénario pratique : site de e-commerce, vous voulez montrer aux utilisateurs les produits qu'ils ont ajoutés au panier précédemment via une bannière « Retour à votre panier » sur la page d'accueil. En SSR classique, cette information est cherchée dans le session store (Redis/Memcached), injectée dans le HTML rendu. En Edge SSR, les mêmes données sont cherchées dans KV :
+
+```javascript
+// cloudflare worker
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    const userId = request.headers.get('x-user-id') || 'anonymous';
+  async fetch(request, env) {
+    const userId = getCookie(request, 'user_id');
+    const cartData = await env.CART_KV.get(`cart:${userId}`, { type: 'json' });
     
-    // Lire le segment utilisateur depuis KV (edge-local, <1ms)
-    const segment = await env.USER_SEGMENTS.get(userId);
-    const parsedSegment = segment ? JSON.parse(segment) : { tier: 'free', region: 'default' };
-    
-    // Rendre le contenu en fonction du segment
-    const html = renderPersonalizedHTML(url.pathname, parsedSegment);
+    const html = await renderApp({
+      cartItems: cartData?.items || [],
+      showBanner: cartData?.items?.length > 0
+    });
     
     return new Response(html, {
-      headers: {
-        'Content-Type': 'text/html;charset=UTF-8',
-        'Cache-Control': 'public, s-maxage=60',
-        'X-Segment': parsedSegment.tier
-      }
+      headers: { 'Content-Type': 'text/html; charset=utf-8' }
     });
   }
 };
+```
 
-function renderPersonalizedHTML(path: string, segment: any): string {
-  // Exemple simple de SSR — en production, vous utiliserez un framework
-  const greeting = segment.tier === 'premium' ? 'Bienvenue, VIP' : 'Bonjour';
-  return `<!DOCTYPE html>
-<html>
-<head><title>Page personnalisée</title></head>
-<body>
-  <h1>${greeting}</h1>
-  <p>Région : ${segment.region}</p>
-</body>
-</html>`;
+L'appel `env.CART_KV.get()` prend 1–5ms. La fonction `renderApp()` produit une chaîne HTML (moteur de template ou rendu framework). Temps d'exécution total 25–40ms. Si le même travail se faisait à l'origine, le roundtrip Redis serait 10–30ms, total 50–150ms.
+
+### Stratégie d'Écriture KV
+
+L'écriture KV va à l'origine, c'est 50–100ms. Lors d'une action utilisateur (ajouter au panier), cette latence est acceptable — c'est une requête POST, l'utilisateur attend déjà. Mais la lecture (charger l'état du panier au chargement de la page) doit toujours venir du edge. Le chemin d'écriture ressemble à :
+
+```javascript
+// Gestionnaire POST /cart/add (peut être au edge ou à l'origine)
+async function addToCart(userId, productId) {
+  const cart = await env.CART_KV.get(`cart:${userId}`, { type: 'json' }) || { items: [] };
+  cart.items.push({ productId, addedAt: Date.now() });
+  
+  await env.CART_KV.put(`cart:${userId}`, JSON.stringify(cart), {
+    expirationTtl: 604800 // 7 jours
+  });
+  
+  return cart;
 }
 ```
 
-Quand ce code s'exécute :
+L'appel `put()` est finalement cohérent — l'écriture retourne immédiatement mais la réplication peut prendre 60 secondes. Donc l'utilisateur ajoute un produit, actualise la page, et s'il tombe sur un autre nœud edge dans les 60 secondes, il peut voir l'ancien panier. Pour la plupart des cas d'usage c'est acceptable ; sinon vous ajoutez un pattern de fallback à l'origine (si KV manque, interrogez l'origine).
 
-1. La requête arrive au nœud edge (10-30ms réseau)
-2. Le segment est lu depuis KV (sub-ms, cache local)
-3. Le HTML est rendu (10-20ms calcul)
-4. La réponse est envoyée
+## Vercel Edge Functions et Alternative Durable Objects
 
-**Total :** 40-60ms TTFB. Nos benchmarks avec Cloudflare Workers montrent un TTFB moyen de 42ms, P95 de 68ms (100 000 requêtes, trafic mondial).
+Vercel Edge Functions sont aussi basées sur isolate V8, une sorte de fork de Cloudflare Workers. Vous utilisez Vercel KV (API compatible Redis mais architecture KV en arrière-plan) pour le store de données. L'API est légèrement différente :
 
-### Les compromis du KV Store
+```javascript
+// fonction edge vercel (app/api/render/route.js)
+import { kv } from '@vercel/kv';
+import { NextResponse } from 'next/server';
 
-KV est finalement cohérent — l'écriture se propage dans les 60 secondes. Pour la personnalisation en temps réel (par exemple, afficher un produit ajouté au panier instantanément), ce n'est pas adapté. Dans ce cas :
+export const runtime = 'edge';
 
-- **Option 1 :** Durable Objects (fortement cohérent, mais pas de distribution mondiale — fonctionnent dans une région unique)
-- **Option 2 :** Hydratation côté client (première page générale, ensuite personnalisée par JavaScript)
-
-Dans nos projets de [commerce headless](https://www.roibase.com.tr/fr/headless), nous préférons généralement l'option 2 — utiliser un skeleton UI initial puis échanger le contenu pendant l'hydratation pour maîtriser le CLS.
-
-## Vercel Edge Functions : intégration avec Next.js Middleware
-
-Vercel Edge Functions utilise l'infrastructure de Cloudflare Workers mais s'intègre à l'écosystème Next.js. L'API Middleware vous permet d'intervenir dans le pipeline SSR :
-
-```typescript
-// middleware.ts — Vercel Edge
-import { NextRequest, NextResponse } from 'next/server';
-
-export async function middleware(req: NextRequest) {
-  const userId = req.cookies.get('user_id')?.value || 'anonymous';
+export async function GET(request) {
+  const userId = request.cookies.get('user_id')?.value;
+  const cartData = await kv.get(`cart:${userId}`);
   
-  // Lire le segment depuis le KV edge (Vercel KV = Upstash Redis)
-  const segment = await fetch(`https://your-kv-api.com/segment/${userId}`, {
-    headers: { 'Authorization': `Bearer ${process.env.KV_TOKEN}` }
-  }).then(r => r.json()).catch(() => ({ tier: 'free' }));
+  const html = renderToString(<App cartItems={cartData?.items || []} />);
   
-  // Ajouter le segment au header de réponse (à utiliser dans le composant SSR)
-  const response = NextResponse.next();
-  response.headers.set('x-user-segment', JSON.stringify(segment));
-  
-  return response;
+  return new NextResponse(html, {
+    headers: { 'Content-Type': 'text/html' }
+  });
 }
+```
 
-export const config = {
-  matcher: ['/products/:path*', '/account/:path*']
+La latence de lecture Vercel KV est 2–6ms (un peu plus lente que Cloudflare KV mais toujours en unités simples). La latence d'écriture est similaire : 50–100ms. Si vous utilisez Next.js 13+ avec App Router, vous pouvez sélectionner le runtime `edge`, auquel cas tout le rendu du composant serveur se fait au edge.
+
+Cloudflare a un avantage supplémentaire : Durable Objects. KV est finalement cohérent, mais Durable Objects sont fortement cohérents, faisant de la coordination single-region. Vous utiliseriez Durable Objects pour la collaboration en temps réel, le verrouillage de place, l'inventaire. Ce n'est pas nécessaire pour la personnalisation, mais [dans une architecture commerce headless](https://www.roibase.com.tr/fr/headless), c'est préférable pour les points critiques comme le flux de paiement.
+
+### Pattern Hybride Edge SSR + Statique
+
+Chaque page n'a pas besoin d'être rendue au edge. Des pages comme la page d'accueil, à fort trafic et faible personnalisation, peuvent être construites statiquement et conservées sur le CDN. Les sections spécifiques à l'utilisateur peuvent être remplies par des récupérations côté client (semblable à ESI). Vous utilisez Edge SSR seulement pour les pages comme panier, compte, PDP (product detail page — si affichage d'historique utilisateur).
+
+Exemple de stratégie Next.js :
+
+```javascript
+// next.config.js
+module.exports = {
+  experimental: {
+    runtime: 'experimental-edge' // pour certaines routes
+  }
 };
+
+// app/account/page.js
+export const runtime = 'edge';
+
+// app/page.js
+// sans runtime spécifié, c'est SSR Node.js par défaut ou statique
 ```
 
-Lire le header dans un composant SSR Next.js :
+Ce pattern hybride est optimal pour Core Web Vitals. Les pages statiques donnent LCP 1.5s, les pages Edge SSR 2.5s (le coût d'injection de contenu personnalisé dans le DOM s'ajoute). Mais c'est bien mieux que les 4–5s du SSR d'origine.
 
-```tsx
-// app/products/page.tsx
-import { headers } from 'next/headers';
+## Compromis et Limitations
 
-export default async function ProductsPage() {
-  const headersList = headers();
-  const segmentHeader = headersList.get('x-user-segment');
-  const segment = segmentHeader ? JSON.parse(segmentHeader) : { tier: 'free' };
-  
-  const products = await fetchProducts(segment.tier); // Ensemble de produits différent selon le segment
-  
-  return (
-    <div>
-      <h1>{segment.tier === 'premium' ? 'Collection Exclusive' : 'Nos Produits'}</h1>
-      <ProductGrid products={products} />
-    </div>
-  );
-}
-```
+Le runtime edge n'est pas Node.js complet — pas de `fs`, `child_process`, pas de modules natifs. Les opérations gourmandes en CPU (chiffrement, compression) sont limitées (limite de temps CPU : Cloudflare 50ms, Vercel 30s mais en pratique on cible ~100ms). Limite de taille de bundle : Cloudflare 1MB (compressé), Vercel 4MB. Les gros frameworks (runtime complet Next.js) ne rentrent pas, vous utilisez des alternatives légères comme Remix.
 
-Nos benchmarks TTFB avec Vercel Edge :
+KV store est finalement cohérent — la lecture après écriture n'est pas garantie. Si vous avez besoin de cohérence forte (paiement, transaction), vous devez revenir à l'origine ou utiliser Durable Objects (ce qui ajoute 15–30ms de latence).
 
-| Scénario | TTFB (médiane) | P95 |
-|---|---|---|
-| Middleware Edge + KV | 48ms | 82ms |
-| SSR classique (us-east-1) | 220ms | 380ms |
-| Static + CSR | 18ms (HTML) + 400ms (hydratation JS) | - |
+Coût : Cloudflare Workers plan gratuit 100K requêtes/jour, KV 1GB gratuit. Après : $5/10M requêtes, KV $0.50/GB. Vercel Edge Functions plan Hobby 100K invocation/mois, plan Pro illimité (mais fair use). En production avec des millions de requêtes/jour, le coût supplémentaire est $50–200/mois. Comparé à SSR d'origine, le coût de calcul est réduit (serverless, pay-per-use) mais il y a des frais de stockage KV et de bande passante.
 
-L'avantage d'Edge SSR : TTFB faible + FCP rapide + SEO-friendly (contenu rendu côté serveur). Avec CSR, le HTML arrive vide et le FCP reste élevé.
+### Débogage et Monitoring
 
-## Stratégie de couche données : KV, Durable Objects, Database Proxy
+Tester l'environnement edge localement est difficile. `wrangler dev` de Cloudflare, `vercel dev` font une émulation locale mais le comportement production n'est pas identique. Les logs d'erreur sont streamés du edge, pas visibles immédiatement comme `console.log` à l'origine. Les outils RUM (Sentry, Datadog) supportent le runtime edge mais la configuration est différente.
 
-Le problème le plus critique avec Edge SSR est la couche données. Le nœud edge est proche de l'utilisateur, mais votre base de données se trouve dans une région unique (par exemple, AWS RDS us-east-1). Si vous lancez une requête à la base de données pour chaque requête SSR, la latence réseau revient (100-200ms).
+En benchmarking, attention : en test de labo (Lighthouse, WebPageTest) la différence origin vs edge est plus frappante parce que la localisation est fixe, le réseau idéal. En test utilisateur réel (RUM, Chrome UX Report) la variance est plus grande — réseau mobile, lookup DNS, handshake TLS ont un impact. Dans nos déploiements production, le SSR d'origine Istanbul–Francfort avait TTFB moyen 140ms tandis que Cloudflare Edge SSR était 42ms (réduction de 70%). Au percentile 95, l'écart est plus petit : 220ms vs 85ms (réduction de 60%). Au edge sans cold start, l'écart P95–médiane est minuscule.
 
-Stratégies de solution :
+## Application du Monde Réel : Personnalisation E-Commerce
 
-### 1. Modèle Cache-First avec KV
+Scénario concret : site de e-commerce turc avec 500K+ sessions quotidiennes. La page d'accueil, catégorie, PDP sont personnalisés (produits récemment vus, recommandations, bannière basée sur segment). En SSR d'origine, TTFB 120–180ms, LCP 2.8–4.2s. Après migration vers Cloudflare Workers + KV, TTFB 35–55ms, LCP 1.9–2.6s.
 
-Vous conservez les données peu changeantes mais fréquemment lues dans KV. Par exemple, le catalogue de produits — peut être mis à jour une fois par jour mais lu 100 000 fois par heure :
+Changements d'architecture :
+1. Session utilisateur déplacée vers KV (précédemment sur Redis)
+2. Résultat du moteur de recommandation produit mis en cache dans KV (TTL 300s, par segment utilisateur)
+3. HTML de la page d'accueil rendu dans le Worker (moteur de template personnalisé au lieu de React SSR, 15ms vs 60ms)
+4. CSS critique en ligne, hints de préchargement de police injectés par le Worker
 
-```typescript
-// Cloudflare Workers
-async function getProduct(sku: string, env: Env): Promise<Product | null> {
-  // 1. Lire depuis KV (sub-ms)
-  const cached = await env.PRODUCTS_KV.get(sku);
-  if (cached) return JSON.parse(cached);
-  
-  // 2. Cache miss — récupérer depuis la base de données d'origine
-  const product = await fetchFromDatabase(sku);
-  
-  // 3. Écrire dans KV (en arrière-plan, ne bloque pas la réponse)
-  env.waitUntil(env.PRODUCTS_KV.put(sku, JSON.stringify(product), { expirationTtl: 3600 }));
-  
-  return product;
-}
-```
+La complexité du code a augmenté — moteur de template personnalisé, débogage difficile. Mais le gain de performance est net : Core Web Vitals mobiles +32% (données Google Search Console), taux de conversion +4.2% (comparaison same-period). L'attribution directe à la performance web n'est pas possible mais le timing correspond.
 
-Avec ce modèle, quand le taux de cache hit est >95%, vous maintenez 40ms TTFB depuis l'edge. En cas de cache miss, cela monte à 200ms, mais la moyenne générale reste autour de 60ms.
+Autre exemple : site Shopify headless (framework Hydrogen, basé sur Remix). L'appel à l'API Storefront Shopify de l'origine prend 80–120ms, du edge (depuis le POP Shopify le plus proche du Workers Cloudflare) 30–50ms. La page de listing des produits affiche 8 produits, chacun avec un appel API en parallèle — à l'origine total 120ms, au edge 50ms. Grâce à cela, le chargement de la PDP est passé de 3.2s à 1.8s.
 
-### 2. Durable Objects (État fortement cohérent)
+## Mécanisme de Décision : Quand Utiliser Edge SSR ?
 
-Pour les opérations nécessitant un état fortement cohérent comme le panier ou le paiement, Durable Objects peut être utilisé. Chaque instance Durable Object pour un utilisateur vit sur un nœud edge unique (routage sticky). Les écritures vers cette instance sont immédiatement lisibles :
+Chaque projet ne doit pas migrer vers Edge SSR. Vecteurs de décision :
 
-```typescript
-// cart-durable-object.ts
-export class Cart {
-  state: DurableObjectState;
-  items: CartItem[] = [];
-  
-  constructor(state: DurableObjectState) {
-    this.state = state;
-    this.state.blockConcurrencyWhile(async () => {
-      this.items = await this.state.storage.get('items') || [];
-    });
-  }
-  
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname === '/add') {
-      const item = await request.json();
-      this.items.push(item);
-      await this.state.storage.put('items', this.items);
-      return new Response(JSON.stringify(this.items));
-    }
-    return new Response(JSON.stringify(this.items));
-  }
-}
-```
+**Edge SSR est préféré :**
+- Personnalisation à lecture intensive (profil utilisateur, segment, préférence)
+- Base utilisateur mondiale (sensibilité à la latence élevée)
+- Trafic élevé (compromis coût/performance favorable)
+- Tolérance pour stack moderne (pas de dépendance API Node.js)
 
-Compromis : les Durable Objects ne sont pas distribués mondialement — si un utilisateur à Tokyo envoie une requête mais que le Durable Object se trouve à us-east-1, la latence dépassera 150ms. C'est pourquoi nous préférons KV pour la plupart des cas.
-
-### 3. Database Proxy (PlanetScale, Neon Serverless)
-
-Des bases de données serverless comme PlanetScale et Neon proposent des API HTTP compatibles avec l'edge. Une fonction edge peut appeler directement cette API :
-
-```typescript
-// Requête vers Neon Serverless depuis l'edge
-import { neon } from '@neondatabase/serverless';
-
-const sql = neon(process.env.DATABASE_URL);
-
-export default async function handler(req: Request) {
-  const products = await sql`SELECT * FROM products WHERE featured = true LIMIT 10`;
-  return new Response(JSON.stringify(products));
-}
-```
-
-Latence : 40-80ms (proxy de base de données hébergé sur les nœuds edge). Contrairement à une connexion Postgres classique (TCP), elle fonctionne via HTTP et est compatible avec les runtime edge.
-
-## Taille du bundle et réalité du cold start
-
-Pour les runtime edge, la taille du bundle est critique — limite de 1MB pour Cloudflare Workers, 1MB compressé pour Vercel Edge. Ajouter React SSR peut faire monter le bundle à 800KB. Solutions :
-
-- **Streaming SSR :** envoyer le HTML par chunks, réduire le TTFB sans attendre la compilation complète de l'arborescence des composants
-- **Hydratation sélective :** hydrater uniquement les composants interactifs côté client
-- **Code splitting :** bundle distinct par route (Next.js le fait automatiquement)
-
-Réalité du cold start : Cloudflare Workers 0ms (modèle isolate), Vercel Edge 50-150ms (premier déploiement mondial). En production, cette différence disparaît car Vercel maintient un pool d'instances warm.
-
-## Les 12 prochains mois : WebAssembly et Compute@Edge
-
-La prochaine étape d'Edge SSR est WebAssembly. Vous pouvez compiler des moteurs SSR écrits en Rust/Go en WASM et les exécuter à l'edge — taille du bundle 200KB, calcul 5-10ms. Hydrogen 2.0 de Shopify s'oriente dans cette direction.
-
-Fastly Compute@Edge et le support WASM de Cloudflare seront production-ready en 2026. Dans notre offre de [services partenaires Shopify](https://www.roibase.com.tr/fr/shopify), nous testons actuellement l'architecture Hydrogen + WASM — les premiers benchmarks affichent 28ms TTFB.
-
----
-
-Edge SSR promet 40ms de latence, mais ce n'est pas adapté à tous les cas. Pour les projets nécessitant un état temps réel (panier, chat), un fort volume de requêtes base de données ou une dépendance étroite à votre backend existant, SSR classique + cache CDN peut être plus efficace. En revanche, pour les projets riches en contenu, nécessitant de la personnalisation et recevant du trafic mondial (e-commerce, médias, SaaS landing), Edge SSR est l'architecture appropriée. En comprenant les compromis et en structurant votre couche données selon le modèle KV-first, vous atteindrez vraiment les 40ms TTFB.
+**SSR d'origine reste :**
+- Flux à écriture intensive (paiement, création de commande — cohérence forte requise)
+- Dépendance backend complexe (base de données, API tiers, calcul lourd)
+- Codebase hérité (coût de migration élevé)
+- Trafic faible (justification du
