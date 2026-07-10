@@ -1,209 +1,213 @@
 ---
 title: "Privacy-First Analytics: Plausible + Sunucu Tarafı Aggregation"
-description: "Cookieless tracking, KVKK/GDPR uyum, GA4 ile karşılaştırma. Server-side aggregation mimarisiyle gizlilik-odaklı ölçüm altyapısı nasıl kurulur?"
-publishedAt: 2026-06-23
-modifiedAt: 2026-06-23
+description: "Cookieless ölçüm mimarisi: Plausible, sunucu tarafı aggregation ve KVKK/GDPR uyumlu tracking. GA4 karşılaştırması ve first-party veri entegrasyonu."
+publishedAt: 2026-07-10
+modifiedAt: 2026-07-10
 category: data
-i18nKey: data-006-2026-06
-tags: [privacy-first, plausible, server-side-tracking, gdpr, cookieless]
+i18nKey: data-006-2026-07
+tags: [privacy-first-analytics, cookieless-tracking, plausible, kvkk-gdpr, sunucu-tarafi-olcum]
 readingTime: 8
 author: Roibase
 ---
 
-Google Analytics 4'ün varsayılan kurulumunda browser fingerprinting, client-side cookie set etme ve IP loglamadan vazgeçmediği 2026'da kesinleşti. AB Veri Koruma Kurulu'nun Ocak 2026 rehberi GA4'ü "explicit consent olmadan kullanılamaz" kategorisine aldı. Türkiye'de KVKK'nın 2025 sonunda yürürlüğe giren 12. madde değişikliği de aynı yönde: çerez tabanlı analytics için önceden onay zorunlu. Performans pazarlaması agresif attribution stack'ine dayanırken, site analytics katmanını gizlilik-odaklı mimariye taşımak artık operasyonel zorunluluk. Plausible + sunucu tarafı aggregation bu geçişte iki önemli soruyu çözüyor: cookieless nasıl ölçülür, server-side pipeline nasıl compliance-safe kurulur.
+Google Analytics 4'ün consent mode v2 zorunluluğu ve KVKK'nın 2024 ceza rekorları pazarlama ölçümünü yeniden kurguluyor. Avrupa'da web trafiğinin %42'si tracking'i engelliyor (Ghostery 2025 verisi), Türkiye'de bu oran %28'de. Client-side cookie'ye dayalı sistemler artık trafiğin üçte birini kaybediyor. Privacy-first analytics bu noktada teknik ihtiyaç, compliance strateji ve kullanıcı deneyimi arasında denge kuruyor. Plausible gibi cookieless çözümler ile sunucu tarafı aggregation mimarisi bu dengeyi somut veri noktalarında sağlıyor.
 
-## Plausible'ın Mimari Farkı: Event Stream Değil Aggregated Counter
+## Cookieless Analytics'in Mimari Mantığı
 
-Plausible browser tarafında 1 KB altı JavaScript snippet çalıştırır, cookie yazmaz, localStorage kullanmaz, IP adresini loglamaz. Bir sayfa görüntüleme gerçekleştiğinde `POST /api/event` çağrısı yapar. Backend Elixir servisine düşen raw event, PostgreSQL'de **anında aggregate edilir** — her event unique pageview counter'ında increment olur, oturum ID yerine daily salt ile hash'lenmiş visitor signature tutulur (IP + User-Agent → HMAC-SHA256 → 24 saat TTL). Visitor tanıma mantığı deterministik ama reversible değil: aynı gün aynı cihazdan gelen request'leri aynı visitor hash'ine eşler, ertesi gün salt değiştiğinde link kopar. Bu yöntem KVKK'nın "tanımlanabilir gerçek kişi" tanımının dışında kalır — hash'i bilseniz bile IP'ye dönemezsiniz.
+Privacy-first analytics, client-side identifier'a (cookie, device ID) bağımlı olmadan kullanıcı davranışını aggregate ediyor. Plausible, LocalStorage veya cookie yazmadan page view, referrer, UTM parametresi ve event tracking yapıyor. Her hit sunucuya POST request'le gidiyor, sunucu anonymous hash üretiyor (IP + User-Agent + site domain + rotating salt), bu hash 24 saatlik sliding window'da unique visitor sayısını hesaplıyor. Hash persistent değil — her gün sıfırlanıyor, yeniden identification mümkün değil.
 
-GA4 ile fark: GA4 client-side `_ga` cookie'siyle 2 yıl persistent client ID tutar, her hit'te event stream'e yazar, BigQuery export'unda `user_pseudo_id` = cookie değeri olarak görünür. Consent Mode v2 aktifse redacted data gönderir ama cookie yine yazılır. Plausible'da server'a gelen event'te bile IP'nin ham hali PostgreSQL'e düşmez — Elixir process içinde hash'lenir, raw IP memory'den atılır. Bu mimari GDPR'ın "purpose limitation" prensibine uyar: toplanan veri sadece site trafiğini saymak için kullanılabilir, retargeting veya cross-site tracking için değil.
+GA4'te user identifier cookie'ye yazılıyor (`_ga`, 2 yıl yaşam süresi), cross-domain tracking için `_ga` parametresi URL'e ekleniyor. KVKK ve GDPR kapsamında bu açık consent gerektiriyor — consent banner'ı reddettiğinde tracking durur. Plausible'da consent banner'a gerek yok çünkü kişisel veri işlenmiyor. KVKK Madde 5(2)(a) kapsamında "anonim hale getirilmiş veri" sayılıyor. Türkiye Kişisel Verileri Koruma Kurumu 2025/34 sayılı kararında "IP + UA hash'inin 24 saatte silinmesi" anonim kabul edildi.
 
-### Aggregation Counter Yapısı
+Bu mimari tradeoff getiriyor: funnel analysis, cohort retention, cross-device journey mapping — bunlar user-level identifier olmadan çalışmıyor. Plausible goal completion ve source/medium breakdown veriyor ama segment bazlı LTV veya session replay vermiyor. Bu noktada aggregation katmanı devreye giriyor.
 
-Plausible dashboard'da görünen metrikler (pageview, visitor, bounce rate, session duration) PostgreSQL'de `events` tablosunda saklanmaz. Tablo yapısı:
+## Sunucu Tarafı Aggregation Katmanı
+
+Cookieless tracking'in eksiklerini kapatmak için sunucu tarafında event stream'ini pre-aggregate etmek gerekiyor. Mimari şöyle işliyor: Plausible raw event'i kendi API'sine gönderirken aynı payload'u webhook'la kendi backend'ine de POST ediyorsun. Backend event'i BigQuery'ye yazıyor, dbt modelleri üzerinden günlük aggregation job'ları koşuyor.
+
+Örnek dbt model (event bazlı günlük özet):
 
 ```sql
-CREATE TABLE stats (
-  site_id INT,
-  date DATE,
-  metric VARCHAR(50),   -- 'pageviews', 'visitors', 'bounce_rate'
-  dimension VARCHAR(50),-- 'page', 'source', 'device'
-  value BIGINT,
-  PRIMARY KEY (site_id, date, metric, dimension)
-);
+WITH daily_events AS (
+  SELECT
+    DATE(timestamp) AS event_date,
+    page_path,
+    referrer_source,
+    utm_campaign,
+    COUNT(*) AS page_views,
+    COUNT(DISTINCT session_hash) AS sessions,
+    SUM(CASE WHEN event_name = 'goal_completed' THEN 1 ELSE 0 END) AS conversions
+  FROM {{ ref('plausible_raw_events') }}
+  WHERE DATE(timestamp) = CURRENT_DATE() - 1
+  GROUP BY 1, 2, 3, 4
+)
+SELECT
+  event_date,
+  page_path,
+  referrer_source,
+  utm_campaign,
+  page_views,
+  sessions,
+  conversions,
+  SAFE_DIVIDE(conversions, sessions) AS conversion_rate
+FROM daily_events
 ```
 
-Her incoming event'te `INCREMENT` query'si çalışır: eğer o gün, o sayfa, o metric kombinasyonu varsa `+1`, yoksa `INSERT`. Real-time dashboard bu counter'ları okur. Raw event stream saklanmadığı için GDPR'ın "data minimization" maddesine tam uyar — tuttuğunuz veri, yaptığınız işe orantılı.
+Bu model her sabah koşuyor, dünkü trafiği source/medium/campaign bazında özetliyor. Session hash client-side üretilmiş rotating identifier — IP + UA + timestamp sliding window'dan türetiliyor, 1 saatte expire oluyor. Bu hash'i BigQuery'de JOIN yaparak multi-page session'ları birleştiriyorsun ama user'ı persistent identifier'a bağlamıyorsun.
 
-## Server-Side Proxy: Client-to-Plausible Trafiğini Kendi Domain'inizden Geçirmek
+GA4'ün funnel report'una benzer analiz için event sequence'i aggregation tablosunda tutuyorsun:
 
-Plausible'ın SaaS endpoint'i `plausible.io/api/event`. Tarayıcı bu URL'e POST yapar. AdBlocker'lar `plausible.io`'yu blocklist'e alırsa event düşer. Çözüm: Plausible event'ini kendi domain'inizden geçen reverse proxy üzerinden göndermek. Nginx config:
+```sql
+SELECT
+  session_hash,
+  ARRAY_AGG(page_path ORDER BY timestamp) AS page_sequence,
+  MIN(timestamp) AS session_start,
+  MAX(timestamp) AS session_end
+FROM {{ ref('plausible_raw_events') }}
+WHERE DATE(timestamp) = CURRENT_DATE() - 1
+GROUP BY session_hash
+```
 
-```nginx
-location /stats/api/event {
-  proxy_pass https://plausible.io/api/event;
-  proxy_set_header Host plausible.io;
-  proxy_set_header X-Forwarded-For $remote_addr;
-  proxy_set_header X-Forwarded-Proto $scheme;
-  
-  # IP anonymization — son oktet'i maskele
-  set $anonymized_ip $remote_addr;
-  if ($remote_addr ~* ^(\d+\.\d+\.\d+)\.\d+$) {
-    set $anonymized_ip $1.0;
-  }
-  proxy_set_header X-Forwarded-For $anonymized_ip;
+Session bitince hash expire oluyor, ertesi gün aynı kullanıcı yeni hash alıyor. Bu yöntem KVKK'ya uygun çünkü "kalıcı tanımlayıcı" yok.
+
+### Server-Side GTM Entegrasyonu
+
+Plausible'ı [first-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) içine entegre etmek için server-side Google Tag Manager (sGTM) üzerinden event routing yapıyorsun. Client-side Plausible script'i event'i doğrudan Plausible sunucusuna gönderirken aynı event'i sGTM container'ına da POST ediyorsun. sGTM tarafında custom tag bu event'i Conversion API'ye, CDP'ye ve BigQuery'ye paralel iletiyor.
+
+sGTM tag config örneği (Plausible event → BigQuery sink):
+
+```javascript
+const eventData = getAllEventData();
+const BigQuery = require('BigQuery');
+
+BigQuery.insert({
+  projectId: 'roibase-analytics',
+  datasetId: 'plausible_events',
+  tableId: 'raw_events',
+  rows: [{
+    timestamp: eventData.timestamp,
+    page_path: eventData.page_url,
+    referrer: eventData.referrer,
+    utm_source: eventData.utm_source,
+    session_hash: eventData.session_id,
+    event_name: eventData.event_name
+  }]
+});
+```
+
+Bu kurulum 3 avantaj sağlıyor: (1) Plausible'ın dashboard'u real-time çalışıyor, (2) BigQuery'de historical veri birikiyor, (3) CDP (Segment, RudderStack) event stream'ini alıp user profile'a eklemiyor çünkü persistent ID yok — sadece aggregate metric'leri kullanıyor.
+
+## GA4 Karşılaştırması: Attribution ve Compliance Tradeoff'ları
+
+GA4 ile Plausible + sGTM mimarisini attribution kabiliyeti, compliance yükü ve operasyonel maliyet açısından karşılaştırmak gerekiyor. Aşağıdaki tablo somut farkları gösteriyor:
+
+| Metrik | GA4 | Plausible + sGTM |
+|--------|-----|------------------|
+| **User tracking süresi** | 2 yıl (cookie) | 24 saat (hash) |
+| **Cross-device attribution** | Evet (Google Signals) | Hayır |
+| **Consent banner gerekliliği** | Evet (KVKK/GDPR) | Hayır (anonim) |
+| **Data residency kontrolü** | ABD (GCP) | Kendi sunucun |
+| **Session stitching** | Otomatik (client ID) | Manuel (event sequence) |
+| **Funnel analysis derinliği** | User-level | Session-level |
+| **Operasyonel setup süresi** | 2 saat | 8 saat (backend + dbt) |
+
+GA4'ün güçlü yanı user-level attribution: cross-device journey mapping, audience segmentation, remarketing list'i otomatik oluşuyor. Ancak bu güç compliance maliyetiyle geliyor. KVKK Madde 12 kapsamında kullanıcıya "veri işleme amaçları" açıklanmalı, Madde 13'e göre "veri sahibinin hakları" bildirilmeli. Consent banner'ı %65 oranında trafik kaybına yol açıyor (CookieBot 2025 benchmark'ı). Plausible'da bu maliyet yok ama user-level LTV hesaplayamıyorsun — segment bazlı cohort analysis yapman gerekiyor.
+
+Attribution model farkı da kritik: GA4 data-driven attribution kullanıyor (makine öğrenmesiyle touchpoint'lere ağırlık veriyor), Plausible sadece last-click ve first-click seçeneği sunuyor. Multi-touch attribution için BigQuery'deki event sequence'i kendi modelinle işlemen gerekiyor. Örnek MMM (Marketing Mix Modeling) yaklaşımı: günlük aggregate veriyi (spend, impressions, sessions, conversions) regression model'e sok, her kanalın incremental katkısını hesapla. Bu yöntem user-level veri olmadan çalışıyor.
+
+## Operasyonel Kurulum: Plausible Self-Hosted + dbt Pipeline
+
+Privacy-first analytics'i production'a taşımak için Plausible self-hosted instance'ını kendi sunucuna deploy etmen gerekiyor. Plausible Cloud (plausible.io) veriyi kendi sunucusunda tutuyor — data residency kontrolü istiyorsan self-hosted tek seçenek. Docker Compose ile kurulum 30 dakikada bitiyor:
+
+```yaml
+version: "3.3"
+services:
+  plausible:
+    image: plausible/analytics:latest
+    command: sh -c "sleep 10 && /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"
+    depends_on:
+      - plausible_db
+      - plausible_events_db
+    ports:
+      - "8000:8000"
+    env_file:
+      - plausible-conf.env
+```
+
+`plausible-conf.env` içinde `DISABLE_AUTH=false` ve `SECRET_KEY_BASE` tanımla. Instance ayağa kalktıktan sonra BigQuery sink için webhook kur. Plausible'ın built-in webhook'u yok — custom middleware yazman gerekiyor. Node.js Express endpoint örneği:
+
+```javascript
+app.post('/plausible-webhook', async (req, res) => {
+  const event = req.body;
+  await bigquery.dataset('plausible_events').table('raw_events').insert([{
+    timestamp: new Date(event.timestamp).toISOString(),
+    page_path: event.url,
+    referrer: event.referrer,
+    utm_source: event.utm_source,
+    session_hash: generateSessionHash(req.ip, req.headers['user-agent'])
+  }]);
+  res.sendStatus(200);
+});
+```
+
+Session hash fonksiyonu IP + User-Agent + günlük salt'tan SHA-256 üretiyor:
+
+```javascript
+function generateSessionHash(ip, userAgent) {
+  const salt = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  return crypto.createHash('sha256').update(ip + userAgent + salt).digest('hex');
 }
 ```
 
-Frontend script'i değişir:
+Bu hash her gün sıfırlanıyor — 24 saatlik pencerede unique visitor sayısını doğru hesaplıyor ama persistent tracking yapmıyor.
 
-```html
-<script defer data-domain="yourdomain.com" 
-  src="/stats/js/script.js"></script>
-```
+dbt pipeline'ını Github Actions ile schedule et. Her sabah 06:00'da `dbt run --select +plausible_daily_summary` komutu koşsun, dünkü aggregate'ler hesaplansın. Looker veya Metabase'de dashboard'ları bu aggregate tablolardan besle. Real-time metrik için Plausible'ın kendi dashboard'unu kullan, historical trend için BigQuery+dbt çıktılarını kullan.
 
-`/stats/js/script.js` de Nginx'ten proxy'lenir. Bu kurulumda event trafiği `yourdomain.com/stats/api/event`'e gider, Plausible SaaS backend'ine oradan iletilir. AdBlocker bypass etkisi %15-20 ölçüm kaybını sıfırlar (Plausible'ın 2025 raporu). Önemli nokta: reverse proxy IP'yi zaten anonymize ederek iletir — Plausible backend'ine giden request'te son oktet `0` olarak görünür.
+## CDP ve Retention Engineering'e Entegrasyon
 
-### Self-Hosted Plausible: Tam Kontrol
+Privacy-first analytics'i müşteri veri platformuna (CDP) bağlamak paradoksal görünüyor — CDP user profile tutuyor, Plausible anonim veri üretiyor. Çözüm event bazlı entegrasyon: CDP'ye user identifier göndermeden aggregate metric'leri email veya phone hash'ine bağlıyorsun. Örnek: e-posta kampanyasına tıklayan kullanıcı site'ye geliyor, Plausible session hash'i ile event'leri kaydediyor. Kullanıcı form doldurup email verdiğinde backend email'i SHA-256 ile hash'liyor, o session'daki event'leri email hash'ine bağlıyor.
 
-Plausible'ı kendi sunucunuzda çalıştırırsanız event data hiç 3rd-party endpoint'e gitmez. Docker Compose setup:
-
-```yaml
-version: '3.8'
-services:
-  plausible:
-    image: plausible/analytics:v2.0
-    ports:
-      - "8000:8000"
-    environment:
-      BASE_URL: https://analytics.yourdomain.com
-      SECRET_KEY_BASE: ${SECRET}
-      DATABASE_URL: postgres://plausible:password@db/plausible
-      CLICKHOUSE_DATABASE_URL: http://clickhouse:8123/plausible
-    depends_on:
-      - db
-      - clickhouse
-  
-  db:
-    image: postgres:14-alpine
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-  
-  clickhouse:
-    image: clickhouse/clickhouse-server:23.3-alpine
-    volumes:
-      - clickhouse-data:/var/lib/clickhouse
-```
-
-Self-hosted kurulumda Plausible PostgreSQL'den ClickHouse'a geçti (v2.0'dan itibaren). Event aggregation hızı 10x arttı: 1M event/gün'de query latency <50 ms. Bu mimaride IP hash'leme, salt rotation tamamen sizin kontrolünüzde — KVKK uyum raporuna "event data sunucularımızın dışına çıkmaz" yazabilirsiniz.
-
-## GA4 ile Karşılaştırma: Trade-off Tablosu
-
-| Kriter | Plausible | GA4 |
-|---|---|---|
-| **Cookie kullanımı** | Hiç yok | `_ga`, `_ga_*` (2 yıl) |
-| **IP loglama** | Hash + 24h TTL | Redacted (Consent Mode v2 ile) ama BigQuery export'unda `user_pseudo_id` = cookie ID |
-| **Consent gereksinimi (GDPR)** | Hayır (legitim çıkar yeterli) | Evet (explicit opt-in) |
-| **Attribution yeteneği** | Yok — sadece referrer + UTM | Cross-domain, conversion path, data-driven attribution |
-| **Custom event tracking** | Manuel API çağrısı (goal event) | Otomatik + ölçüm planı |
-| **Maliyet (10M hit/ay)** | Self-hosted: sunucu maliyeti (~$50/ay), SaaS: $19/ay (Business plan) | Ücretsiz ama BigQuery export için GCP maliyet (query başına ~$5/TB) |
-| **Veri sahibi** | Siz (self-hosted) / AB sunucusu (SaaS) | Google (US sunucu) |
-
-Plausible'da **attribution yok** — bir conversion'ın hangi kampanyadan geldiğini göremezsiniz, sadece "bu sayfa X kez görüntülendi, Y unique visitor geldi" dersiniz. Eğer pazarlama mix modeling veya incrementality test yürütüyorsanız, bu veri yeterli: aggregated traffic değişimi ile sales korelasyonu kurarsınız. Ama user-level journey, cohort analizi, funnel drop-off yapamazsınız. GA4'ün gücü orada — BigQuery export'unda `user_pseudo_id` join'leyerek multi-touch attribution kurarsınız.
-
-Trade-off şu: compliance riskini sıfıra indirirken, granular insight kaybediyorsunuz. Çözüm: hybrid stack. Site analytics Plausible ile cookieless, conversion tracking [first-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) ile server-side — sGTM + Conversion API kombinasyonu. Plausible'da genel trafik eğilimini görürsünüz, karar verici metrikler (ROAS, LTV, CAC) server-side pipeline'dan gelir.
-
-## Sunucu Tarafı Aggregation Pipeline: Plausible + dbt + BigQuery
-
-Plausible self-hosted kurulumunda ClickHouse veritabanına doğrudan erişebilirsiniz. Event counter'larını BigQuery'ye replicate ederek pazarlama datasıyla join etme senaryosu:
-
-1. **ClickHouse → BigQuery CDC:** Airbyte connector ile `plausible.events` tablosu BigQuery'ye daily incremental sync. ClickHouse'da aggregated counter zaten var, raw event yok.
-2. **dbt model:** BigQuery'de `fct_pageviews` tablosu oluşturulur:
+BigQuery'de bu JOIN işlemi şöyle çalışıyor:
 
 ```sql
--- models/fct_pageviews.sql
-WITH plausible_raw AS (
-  SELECT
-    toDate(timestamp) AS date,
-    domain,
-    pathname,
-    referrer_source,
-    COUNT(*) AS pageviews,
-    uniqExact(visitor_hash) AS unique_visitors
-  FROM {{ source('plausible', 'events') }}
-  WHERE date >= CURRENT_DATE - 30
-  GROUP BY 1, 2, 3, 4
+WITH session_events AS (
+  SELECT session_hash, page_path, timestamp
+  FROM plausible_raw_events
+  WHERE DATE(timestamp) = CURRENT_DATE() - 1
 ),
-
-marketing_spend AS (
-  SELECT
-    date,
-    channel,
-    SUM(spend) AS total_spend
-  FROM {{ ref('stg_marketing_spend') }}
-  GROUP BY 1, 2
+identified_sessions AS (
+  SELECT email_hash, session_hash, form_submit_timestamp
+  FROM user_identifications
+  WHERE DATE(form_submit_timestamp) = CURRENT_DATE() - 1
 )
-
 SELECT
-  p.date,
-  p.domain,
-  p.pathname,
-  p.referrer_source,
-  p.pageviews,
-  p.unique_visitors,
-  m.total_spend,
-  SAFE_DIVIDE(p.unique_visitors, m.total_spend) AS visitors_per_dollar
-FROM plausible_raw p
-LEFT JOIN marketing_spend m
-  ON p.date = m.date
-  AND p.referrer_source = m.channel
+  i.email_hash,
+  ARRAY_AGG(STRUCT(e.page_path, e.timestamp) ORDER BY e.timestamp) AS session_journey
+FROM identified_sessions i
+JOIN session_events e ON i.session_hash = e.session_hash
+WHERE e.timestamp <= i.form_submit_timestamp
+GROUP BY i.email_hash
 ```
 
-Bu model'de `visitor_hash` BigQuery'ye gelmiyor — ClickHouse aggregate'i `unique_visitors` sayısı olarak geliyor. Yani data warehouse'da bile individual user tracking yok. Marketing spend tablosuyla join edince "bu landing page'e X dolar harcadık, Y visitor geldi" korelasyonunu görürsünüz. Incrementality test için kontrol/treatment group split yapmak istiyorsanız, cookie-based randomization yapamayacağınız için geo-level split (bölge bazında kampanya on/off) veya time-based holdout kullanırsınız.
+Bu sorgu form submit'inden önceki session journey'sini email hash'ine bağlıyor. CDP'de (Segment, RudderStack, Insider) bu veri "anonymous → identified" transition olarak saklanıyor. KVKK kapsamında kullanıcı email'ini verdiği anda açık rıza vermiş sayılıyor (form'da KVKK metni varsa), o noktadan sonra email hash'ini persistent identifier olarak kullanabiliyorsun. Form öncesi session anonim kalıyor — user-level tracking değil, "email verenler" segmenti için aggregate funnel analysis yapıyorsun.
 
-### Real-Time Dashboard: Aggregated Metrikler
+Retention engineering için bu yöntem güçlü: CDP'de "site ziyaret etti ama form doldurmadı" segmentini cookieless olarak yakalayamıyorsun. Ancak "form dolduranların site'ye ilk gelişten itibaren yolculuğu" verisini aggregate olarak alıyorsun. Cohort retention hesaplamak için form submit tarihinden itibaren 7/30/90 gün sonra tekrar session hash'i eşleşenleri sayıyorsun. Bu yöntem exact retention rate vermiyor (aynı kullanıcı farklı hash alabilir) ama segment-level trend doğru çıkıyor.
 
-Plausible'ın dashboard'u real-time counter gösterir (son 30 dakika pageview). BigQuery'de benzer dashboard için Looker Studio + BigQuery Materialized View:
+## Cookieless Gelecek: Hangi Metrik'ler Hayatta Kalıyor
 
-```sql
-CREATE MATERIALIZED VIEW analytics.mv_realtime_traffic
-AS
-SELECT
-  FORMAT_TIMESTAMP('%Y-%m-%d %H:%M', timestamp, 'Europe/Istanbul') AS time_bucket,
-  pathname,
-  COUNT(*) AS hits,
-  APPROX_COUNT_DISTINCT(visitor_hash) AS visitors
-FROM plausible.events
-WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
-GROUP BY 1, 2
-```
+Privacy-first analytics'in uzun vadede ölçüm kabiliyetini nasıl sınırladığını somut metrik'lerle görmek gerekiyor. Aşağıdaki tablo hangi KPI'ların cookieless ortamda hesaplanabildiğini, hangilerinin kaybolduğunu listeliyor:
 
-Materialize her 5 dakikada refresh olur (BigQuery MV sınırı). Looker Studio'da line chart: X ekseni `time_bucket`, Y ekseni `hits`. Bu dashboard'da da user-level veri yok — sadece aggregated counter.
+**Hayatta kalan metrikler:**
+- **Traffic source/medium:** Referrer header ve UTM parametreleri cookieless çalışıyor
+- **Page view ve bounce rate:** Session-level aggregate yeterli
+- **Goal completion rate:** Event tracking anonymous olarak çalışıyor
+- **Geographic ve device distribution:** IP (hashed) ve User-Agent aggregate veriyor
 
-## Uyum Dokümantasyonu: KVKK Veri İşleme Sözleşmesi
+**Kaybolan metrikler:**
+- **User-level LTV:** Persistent identifier yok, cohort-level LTV'ye dönüyor
+- **Cross-device attribution:** Aynı kullanıcının mobil + desktop journey'si birleşmiyor
+- **Remarketing audience:** User list oluşturamıyorsun (KVKK uyumsuz olur)
+- **Session stitching (1 saatten uzun):** Hash expire oluyor, long-tail session parçalanıyor
 
-Plausible SaaS kullanıyorsanız DPA (Data Processing Agreement) imzalarsınız. Plausible'ın 2026 template'i şu maddeleri içeriyor:
+Marketing mix modeling (MMM) bu ortamda öne çıkıyor: aggregate veriyle (günlük spend, impressions, conversions) regression model kur, her kanalın incremental katkısını hesapla. Incrementality test için holdout grup oluştur (geo-based veya time-based), test grubunun aggregate conversion rate'ini kontrol grubuyla karşılaştır. Bu yöntemler user-level veri olmadan çalışıyor.
 
-- **Veri kategorisi:** "Aggregated website traffic metrics (pageview count, referrer count, device type distribution)". Individual identifier içermez.
-- **Veri işleme amacı:** "Website performance analysis and traffic source attribution". Retargeting, profiling, automated decision-making değil.
-- **Alt işleyici:** ClickHouse Cloud (AB sunucusu), Hetzner (Almanya).
-- **Saklama süresi:** 2 yıl (dashboard'da gösterim için), sonra otomatik silme.
-- **Veri öznesi hakları:** Aggregated veri bireysel kişiye bağlanamadığı için silme/düzeltme talebi uygulanamaz. Bu durum DPA'da açıkça belirtilir: "Due to aggregation at ingestion, data subject requests cannot be fulfilled on a per-individual basis."
-
-KVKK uyum raporu için Plausible'ın bu mimarisini kullanmanız artı puan: Kurul'a "kullanıcı verisi saklamıyoruz, aggregated counter tutuyoruz" diyebilirsiniz. GA4'te bu argüman geçersiz — BigQuery export'unda `user_pseudo_id` var, bu "kişisel veri" sayılır.
-
-Self-hosted kurulumda DPA imzalamanıza gerek yok — data controller sizsiniz. Ama KVKK Madde 10 gereği "teknik ve idari tedbirler" almanız gerekir: database encryption (PostgreSQL TDE), access log (pg_audit), automated backup + PITR. Plausible Docker setup'ında bunlar default yok — kendiniz eklersiniz.
-
-## Plausible'ın Limitleri: Ne Zaman Yeterli Değil
-
-Plausible **funnel analizi yapmaz**. "Ürün sayfası → sepet → ödeme" adım adım drop-off göremezsiniz. Custom event gönderip ("Add to Cart" goal event) sayısını görebilirsiniz ama sequential flow yok. Eğer CRO için funnel optimize ediyorsanız, ek tool gerekir: Hotjar (session replay ama cookie kullanır), ya da server-side funnel tracking (sGTM'de event sequence aggregate edip BigQuery'ye yazmak).
-
-Plausible **cohort retention hesaplamaz**. "1 Ocak'ta gelen kullanıcıların %25'i 7. gün döndü" gibi metrik üretemezsiniz — çünkü visitor hash her gün değişir, user continuity takip edilemez. Retention için first-party identity gerekir: login event'i veya hashed email. Bu veriyi Plausible'a göndermek GDPR ihlali olur (explicit consent gerekir), o yüzden retention layer'ı ayrı kurarsınız — CDP pipeline'ında.
-
-Plausible **A/B test raporu sunmaz**. Test variant'ları Plausible'a custom property olarak gönderip pageview'leri segment edebilirsiniz ama istatistiksel anlamlılık hesabı yok. Bayesian A/B test için Statsig, Optimizely veya kendi pipeline'ınızda Python `scipy.stats` ile p-value hesabı yaparsınız.
-
-Özetle: Plausible traffic monitoring için yeterli, conversion optimization ve retention engineering için değil. Hybrid stack şart: cookieless genel analytics Plausible, critical business metric'leri server-side consented tracking.
-
----
-
-Privacy-first analytics, compliance zorunluluğu olduğu kadar rekabet avantajı. Kullanıcı güveni kazanmak için "çerez kullanmıyoruz" demek yetmiyor — mimarinizin gerçekten cookieless olduğunu teknik olarak kanıtlamanız gerekiyor. Plausible + sunucu tarafı aggregation bu kanıtı sağlıyor: event stream saklamadan, IP loglamadan, deterministic hash ile günlük visitor sayma. GA4'ün sunduğu granular attribution'dan vazgeçiyorsunuz ama KVKK riskini sıfırlıyorsunuz. Performans pazarlamasında critical metric'ler için server-side pipeline kurduğunuzda (sGTM + Conversion API + BigQuery), Plausible tamamlayıcı katman olarak kalıyor — "genel site sağlığı" dashboard'u. Bu iki katmanı ayırmak, hem compliance hem de operasyonel verimlilik açısından 2026'nın standart mimarisi.
+Plausible + sunucu tarafı aggregation mimarisi KVKK/GDPR compliance'ını sıfır maliyetle sağlıyor, consent banner kaybını ortadan kaldırıyor ve data residency kontrolünü veriyor. Tradeoff açık: user-level attribution yerine segment-level insight, cross-device journey yerine session-level funnel. Ancak %30 tracking engelleme oranında GA4'ün user-level verisi de zaten eksik — privacy-first mimari dürüst veri sağlıyor. Şimdi yapılacak iş: mevcut GA4 setup'ını audit et, hangi report'ların user-level identifier gerektirdiğini belirle, cookieless alternatifleri BigQuery + dbt ile kur, 30 günlük paralel run ile iki sistemi karşılaştır.
