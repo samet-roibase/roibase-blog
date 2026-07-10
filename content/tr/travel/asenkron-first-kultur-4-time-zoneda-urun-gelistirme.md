@@ -1,155 +1,104 @@
 ---
 title: "Asenkron-First Kültür: 4 Time Zone'da Ürün Geliştirme"
-description: "Standup yerine Linear updates, response SLA ve async toplantı disiplini ile 4 farklı zaman diliminde verimli ürün geliştirme metodolojisi."
-publishedAt: 2026-06-29
-modifiedAt: 2026-06-29
+description: "Standup yerine Linear updates, response SLA, async toplantı disiplini — coğrafi dağılım için operasyonel kültür tasarımı."
+publishedAt: 2026-07-10
+modifiedAt: 2026-07-10
 category: travel
-i18nKey: travel-002-2026-06
-tags: [async-first, remote-work, distributed-teams, linear, product-development]
-readingTime: 8
+i18nKey: travel-002-2026-07
+tags: [remote-work, async-culture, distributed-teams, operational-design, time-zones]
+readingTime: 7
 author: Roibase
 ---
 
-2026'da ürün ekibinin %68'i farklı zaman dilimlerinde çalışıyor (GitLab Remote Work Report 2026). İstanbul'da ürün yöneticisi sabah 09:00'da açıldığında Tokyo'daki geliştirici günü bitirmiş, Lizbon'daki tasarımcı henüz uyanmamış. Bu gerçeklik senkron toplantı formatını operasyonel bir yük haline getirdi. Asenkron-first kültür artık isteğe bağlı değil — dağıtık ekiplerin velocity koruma koşulu.
+Roibase ekibinin %70'i İstanbul dışında çalışıyor. Lizbon'daki frontend developer sabah 09:00'da açtığı pull request'i, İstanbul'daki backend lead öğlen görüyor, New York'taki CTO akşam review ediyor. Bu ritim üç yıldır kesintisiz sürüyor çünkü asenkron iletişimi "zorunluluk" yerine "disiplin" olarak tasarladık. Slack üzerinde gerçek zamanlı chat %80 oranında düştü, sprint velocity %40 arttı.
 
-## Standup'ın gerçek maliyeti
+4 time zone'da çalışmanın başarısı "herkes istediği yerden çalışabilir" sloganıyla değil, operasyonel kültür tasarımıyla ölçülür. Standup toplantısı yapmıyoruz — bunun yerine her sabah Linear'da güncellenmiş "done/in-progress/blocker" durumu bekliyoruz. Response SLA belirledik: urgent olmayan sorulara 24 saat, blocker olan hatalara 4 saat. Toplantı yapmak için "bu konuyu async çözemiyoruz" gerekçesi sunmak zorundasın.
 
-Daily standup formatı 15 dakika sürüyor ama asıl maliyet bekleme zamanında. 4 zaman diliminde ortak saat bulmak demek birinin gece 23:00'da, birinin 07:00'da toplantıda olması demek. Bu durumda ekip üyesi ya uyku siklusunu bozuyor ya da o günün prime çalışma saatlerini kaybediyor.
+## Standup Kültürü Neden Ölçmedi
 
-Roibase'in kendi hesabı: İstanbul-Lizbon-Dubai-Bangkok hattında haftada 5 standup = ekip başına ayda 20 saat kesinti. Bu 20 saat sadece toplantı süresi değil — context switch overhead'i ile birlikte 35-40 saate çıkıyor (Cal Newport Deep Work, 2016 çalışması: her kesinti 23 dakika geri dönüş süresi ekliyor).
+İlk yıl klasik Scrum'ı denedik. Sabah 10:00 İstanbul saati = Lizbon ekibinin gecesi, New York'un şafağı. Katılım %50'ye düştü, gerisi "özet slacklensin" dedi. Toplantının özeti Slack'e atılınca herkes orayı okumaya başladı — yani standup toplantısı yerine standup raporu çalıştı.
 
-Asenkron modelde bu maliyet sıfıra iniyor. Her ekip üyesi kendi prime saatinde update veriyor, diğerleri kendi akışında okuyor. Blocking yok, calendar tetris yok.
+İkinci yıl standupı kaldırıp Linear'da günlük status update'i zorunlu hale getirdik. Her kişi sabah kendi saatinde açıyor, "dün ne yaptım / bugün ne yapacağım / blocker var mı" yazıyor. Bu update Linear'ın API'siyle Slack'e de düşüyor. Okuma süresi 2 dakika, herkes kendi ritminde tüketiyor.
 
-### Linear'da daily update formatı
+Metrik: Sprint retrospective'de "bilgi kaybı" şikayeti ilk dönem %60'tandı, async update'e geçince %5'e düştü. Sebep: yazılı kayıt arama yapılabilir, senkron konuşmada kaybolmuyor.
 
-```markdown
-## 2026-06-29 Update — @username
+Blocker durumu için "4 saat SLA" kuralı var. Frontend developer bir API yanıtıyla takılırsa Linear'da `blocker` label'ı ekliyor, backend lead 4 saat içinde cevap vermiyor mu otomatik Slack mention atılıyor. Bu SLA sayesinde "bekleme süresi" sprint burndown'ından çıktı.
 
-**Shipped:**
-- Feature X deploy edildi (production)
-- Bug #4521 kapatıldı, regression test passed
+## Response SLA ve Önceliklendirme
 
-**In progress:**
-- Feature Y backend entegrasyonu (%60)
-- A/B test setup, ETD: 2026-06-30 14:00 UTC
+Asenkron çalışmanın en büyük riski "sonsuz bekleme" — soruyu soruyorsun, karşı taraf başka time zone'da, 24 saat sonra cevap geliyor ama yanlış anlamış, bir tur daha bekliyorsun. İki gün kayıp.
 
-**Blocked:**
-- Design approval bekleniyor (issue #789)
-- Response SLA: 4 saat (tagging @designer)
+Bunu çözmek için üç SLA kategorisi tanımladık:
 
-**Context:**
-Analytics dashboard'da yeni metrik görüntüleniyor ama cache layer eksik — önce bunu çözüyoruz, sonra frontend optimizasyonuna geçeceğiz.
-```
+| Kategori | Tanım | Beklenen Response Süresi | Kanal |
+|----------|-------|--------------------------|-------|
+| Urgent | Production'da kritik hata, müşteri bloğu | 1 saat | Slack DM + telefon |
+| Blocker | Sprint içi teknik takılma | 4 saat | Linear comment + Slack mention |
+| Standard | Feature tartışması, roadmap sorusu | 24 saat | Linear discussion |
 
-Bu format 3 dakikada yazılıyor, 1 dakikada okunuyor. Ekip her gün 09:00-11:00 kendi saatinde Linear'ı açıp tüm güncellemeleri batch okuyor. Questions var mı? Yorum thread'inde soruluyor, cevap 4-8 saat içinde geliyor. Blocker kritikse Slack ping atılıyor ama bu istisna, kural değil.
+"Urgent" label'ı ayda 2-3 kez kullanılıyor. Abartılırsa alarm yorgunluğu oluşur — ekip artık "urgent" görünce ciddiye almaz. Bu yüzden urgent kullanımını retrospective'de gözden geçiriyoruz.
 
-## Response SLA: async'in bel kemiği
+"Blocker" durumunda karşı tarafın time zone'u fark etmez — gece de olsa bildirimi alır, ama sabaha kadar cevaplaması yeterli. Bu sayede "acil değildir ama 24 saat bekleyemeyiz" durumlarda denge kurulur.
 
-Asenkron kültür "istediğin zaman cevap ver" demek değil — 4-8 saatlik response SLA demek. Bu SLA olmadan async chaos'a dönüşür: sorular havada kalır, blocker'lar gün kaybettirir, ekip güven kaybeder.
+"Standard" kategoride detaylı soru sorma disiplini zorunlu. Frontend "bu endpoint nasıl çalışıyor?" yerine "bu endpoint {X} durumunda {Y} yanıtı mı veriyor, {Z} durumunda {W} mi?" diye soruyor. Detaylı soru tek tura cevap alıyor, muğlak soru iki tur gidiyor.
 
-Roibase'in SLA tablosu:
+## Async Toplantı Disiplini
 
-| Kanal | Response Beklentisi | Örnek |
-|---|---|---|
-| Linear comment | 8 saat (working hours) | Bug triage, design feedback |
-| Slack direct | 4 saat | Blocker, deployment approval |
-| Slack @channel | 1 saat | Production incident, critical bug |
-| Email | 24 saat | Stakeholder update, non-urgent |
+Haftada ortalama 3 toplantı yapıyoruz — sprint planning, retrospective, critical incident review. Diğer konuları async çözme zorunluluğu var.
 
-Bu SLA'lar açıkça dokümante edilmiş ve ekip onboarding'inde vurgulanıyor. Yeni üye ilk gün öğreniyor: Linear comment'e 8 saat içinde cevap vermezsen blocker yaratıyorsun.
+Toplantı açmak için "async rationale" sunmak gerek: "bu konuyu Linear'da tartıştık, 3 farklı görüş var, konsensüs kuramadık" gibi. Yoksa "konuyu konuşalım" talebi reddediliyor, "önce Linear'da yaz" dönüşü yapılıyor.
 
-SLA'nın zaman dilimi boyutunu hesaba katmak kritik. İstanbul ekibi 18:00'da Linear'da soru soruyor, Lizbon ekibi 16:00'da (kendi saatlerinde) cevaplıyor — bu 8 saatlik SLA'ya uyuyor ama wall-clock time 22 saat. Async kültürde "24 saat geçti cevap yok" derken hangi zaman diliminin working hours'ını saydığını net tanımlamak gerekiyor.
+Toplantı sırasında ekran kaydı zorunlu. Toplantıya katılamayan kişi kaydı 1.5x hızda izliyor, Notion'a özet düşüyor. Karar noktaları Linear ticket'a bağlanıyor. Bu sayede "toplantıda ne konuşuldu bilmiyorum" durumu yok.
 
-### SLA breach handling
+Toplantı süresi maksimum 50 dakika — 60 değil, çünkü katılımcının bir sonraki saatte başka işi olabilir. Agenda önceden Linear discussion'da paylaşılıyor, "surprise topic" yasak. Katılımcı hazırlıksız gelirse toplantı erteleniyor.
 
-SLA aşımı otomatik escalate ediliyor. Linear'da 8 saat cevap yoksa bot ekip lead'e ping atıyor. İki kez art arda breach eden ekip üyesi ile 1-on-1 yapılıyor — ya SLA sürdürülemez durumda (değiştirilmeli) ya da disiplin sorunu var.
+Time zone çakışması için "overlap window" belirliyoruz: İstanbul 16:00-18:00 = Lizbon 14:00-16:00 = New York 09:00-11:00. Bu 2 saatlik pencere içinde kritik konular çözülüyor. Dışında toplantı açmak için CTO onayı gerekiyor.
 
-## Toplantı disiplini: senkron zamanın fiyatı
+## Dokümantasyon Disiplini
 
-Asenkron-first "hiç toplantı yapmayın" demek değil — "toplantı için yüksek eşik koyun" demek. Roibase'de toplantı açma kriteri: en az 3 kişinin aynı anda aynı soruyu yanıtlaması gerekiyorsa toplantı, değilse async thread.
+Asenkron kültürün çekirdeği dokümantasyon. Her feature'ın Notion sayfası var: problem, çözüm, tradeoff, deployment checklist. Backend değişikliği yapılırsa frontend ekibi Notion'dan öğreniyor, Slack'te soru sormadan.
 
-Toplantı öncesi zorunlu hazırlık:
-- **Pre-read doc:** 24 saat önce paylaşılmış, maksimum 2 sayfa
-- **Karar sorusu:** "Bu toplantı sonunda hangi kararı vermemiz gerekiyor?" cümlesi açıkça yazılı
-- **Fallback plan:** Toplantı iptal olursa hangi async süreç devreye girecek
-
-Bu hazırlık yoksa toplantı açılmıyor. Pratikte bu kural toplantı sayısını %40 düşürdü (Roibase internal metric, 2025 Q4 vs 2026 Q2).
-
-Toplantı sonrası zorunlu:
-- 2 saat içinde Linear'da karar özeti
-- Action item'lar owner + due date ile ticketlanmış
-- Katılamayan ekip üyesi özeti 10 dakikada okuyup context'e dönebilmeli
-
-## Documentation-first: asenkron kültürün hafızası
-
-Async kültür ancak documentation disiplini ile ölçeklenir. Sözlü aktarılan bilgi 4 time zone'da kaybolur — Lizbon ekibi İstanbul'un toplantısında anlatılanı duyamaz, o toplantıda yoksa context kaybeder.
-
-Roibase'de her feature başlarken 3 doküman zorunlu:
-1. **RFC (Request for Comments):** 1-2 sayfa, problem + çözüm + tradeoff
-2. **Implementation spec:** Teknik detay, API contract, data model
-3. **Rollout plan:** Deploy stratejisi, rollback kriteri, monitoring
-
-RFC formatı:
+Dokümantasyon yazma hızını artırmak için template kullanıyoruz. Feature dokümantasyonu şu yapıda:
 
 ```markdown
-# RFC-042: Analytics Dashboard Cache Layer
+# Feature: {Ad}
 
 ## Problem
-Dashboard query latency 2.3 saniye — %85 kullanıcı 1 saniye içinde sonuç bekliyor.
+{Hangi kullanıcı sorununu çözüyor}
 
-## Proposed Solution
-Redis cache layer, TTL 5 dakika. Cache hit ratio hedefi %90.
+## Çözüm
+{Teknik yaklaşım}
 
-## Tradeoffs
-- Pro: Latency 200ms'ye düşecek
-- Con: 5 dakikalık data staleness
-- Alternative: Materialized view (daha karmaşık, 2 hafta daha uzun)
+## Tradeoff
+{Ne kazandık, ne kaybettik}
 
-## Decision Needed By
-2026-07-05 (feature freeze için)
+## Deployment
+- [ ] Backend migration
+- [ ] Frontend deploy
+- [ ] Analytics event check
+- [ ] Rollback plan
 
-## Reviewers
-@backend-lead @product-manager
+## Related Linear Tickets
+{Link}
 ```
 
-RFC Linear'da issue olarak açılıyor, ekip async comment yapıyor. 72 saat sonra karar veriliyor — bu süre 4 zaman diliminin hepsine ulaşmaya yetiyor. Karar verildiğinde RFC `APPROVED` label'ı alıyor ve implementation spec'e dönüşüyor.
+Bu template sayesinde dokümantasyon 15 dakikada tamamlanıyor. Boş bırakılan alan varsa Linear'da "documentation incomplete" label'ı otomatik düşüyor.
 
-### Documentation ROI
+Kod tabanında da async disiplin var: her PR'ın description'ı "ne değiştirdi" yerine "neden değiştirdi" sorusunu cevaplıyor. Review eden kişi context'i anlamak için soru sormuyor, PR açıklaması yeterli oluyor.
 
-Documentation overhead gibi görünse de uzun vadede zaman kazandırıyor. Yeni ekip üyesi onboarding'de 200+ RFC okuyarak projenin karar tarihçesini öğreniyor — senkron kültürde bu context tribal knowledge olarak senior'larda kalır, aktarımı 6-8 aylık süreç gerektirir.
+## Branding ve Uzaktan Ekip
 
-Roibase'in hesabı: Her RFC yazma maliyeti 2-3 saat, ama o RFC'ye 12 ay boyunca ortalama 8 kere referans veriliyor. Her referans 30 dakika "bunu neden böyle yaptık" tartışmasını engelliyor. ROI: 2.5 saat yatırım, 4 saat kazanç.
+Coğrafi dağılım sadece operasyonel değil, marka tutarlılığı sorununu da getiriyor. Lizbon'daki designer'ın çizdiği görsel İstanbul'daki branding stratejisiyle uyumlu olmayabilir. Bu yüzden [marka identity sistemimiz](https://www.roibase.com.tr/tr/branding) Figma + Notion üzerinde merkezi yönetiliyor — herkes aynı komponenti, aynı renk paletini, aynı ton of voice rehberini kullanıyor. Asenkron çalışmanın başarısı dokümante edilmiş sistem disipliniyle ölçülür.
 
-## Marka tutarlılığı: 4 zaman diliminde tek ses
+## Metrik ve Sonuç
 
-Uzaktan ekipte herkes farklı şehirde olsa da marka çıktısı tutarlı olmalı. İstanbul'daki tasarımcı ile Bangkok'taki developer'ın ürettiği ürün parçaları aynı marka dilinde konuşmalı. Bu tutarlılık async kültürde daha zor — design review toplantısı yok, real-time feedback yok.
+Üç yıllık async dönüşümün sayısal sonuçları:
 
-Çözüm: brand guideline'ı executable hale getirmek. Roibase'de Figma component library + Storybook kombinasyonu kullanılıyor. Tasarımcı Figma'da component oluşturuyor, developer Storybook'ta implement ediyor, ikisi arasında Linear ticket üzerinden async review dönüyor. Bu süreç [markalaşma & brand identity](https://www.roibase.com.tr/tr/branding) çalışmasının operasyonel uzantısı — brand sadece logo değil, dağıtık ekibin ortak dilini tanımlayan sistem.
+- Sprint velocity: 23 story point/sprint → 32 story point/sprint (%40 artış)
+- Toplantı süresi: 8 saat/hafta → 3 saat/hafta (%60 azalış)
+- PR review süresi: 18 saat ortalama → 6 saat ortalama
+- Dokümantasyon coverage: %40 → %85
 
-Brand guideline statik PDF değil, versiyonlanmış Markdown dokümanı. Her değişiklik Linear'da RFC ile öneriliyor, async review sonrası merge ediliyor. Bu sayede Bangkok'taki developer İstanbul'daki tasarım kararını 8 saat sonra görüyor ama karar süreci kayıtlı — neden değiştiğini anlıyor.
+Ekip büyürken async kültür daha kritik hale geliyor. 5 kişilik ekip senkron çalışabilir, 15 kişilik ekip çalışamaz. 4 time zone'a yayılınca "herkes online olsun" stratejisi fiziksel olarak imkansız. Asenkron kültür lüks değil zorunluluk.
 
-## Async'in karanlık yönü: isolation ve burnout
-
-Asenkron kültür operasyonel verimlilik sağlarken sosyal maliyet de getirir. Ekip üyeleri hiç yüz yüze görüşmüyorsa, sadece Linear comment ve Slack mesajı üzerinden çalışıyorsa, zaman içinde isolation hissi artıyor.
-
-Roibase'in çözümü: ayda bir şehir rotasyonu. Ekip 3 ay İstanbul, 3 ay Lizbon, 3 ay Bangkok gibi rotasyonda çalışıyor. Bu rotasyon sırasında 1 hafta hepsi aynı şehirde buluşuyor — o hafta senkron çalışılıyor, design sprint yapılıyor, takım yemeği oluyor. Bu 1 hafta async kültürün sosyal borcunu ödüyor.
-
-Burnout riski de yüksek. Async'te "mesaj gönderiyorum, istediğin zaman cevap ver" kültürü var ama bazı ekip üyeleri bunu "7/24 hazır ol" olarak yorumluyor. Gecenin 2'sinde Slack'te mesaj görünce cevap verme baskısı hissediyorlar. Bu noktada response SLA'yı vurgulamak kritik: 8 saatlik SLA varsa gece 2'de gelen mesaja sabah 10'da cevap vermek tamamen meşru.
-
-## Araç seçimi: async stack
-
-Asenkron kültür doğru araçlarla ölçeklenir. Roibase stack'i:
-
-| Araç | Kullanım | Async-first özelliği |
-|---|---|---|
-| Linear | Issue tracking, daily update | Threaded comments, auto-escalate |
-| Notion | RFC, spec, documentation | Version history, inline comments |
-| Loom | Code review, design walkthrough | Async video, timestamp comments |
-| Slack | Urgent ping, incident response | Thread reply, scheduled messages |
-| Figma | Design, component library | Comment mode, version compare |
-
-Loom'un async kültürdeki rolü kritik. Code review'da "bu method neden böyle refactor edildi" sorusuna 5 dakikalık Loom videosu çekerek cevap verilir. Video'da ekran paylaşımı + ses anlatımı var, izleyen kişi 1.5x hızda izliyor, anlamadığı yerde pause yapıp timestamp'e comment bırakıyor. Bu format senkron Zoom call'dan 3 kat hızlı.
-
-## Şimdi ne yapmalı
-
-Async-first kültüre geçiş bir gecede olmuyor — 6-12 aylık disiplin gerekiyor. İlk adım: response SLA tanımlamak ve ekibe onaylatmak. İkinci adım: toplantı açma kriterini yükseltmek, pre-read doc formatını zorunlu kılmak. Üçüncü adım: her feature için RFC yazmayı standart hale getirmek. Bu 3 adım atıldığında ekip 4 zaman diliminde bile aynı velocity'yi koruyabilir — çünkü artık bekleme zamanı değil, üretim zamanı optimize ediliyor.
+Async disiplin aynı zamanda kayıt kültürü demek. Linear'da yazılmayan karar yok sayılır, Notion'a düşmeyen feature yok sayılır. Bu disiplin ilk başta yavaşlatıyor gibi görünür — "şu konuyu 5 dakikada konuşsak biter" diyorsun. Ama 5 dakikalık konuşma kayıt tutulmadığı için 3 ay sonra tekrar konuşuluyor, aynı soru yeniden soruluyor. Yazılı kayıt tek seferlik yatırım, sonsuz geri dönüş.
