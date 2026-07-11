@@ -1,136 +1,123 @@
 ---
 title: "Prompt Versiyonlama ve A/B Testi: LLM Operasyonun Disiplini"
-description: "Promptfoo, LangSmith ve evaluation pipeline'larıyla prompt değişikliklerini ölçülebilir hale getirin. Production LLM operasyonunda versiyonlama ve A/B testi nasıl kurulur?"
-publishedAt: 2026-06-22
-modifiedAt: 2026-06-22
+description: "Production LLM sistemlerinde prompt değişikliklerini test etmek, versiyonlamak ve geriye dönmek mühendislik disiplini gerektirir. Promptfoo ve LangSmith ile nasıl?"
+publishedAt: 2026-07-11
+modifiedAt: 2026-07-11
 category: ai
-i18nKey: ai-004-2026-06
-tags: [prompt-engineering, llm-ops, evaluation, ab-testing, promptfoo]
+i18nKey: ai-004-2026-07
+tags: [llm-ops, prompt-engineering, evaluation, ab-testing, langsmith]
 readingTime: 8
 author: Roibase
 ---
 
-Production'da LLM çalıştırmak artık birkaç API çağrısından ibaret değil. Prompt değiştirdiğinizde output kalitesi %15 düşebilir veya %22 yükselebilir — ama bunu fark etmiyorsanız deployment rastgeleliğe dönüşür. Prompt versiyonlama ve A/B testi, yazılım deployment disiplinini LLM operasyonuna taşır. Bu yazı, Promptfoo, LangSmith gibi evaluation framework'lerini kullanarak prompt değişikliklerini ölçülebilir hale getirmeyi anlatıyor.
+Production'da LLM kullanan herkes aynı soruyla karşılaşır: prompt'u değiştirdin, output daha iyi mi oldu? "Sanki daha tutarlı" demek yeterli değil. Bir pazarlama ekibi Claude API'den her gün 500 blog başlığı üretiyorsa, prompt'taki "yaratıcı ol" ile "satışçı ol" arasındaki fark binlerce dolarlık conversion farkı yaratabilir. Bu farkı ölçmeden push etmek mühendislik değil, şans oyunudur. Prompt versiyonlama ve evaluation pipeline'ları LLM operasyonunu tahmine dayalı deneyciliğe çevirir.
 
-## Prompt değişikliği deployment değildir
+## Prompt Değişikliği Neden Kod Değişikliğinden Farklı
 
-Klasik yazılım engineering'de bir fonksiyon değiştiğinde unit test, integration test ve canary deployment süreçleri devreye girer. LLM operasyonunda ise çoğu ekip prompt'u düz text dosyasında değiştirir, birkaç manuel test yapar ve production'a yollar. Sonuç: kullanıcı sentiment'ı %8 düşer ama kimse ilişkilendiremez.
+Klasik yazılımda `if (x > 5)` yerine `if (x >= 5)` yazdığında birim testleri kırılır, davranış deterministiktir. Prompt değişikliği stokastiktir: aynı input'a farklı output verir, regresyon testleri yoktur, "eskisinden kötü" tanımı muğlaktır. GPT-4'e "kısa yaz" dediğinde bir gün 50 kelime, bir gün 120 kelime döner. Bu belirsizlik, "production'a al / alma" kararını metriksiz yapılamaz hale getirir.
 
-Sorun şu: LLM output deterministik değil. Aynı prompt'a farklı yanıtlar alırsınız, bu da tek örnekle test yapmayı anlamsız kılar. Versiyonlama sistemi olmadan "eski prompt mu iyiydi yoksa yeni mi?" sorusuna cevap veremezsiniz. Git commit'i bile yetmez — çünkü semantic farklılığı commit message'dan çıkaramazsınız.
+İkinci fark kontrol noktası sayısıdır. Kod değişikliği deployment pipeline'da unit test, integration test, staging geçer. Prompt değişikliği çoğu ekipte "Claude UI'da denedim iyi geldi" ile production'a gider. Sonuç: iki hafta sonra "yeni prompt'lar çok jargon kullanıyor" şikayeti gelir, eski versiyona dönmek için git commit'e bakmak zorunda kalırsınız.
 
-Çözüm: her prompt değişikliğini versiyon olarak kaydedin, değişiklik öncesi ve sonrası için eval set çalıştırın, metrikleri karşılaştırın. Bu disiplin iki şey sağlar: regression detection (yeni prompt'un eski görevleri bozup bozmadığı) ve improvement measurement (hedeflediğiniz metriğin gerçekten yükselip yükselmediği).
+Üçüncü fark, etkinin gecikmeyle görünmesidir. Yeni prompt'la üretilen içerik SEO'da iki ay sonra düşüş getirebilir, chatbot output'u müşteri memnuniyetini kademeli aşındırabilir. Kod bug'ı sentry'de hemen alarm verir, prompt regresyonu sessizce birikir.
 
-## Evaluation pipeline nasıl kurulur
+## Evaluation Pipeline'ı Kurmanın Anatomisi
 
-Evaluation pipeline üç component'ten oluşur: eval set, eval metriği, runner. Eval set, LLM'e gönderilecek input'lar ve beklenen output'ların (veya output özelliklerinin) listesidir. JSON formatında şöyle görünür:
+Evaluation pipeline üç katmandan oluşur: dataset, judge, report. Dataset production'dan örneklenmiş input'lardır — generic "test prompt" değil, gerçek kullanıcı sorguları. Örneğin, bir müşteri destek chatbot'u için dataset 100 adet tickettan input-output çiftidir. Bu çiftleri elle etiketleyeceksiniz: "hallucination var", "tone yanlış", "factually correct". Dataset static bir fixture değil, production'dan her hafta refresh edilir.
 
-```json
-[
-  {
-    "input": "2025 Q1 revenue trend'ini özetle",
-    "expected_topics": ["revenue", "growth", "quarter"],
-    "expected_sentiment": "neutral"
-  },
-  {
-    "input": "Churn rate'in neden yükseldiğini açıkla",
-    "expected_topics": ["churn", "retention"],
-    "expected_sentiment": "analytical"
-  }
-]
-```
+Judge, output'u skorlayan mekanizmadır. Basit yol: regex/keyword matching ("output 'üzgünüz' içermeli"). Orta yol: başka bir LLM'i judge olarak kullanmak (GPT-4 "bu output faydalı mı 1-5 skorla" diye sorar). İleri yol: custom classifier train etmek (BERT-based binary classifier: hallucination var/yok). Judge'ın kendisi de versiyonlanmalıdır — judge değişirse score'lar değişir, trend kırılır.
 
-Eval set'i manuel oluşturabilirsiniz (production loglarından örnekleme yaparak) veya sentetik olarak üretebilirsiniz (başka bir LLM'e "bu prompt için 50 farklı sorgu varyasyonu üret" diye sorarak). Önemli olan set'in edge case'leri kapsaması — örneğin uzun input, belirsiz sorgu, çoklu dil.
+Report katmanı, A/B testini karara dönüştürür. İki prompt versiyonu var: `baseline` (production) ve `candidate` (test ediyorsun). Her ikisini de aynı dataset'e koşarsın, judge skorları toplanır. Report: "candidate 12% daha yüksek factual accuracy, ama 8% daha uzun latency". Karar: latency artışı kabul edilebilir mi? Bunu metrikle cevaplarsın (örn: 95th percentile latency SLA'yı geçti mi?).
 
-Eval metriği, LLM output'unu nasıl puanlayacağınızı tanımlar. İki tip yaygın: rule-based (output'ta belirli kelimelerin varlığını kontrol etmek) ve LLM-as-judge (başka bir LLM'e "bu output soruyu doğru yanıtlıyor mu 1-5 arası puanla" diye sormak). LLM-as-judge daha esnek ama daha pahalı ve yavaş. Hem hız hem accuracy dengesi için rule-based + lightweight classifier (BERT-based sentiment model gibi) kombinasyonu tercih edilebilir.
+### Promptfoo ile Basit Eval Setup
 
-Runner, eval set'i alır, her input için eski ve yeni prompt'u çalıştırır, output'ları metrikle karşılaştırır ve diff tablosunu üretir. Promptfoo bunu terminalden `promptfoo eval` komutuyla yapar:
-
-```bash
-promptfoo eval \
-  --prompts prompts/v1.txt prompts/v2.txt \
-  --providers openai:gpt-4 \
-  --tests evals/summarization.json \
-  --output results.json
-```
-
-Output'ta her test case için hangi prompt'un daha iyi performans verdiğini görürsünüz. Eğer yeni prompt eval set'in %80'inde metrik puanını artırmışsa deployment'a hazırdır. Değilse regression var demektir, prompt'u gözden geçirmelisiniz.
-
-## A/B testi: production'da iki prompt'u paralel çalıştırmak
-
-Eval pipeline offline sonuç verir — gerçek kullanıcı verisi yoktur. Production'da iki prompt'u aynı anda çalıştırıp hangisinin daha iyi sonuç verdiğini ölçmek için A/B testi gerekir. Bunun için trafik splitting ve metric collection altyapısı kurulur.
-
-Trafik splitting basit: gelen request'e `user_id` veya `session_id` hash'leyip modulo alırsınız, sonuca göre prompt A veya B'ye yönlendirirsiniz. Örneğin `hash(user_id) % 100 < 50` ise prompt A, değilse B. Bu sayede %50-%50 split yaparsınız. Önemli nokta: aynı kullanıcı her request'te aynı prompt'u görmeli (sticky assignment) — yoksa kullanıcı deneyimi tutarsız olur.
-
-Metric collection için LLM response'unun yanına metadata eklenir: `prompt_version`, `latency`, `token_count`. Sonra bu data warehouse'a (BigQuery, Snowflake) akar. Roibase'in [Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/tr/verianalizi) pipeline'ı bu noktada devreye girer — LLM loglarını diğer olay verisiyle (kullanıcı eylemi, conversion, churn) birleştirip prompt'un downstream etkisini ölçebilirsiniz.
-
-A/B testinde hangi metrikleri izlersiniz? Üç kategori:
-
-| Metrik tipi | Örnek | Hedef |
-|---|---|---|
-| Kalite | LLM-as-judge puanı, hallucination oranı | Yüksek |
-| Maliyet | Token count, API cost | Düşük |
-| Downstream | Conversion rate, kullanıcı engagement | Yüksek |
-
-Örneğin prompt B, prompt A'ya göre LLM-as-judge puanını %12 artırıyor ama token sayısını %35 artırıyorsa tradeoff var demektir. Eğer downstream conversion'da fark yoksa prompt A daha verimlidir.
-
-## LangSmith ve observability
-
-LangSmith, LangChain ekibinin geliştirdiği bir LLM observability platformudur. Evaluation'ın ötesinde production trace'lerini yakalar, prompt chain'lerini görselleştirir, hangi adımda latency arttığını gösterir. Özellikle multi-step LLM workflow'larında (RAG + summarization + JSON parsing gibi) debugging kritiktir.
-
-LangSmith'e trace göndermek için SDK kullanırsınız:
-
-```python
-from langsmith import Client
-client = Client(api_key="...")
-
-with client.trace(name="summarize_revenue"):
-    result = llm.invoke(prompt)
-    client.log_metric("token_count", result.usage.total_tokens)
-```
-
-Her trace LangSmith UI'da görünür, input/output/metadata tam loglanır. Birden fazla prompt versiyonu varsa karşılaştırma görünümü açabilirsiniz. UI'da "prompt v2, v1'e göre ortalama %8 daha uzun output üretiyor ama latency %3 düşük" gibi insight'ları görürsünüz.
-
-LangSmith ayrıca playground sağlar — prompt'u değiştirip tek tuşla birden fazla input'a karşı test edebilirsiniz. Bu hem prototyping hem de regression test için hızlı feedback döngüsü oluşturur. Ama dikkat: playground'da test etmek production A/B testinin yerini tutmaz, sadece ilk filtre sağlar.
-
-## Prompt versiyonlamanın ikinci etkisi: rollback
-
-Deployment hatası olduğunda rollback yapabilmek kritiktir. LLM operasyonunda rollback, önceki prompt versiyonuna geri dönmek demektir. Ama bunu yapabilmek için prompt'ların versiyon tarihi kurulması gerekir.
-
-Basit yaklaşım: her prompt'u git'te ayrı dosyada tutmak (`prompts/summarization_v3.txt`). Deployment script, hangi versiyonun production'da olduğunu bir config dosyasında saklar:
+Promptfoo açık kaynak bir CLI tool'udur, config-based eval yaparsınız:
 
 ```yaml
-# config/production.yaml
+# promptfoo.yaml
 prompts:
-  summarization: v3
-  classification: v2
+  - file://prompts/v1-baseline.txt
+  - file://prompts/v2-candidate.txt
+
+providers:
+  - openai:gpt-4
+  - anthropic:claude-3-opus-20240229
+
+tests:
+  - vars:
+      user_query: "Siparişim ne zaman gelir?"
+    assert:
+      - type: contains
+        value: "kargo takip"
+      - type: llm-rubric
+        value: "Yanıt müşteriye empati gösteriyor mu?"
+
+  - vars:
+      user_query: "İade nasıl yaparım?"
+    assert:
+      - type: not-contains
+        value: "maalesef yapamayız"
 ```
 
-Rollback yapmak için `summarization: v2` yazıp deployment'ı tetiklersiniz. Ama bu manuel süreçtir, incident'ta yavaş kalırsınız. Daha gelişmiş yaklaşım: feature flag sistemi (LaunchDarkly, Unleash) kullanmak. Flag'le prompt versiyonunu runtime'da değiştirirsiniz, code deploy etmeden geçiş yaparsınız.
+`promptfoo eval` komutu her prompt × her test case'i koşar, assertion'ları kontrol eder, tablo çıktısı verir: hangi prompt hangi test'te başarısız. Burada `llm-rubric` assertion başka bir LLM'i judge yapıyor (Promptfoo bunu otomatik çağırır). A/B farkını görmek için `promptfoo view` web UI açar, iki prompt'u side-by-side karşılaştırırsınız.
 
-Roibase'in [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) pratikleri burada devreye girer — prompt değişikliği ile downstream event'leri (conversion, churn) ilişkilendirmeniz gerekir ki rollback kararını sayısal temele oturtun. Eğer yeni prompt deployment'ından 6 saat sonra churn rate %4 yükseldiyse prompt'u rollback etmenin sinyali budur.
+Promptfoo'nun avantajı hızdır: 50 test case 2 dakikada koşar, CI/CD'ye entegre edilir (`promptfoo eval --assertions` exit code 1 döner test fail olursa). Dezavantajı: production trace'leriyle entegre değil, manuel export etmelisiniz.
 
-## Edge case: çok dilli prompt versiyonlama
+## LangSmith ile Production Trace Tabanlı Eval
 
-Eğer LLM uygulamanız çok dilde çalışıyorsa (örneğin TR, EN, DE) her dil için ayrı prompt versiyonu tutmanız gerekir. Çünkü İngilizce'de iyi çalışan bir prompt Türkçe'de aynı ton'u vermeyebilir.
+LangSmith (LangChain ekibinin ürünü) production LLM run'larını otomatik log'lar, sonra o log'lar üzerinde eval koşarsınız. Akış: uygulamanız LangChain SDK kullanıyorsa her LLM call LangSmith'e trace gider (input, output, latency, cost). LangSmith UI'da "son 7 gün içinde customer_support tag'li run'lar" diye filtre çekersin, 200 örnek seçersin, "create dataset" dersin. Bu dataset artık versiyonlanmıştır — `2026-07-01-support-sample` adıyla kaydedilir.
 
-Çözüm: prompt dosyalarını dil koduna göre organize edin:
+Şimdi yeni bir prompt'u test etmek istiyorsun. LangSmith "Playground" bölümünde prompt'u değiştirir, "Run on dataset" dersin, 200 örneği bu yeni prompt'la koşar. Sonuçlar yan yana gelir: eski output vs yeni output. Sen veya judge modelini annotation'a sokarsın: thumbs up/down, ya da custom score (1-5). LangSmith bu skorları aggregate eder, örneğin: "yeni prompt thumbs-up oranı %78, eski %65".
 
-```
-prompts/
-  summarization/
-    en_v3.txt
-    tr_v3.txt
-    de_v3.txt
-```
+LangSmith'in gücü trace context'idir. Sadece prompt değil, retrieval step'i de trace'te görünür. Örneğin RAG sisteminde prompt'u değiştirdin, ama aslında sorun retrieval'daydı — yanlış dokümanlar geliyordu. Trace'e bakınca görürsün: "yeni prompt daha iyi cevap veriyor çünkü retrieval query'sini değiştirdim". Bu insight Promptfoo'da yoktur (Promptfoo sadece final output'a bakar).
 
-Eval set de dile özel olmalı — Türkçe test case'lerde Türkçe output beklentisi koyun. A/B testi dil bazında ayrı çalıştırın, çünkü TR kullanıcılarının davranışı EN kullanıcılardan farklıdır. Metrik aggregation'ında language segment eklemeyi unutmayın.
+LangSmith'in tradeoff'u lock-in'dir: LangChain ekosistemini kullanman gerekir. Pure Anthropic SDK veya OpenAI SDK kullanıyorsan manuel tracing kod yazarsın (her call'u LangSmith API'ye gönder). Alternatif: Roibase'in [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) yaklaşımı — LLM trace'leri kendi data warehouse'ınıza sink edersiniz, eval'i BigQuery'den koşarsınız.
 
-Bir diğer dikkat noktası: çok dilli prompt'ta context uzunluğu dile göre değişir — Türkçe cümle ortalama %12 daha uzundur (token bazında). Bu da token limit'e çarpma riski demektir. Eval pipeline'ınıza token count kontrolü ekleyin, threshold aşımında warning verin.
+## Eval Metriklerini Neye Göre Seçiyorsun
 
-## Pratik adım: ilk prompt eval set'inizi kurun
+Metric seçimi use case'e göre değişir. Content generation için metric: "output keyword density hedefte mi?", "tone brand guideline'a uyuyor mu?", "factual hallucination var mı?". Chatbot için: "query çözüldü mü?", "response latency SLA içinde mi?", "kullanıcı takip sorusu sordu mu?". Her metric için judge tanımlamak zorundasın.
 
-Yazıda anlatılan sistemi kurmak için ilk adım: 20-30 gerçek kullanıcı sorgusundan oluşan minimal eval set. Production loglarınızı açın, en sık gelen sorguları seçin, her biri için beklenen output özelliklerini tanımlayın (doğruluk, ton, uzunluk gibi).
+İyi bir eval suite en az 3 metric katmanı içerir:
 
-Sonra Promptfoo veya LangSmith'i kurun, mevcut prompt'unuzu bu set'e karşı çalıştırın, baseline skor alın. Şimdi prompt'ta küçük bir değişiklik yapın (örn: "kısa ve net cevap ver" ekleyin), yeniden eval çalıştırın, skorları karşılaştırın. Eğer %5'ten fazla regresyon yoksa değişikliği deploy edin.
+| Katman | Örnek Metrikler | Judge Tipi |
+|--------|-----------------|------------|
+| **Functional** | Output formatı doğru (JSON parse edilebilir mi?), mandatory keyword içeriyor mu? | Regex/deterministic |
+| **Quality** | Tone uygunluğu, factual accuracy, hallucination | LLM-as-judge (GPT-4-turbo puanla) |
+| **Business** | Conversion prediction, engagement estimate | Custom model (XGBoost tahmin: bu output satışa dönüşür mü?) |
 
-Bu döngü otomatik hale geldiğinde prompt iteration hızınız 3x artar. Çünkü artık "acaba bu değişiklik iyi mi kötü mü" sorusuna tahminle değil, sayıyla cevap verirsiniz.
+Functional metrikler ucuzdur, hızlı koşar, regression guard'dır. Quality metrikler pahalıdır (judge LLM call'ı maliyetli), ama insan değerlendirmesine en yakın proxy'dir. Business metrikler en değerlidir ama train etmek zordur — conversion data'sı ile output'u eşleştirmek gerekir.
+
+Promptfoo ve LangSmith ikisi de LLM-as-judge destekler. Örneğin Promptfoo `llm-rubric` assertion'ı GPT-4'e şu prompt'u gönderir: "Aşağıdaki output [kriteriniz] açısından 1-10 skorlayın, sadece sayı dönün". LangSmith'te "Evaluator" tanımlarsınız, örneğin: "Anthropic Claude Haiku ile 'empati var mı?' sorusunu sor, cevabı bool'a çevir".
+
+## A/B Testini Production'a Taşımak
+
+Offline eval geçtikten sonra production A/B testi gelir. İki strateji var: shadow deployment ve gradual rollout. Shadow deployment'ta yeni prompt production trafiğini alır ama output kullanıcıya gösterilmez — sadece log'lanır, baseline ile karşılaştırılır. Bir hafta shadow koşar, metrikler anlamlı fark göstermezse yeni prompt ölür.
+
+Gradual rollout: %5 trafiğe yeni prompt, %95'e baseline. İki hafta koşar, business metrikler (örn: chatbot'ta session resolution rate) izlenir. %5'te sorun yoksa %25'e çıkar, sonra %50, sonra %100. Her aşamada KPI'lar düşerse rollback.
+
+Rollback mekanizması olmazsa olmazdır. Git commit'le prompt versiyonlamak yeterli değil — production deployment'ı da versiyonlaman gerekir. Örnek: n8n workflow'unda prompt'ı GitHub'dan raw URL ile çekiyorsan, URL'de commit hash olmalı: `github.com/.../prompt.md?ref=abc123`. Rollback: hash'i eski commit'e döndür, workflow redeploy (30 saniye). Feature flag sistemi daha sofistike: LaunchDarkly tarzı tool'la prompt version'ı runtime'da toggle edersin, deployment yok.
+
+## Eval Budget ve Otomasyon
+
+Production LLM sisteminin eval budget'ı LLM API maliyetinin %10-20'si olmalıdır. Eğer ayda 5.000$ Claude call'ı yapıyorsan, 500-1.000$ eval'e ayır. Bu budget: dataset refresh (her hafta 100 yeni örnek), judge LLM call'ları (örnek başına 2 call = 200 örnek × 2 × $0.01 = 4$), ve human labeling (kritik edge case'leri insan etiketler, saat başı ücret).
+
+Otomasyonu şu şekilde kur:
+
+1. **CI eval:** Her prompt commit'inde Promptfoo baseline'a karşı koşar, functional metric fail olursa PR merge edilmez.
+2. **Nightly eval:** Her gece production'dan yeni dataset sample'lanır, candidate prompt'lar koşar, Slack'e rapor gider.
+3. **Weekly review:** Pazartesi sabahı ekip LangSmith dashboard'a bakar, quality metric trendleri gözden geçirilir, yeni experiment kararı alınır.
+
+Otomasyon olmadan eval ölü doğar. "Manuel test edeceğiz" dediğinizde kimse etmez, iki ay sonra production prompt chaos'a dönüşür.
+
+## Karşı Argüman: Eval Gerçek Kullanıcıyı Yakalayamaz
+
+Eval'in limiti: judge ne kadar iyi olursa olsun, gerçek kullanıcı davranışını tahmin edemez. LLM-as-judge "bu tone iyi" diyebilir, ama kullanıcı bounce edebilir. Çözüm: eval'i A/B testi ile tamamlamak, evaluation'ı "go/no-go gate" değil "risk filtresi" olarak kullanmak. Eval pass etti = production'da %5 trafik almaya hak kazandı, ama nihai karar KPI'lardandır.
+
+İkinci karşı argüman maliyet: eval pipeline kurmak zaman alır (2-3 hafta), judge LLM call'ları birikir. Prompt değişikliği ayda 1 kere oluyorsa, pipeline overhead haklı çıkmaz. Cevap: prompt değişikliği ayda 1 kere oluyorsa LLM stratejinizi gözden geçirin — production'da iterasyon hızınız yavaştır, bu büyüme mühendisliği değildir.
+
+Nihai soru: eval'siz gitmek daha mı riskli, yoksa eval overhead'i mi? Eğer LLM output'u revenue-critical ise (örn: product recommendation, customer support, [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) citation'ı), cevap açık: eval yoksa flying blind'sınız. Eğer output secondary ise (örn: internal tool'da özet yapma), manual QA yeterli olabilir.
+
+## Şimdi Neyle Başlıyorsun
+
+Eğer LLM production'dasınız ama eval pipeline'ınız yoksa: bu hafta Promptfoo kur, 20 test case yaz, CI'a ekle. Git commit message'ı: "Add baseline prompt eval". Bir ay içinde: production'dan 100 örnek dataset yarat, LangSmith trial başlat (veya kendi trace log'unu BigQuery'ye aktar), ilk A/B testini shadow mode'da koş. Üç ay içinde: eval otomasyonu canlı, her prompt değişikliği metric diff'i ile merge ediliyor, rollback mekanizması 1 komut.
+
+Prompt versiyonlama ve eval, LLM operasyonunu tahmin oyunundan çıkarıp mühendislik disiplinine sokar. "Yeni prompt daha iyi geldi" demek yerine "candidate prompt baseline'a göre %12 daha yüksek factual accuracy, %3 daha düşük latency" dersiniz. Bu fark, LLM'in production'da güvenilir bir sistem olması ile deney olarak kalması arasındaki çizgidir.
