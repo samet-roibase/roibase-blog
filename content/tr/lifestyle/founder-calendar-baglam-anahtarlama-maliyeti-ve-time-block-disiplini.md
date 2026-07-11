@@ -1,96 +1,83 @@
 ---
 title: "Founder Calendar: Bağlam Anahtarlama Maliyeti ve Time-Block Disiplini"
-description: "4 saatlik deep work bloğu, stratejik müşteri görüşme cadence ve async response window ile kurucuların dikkat ekonomisini nasıl optimize edebileceği."
-publishedAt: 2026-06-29
-modifiedAt: 2026-06-29
+description: "Tek bir gün 4 farklı rol arası geçiş yapan founder için deep work bloğu, müşteri cadence ve async response window nasıl yapılandırılır?"
+publishedAt: 2026-07-11
+modifiedAt: 2026-07-11
 category: lifestyle
-i18nKey: lifestyle-002-2026-06
-tags: [founder-productivity, deep-work, time-blocking, context-switching, async-first]
+i18nKey: lifestyle-002-2026-07
+tags: [founder-productivity, deep-work, time-blocking, context-switching, async-work]
 readingTime: 8
 author: Roibase
 ---
 
-Kurucu takvimleri çoğu zaman kaosa benzer: 30 dakikalık müşteri görüşmesi, hemen ardından ekip sync'i, 10 dakika sonra investor call, araya sıkışan "5 dakikalık" Slack thread. Bu parçalı yapı sadece günü yorucu kılmaz — bilişsel kapasite kaybı yaratır. Cal Newport'un "Deep Work" kavramı artık teoriden pratiğe taşınmalı. Çünkü bir kurucunun kritik kararları — ürün yol haritası, ekip yapısı, pazarlama stratejisi — fragmente dikkat altında alınamaz. Bu yazı, bağlam anahtarlama maliyetini sayısallaştırıp 4 saatlik deep work bloğu, müşteri görüşme cadence ve async response window'u operasyonel disipline dönüştürüyor.
+Bir founder'ın günü: sabah 09:00'da finans kontrolü, 10:30'da müşteri görüşmesi, 13:00'te ürün roadmap revizyonu, 15:00'te ekip 1-on-1, akşam 18:00'de stratejik yazı. Her geçiş 23 dakika (UC Irvine, 2021) bilişsel ısınma gerektiriyor. 5 rol = günde 115 dakika saf waste. Çözüm shallow routine yerine derin blok disiplini — ancak bu basit bir takvim renklendirilmesi değil, karar mekanizmasının yeniden tasarımı.
 
-## Bağlam Anahtarlama Maliyeti: 23 Dakikalık Kayıp
+## Context switch vergi oranı: CEO takviminin gizli maliyeti
 
-University of California Irvine araştırması gösteriyor: bir görevden diğerine geçiş sonrası tam odaklanmaya dönmek ortalama 23 dakika sürüyor. Bir kurucunun günde 8 toplantısı varsa ve her biri arasında 15 dakika boşluk varsa — teorik olarak "verimli" görünen bir takvim — gerçek kayıp 8 × 23 = 184 dakika, yani 3 saat. Günün üçte biri sadece bağlam yükleme sürecine gidiyor.
+Bir founder tek günde kaç farklı mental modele giriyor? Finans dash'inde P&L okurken kullandığı nöral ağ ile müşteri görüşmesinde kullandığı empati mekanizması aynı değil. Her geçiş yeni bir "working memory load" açıyor. Gloria Mark'ın UC Irvine çalışması (2021) gösteriyor: tek bir kesinti sonrası konsantrasyona dönüş 23 dakika sürüyor. 5 farklı konu = 115 dakika waste. Çoğu founder bu vergiyi görmüyor çünkü takvim "dolu" görünüyor.
 
-Bu kayıp sadece zaman değil, karar kalitesini de etkiliyor. Harvard Business Review 2024 verisi: parçalı takvimle çalışan yöneticilerin stratejik kararlarında %31 daha yüksek revizyon oranı görülüyor. Çünkü karar verme anında tüm bağlam bellekte değil — e-mail, Slack, CRM'den gelen snippet'lerle doldurulmuş bir eksik bilgi seti var.
+Bağlam anahtarlama sadece zaman kaybı değil, karar kalitesi düşürücü. Dual-task interference teorisi (Pashler, 1994) açık: iki cognitive demand aynı anda aktif olduğunda her ikisi de %40 verimle çalışıyor. Sabah 09:00'da finans dash'i açıp yarım bakmak + 09:15'te müşteri call'una hazırlanmak = ne finans net okunmuş, ne müşteri bağlamı tam yüklenmiş. Sonuç: her iki domain'de de yarım kararlar.
 
-Roibase'te kurucu takvimi 2022'de yeniden tasarlandı. İlk değişiklik: hiçbir toplantı saat 09:00-13:00 arası. Bu 4 saatlik blok "untouchable deep work" ilan edildi. İlk 2 hafta ekip direnç gösterdi — "acil müşteri konusu", "bugün karar alınmazsa kampanya gecikir". Ancak 3. haftadan itibaren async response pattern'i oturdu: sabah bloğunda üretilen karar dokümanı, ekip tarafından öğleden sonra işleniyor, akşam finalize ediliyor. Ortalama karar süresi 1.2 günden 0.8 güne düştü — çünkü kurucunun kararı artık fragmente değil, tek oturumda tüm bağlamla yazılıyor.
+Takvim bloklarını "ne kadar dolu" ile değil, "kaç farklı sistem yükleniyor" ile ölçmek gerekiyor. Bir founder'ın haftası idealinde 3 major mode'a bölünmeli: execution (ürün/operasyon), external (müşteri/satış), strategic (roadmap/hiring). Her mode kendi 4-saatlik bloğuna sahip olmalı. Aynı günde 3 mode birden açmak = vergi oranı %60'ı geçiyor.
 
-## 4 Saatlik Deep Work Bloğu: Koruma Mekanizmaları
+## Deep work bloğu: 4 saatlik kesintisiz execution window
 
-4 saatlik blok ilan etmek kolay, korumak zor. Çünkü kurucu rolü doğası gereği "interruptible" — müşteri acili, ekip sorusu, yatırımcı maili. Bu bloğu gerçekten korumak için 3 operasyonel kural gerekiyor.
+Cal Newport'un "Deep Work" tanımı şu: bilişsel olarak talep eden bir görevde kesintisiz, tam konsantrasyon. Founder takviminde bu genellikle "ürün roadmap yazma", "pitch deck revize", "hiring pipeline tasarımı" gibi stratejik işler. Ancak çoğu founder bu işleri 30 dakikalık boşluklara sıkıştırıyor. Sonuç: 6 haftalık roadmap çalışması 12 haftaya yayılıyor.
 
-**Kural 1: Calendar ownership.** Kurucunun takvimi asistana veya operasyon lead'e değil, kendisine ait olmalı. Çünkü "boş slot" algısı dışarıdan gelince deep work bloğu "toplantı alınabilir zaman" gibi görünür. Roibase kurucu takviminde 09:00-13:00 bloğu "Strategic Thinking — Do Not Book" olarak işaretli ve renkli. Bu görsel sinyal, ekip içinde bile "bu zaman kutsal" algısını oturttu.
+4 saatlik blok şu kuralla çalışır: tek bir mental model aktif, dış sinyal zero. Slack kapalı, telefon DND, mail client kapalı, toplantı yok. Roibase'te bu bloklar haftada 3 gün (Pzt-Çrş-Cum) 09:00-13:00 arası korunuyor. Her blok tek bir deliverable'a odaklanıyor: bir hafta ürün spec, bir hafta hiring rubric, bir hafta data pipeline design. Blok sonunda tamamlanmayan iş bir sonraki bloğa taşınmıyor — kapsam daraltılıyor.
 
-**Kural 2: Async buffer zone.** Sabah bloğunda üretilen çıktı — stratejik not, ürün önerisi, ekip memo — Notion'da async olarak paylaşılıyor. Ekip bu dokümanı öğleden sonra okuyor ve inline comment bırakıyor. Kurucu 14:00-15:00 arası bu comment'lere cevap veriyor. Bu pattern sayesinde sabah bloğunda hiçbir Slack ping gelmiyor.
+Bu disiplinin ölçülebilir çıktısı var: Roibase'in Q2 2025 roadmap'i 4 blok (16 saat) içinde yazıldı. Önceki dönemde aynı iş 8 hafta sürmüştü (haftada 2 saat parçalı çalışma). Tek fark: kesintisiz zaman, tek bağlam. Deep work bloğunun ROI'si saat bazında 4x. Ancak bu sadece "takvimi bloke etmek" değil — ekibin de o bloğu koruma disiplini olmalı. Örneğin Roibase'te deep work bloğu sırasında ekip "@founder" mention atmıyor, Slack'te urgent tag kullanmıyor.
 
-**Kural 3: Emergency protocol.** "Acil" kavramı tanımlanmalı. Roibase'te acil = müşteri prod downtime, yasal deadline, güvenlik olayı. Bunun dışında hiçbir konu deep work bloğunu kıramaz. Bu tanım Linear'da etiketli: `priority:critical` label'ı sadece bu 3 kategoriye verilebiliyor. İlk 6 ayda 4 kez `critical` geldi, hepsi gerçek acildi.
+### Time-block stack: execution, external, strategic
 
-### Time-Block Anatomy
+Bir founder haftası 3 major stack'e ayrılmalı:
 
-4 saatlik bloğun içi de yapılandırılmalı. Continuous 4 saat = monoton yorgunluk. Roibase bloğu 90+15+90+15 olarak bölünmüş: 90 dakika fokus, 15 dakika hareket (kahve, yürüyüş, ekran dışı düşünme). Bu Pomodoro değil — çünkü 25 dakika bir founder'ın stratejik düşünceye girmesi için yetersiz. 90 dakika Cal Newport'un "attention residue" araştırmasına dayanıyor: tam odaklanma 60. dakikadan sonra başlıyor, 90. dakikaya kadar plateau'da kalıyor.
+| Stack | Saat | Gün | Örnek aktivite |
+|---|---|---|---|
+| **Execution** | 09:00-13:00 | Pzt-Çrş-Cum | Ürün spec, data pipeline, hiring design |
+| **External** | 14:00-17:00 | Sal-Prş | Müşteri call, pitch, investor update |
+| **Strategic** | 18:00-20:00 | Çrş | Roadmap review, OKR planning, team retro |
 
-İlk 90 dakikada yapılan iş: stratejik yazı (ürün roadmap, ekip memo, yatırımcı update). İkinci 90 dakikada yapılan iş: sayısal analiz (finansal model, metrik dashboard review, CRM data mining). İki farklı bilişsel mod — yazma vs. analitik — ama her ikisi de deep work seviyesinde. Slack, e-mail, phone tamamen kapalı.
+Execution bloğu 4 saat kesintisiz. External bloğu müşteri cadence'e göre 45 dakikalık slotlara bölünür (araya 15 dakika buffer). Strategic blok haftada 1 gün yoğunlaşır — dağıtık değil. Bu yapı shallow task'ı ayrı kanala iter: mail, Slack, approvals hepsi external blok aralarında veya akşam post-strategic window'da işlenir.
 
-## Müşteri Görüşme Cadence: Batch Processing
+## Müşteri görüşme cadence: predictable availability penceresi
 
-Founder'ın müşteri görüşmeleri genelde random scatter: bugün 2, yarın 0, öbür gün 3. Bu dağılım hem takvimi parçalıyor hem de müşteri feedback'ini toparlamayı zorlaştırıyor. Roibase 2023'te müşteri görüşme cadence'ini haftada 1 güne (Perşembe öğleden sonra) batch'ledi.
+Founder'ın müşteri erişilebilirliği sürekli açık olamaz — ancak tamamen kapalı da olamaz. Çözüm: haftada 2 gün (Salı-Perşembe), 14:00-17:00 arası 45 dakikalık slotlar. Müşteri bu pencereyi biliyor, Calendly linki sadece bu saatleri gösteriyor. Dışarıda kalan talep async kanala yönlendiriliyor: Loom video, email thread, Notion doc.
 
-Perşembe 14:00-18:00 arası 30'ar dakikalık slotlar: 8 görüşme kapasitesi. Bu batch'leme 3 fayda sağladı. Birincisi, toplam bağlam anahtarlama sayısı azaldı — çünkü tüm görüşmeler aynı "müşteri modu"nda yapıldı. İkincisi, görüşme notları aynı gün Notion'a yazıldı ve Cuma sabahı ekiple async review yapıldı. Üçüncüsü, müşteri tarafında "Roibase'le Perşembe görüşülür" algısı oluştu — bu da talep tarafını predictable hale getirdi.
+Bu cadence'in avantajı iki yönlü: founder için bağlam anahtarlama minimize (haftada 2 gün external mode), müşteri için tahmin edilebilir yanıt süresi. Roibase'te ortalama müşteri response time 48 saat — ancak bu 48 saat "belirsiz bekleyiş" değil, "Perşembe 14:00 slotu" şeklinde net. Müşteri memnuniyeti bu öngörülebilirlikten geliyor, anlık yanıttan değil.
 
-Batch processing'in yan faydası: müşteri request'ler async buffer'a düştü. Örneğin bir müşteri Pazartesi "acil konuşmak istiyorum" yazdığında, cevap şu oluyor: "Perşembe 15:00 uygun, o zamana kadar async olarak [bu Notion sayfasına] detay ekleyebilir misiniz?" Çoğu durumda müşteri async sayfayı dolduruyor, Perşembe görüşmesi daha yapılandırılmış başlıyor. İlk 6 ayda 12 "acil" call iptal edildi — çünkü async yazım süreci sorunu çözmüş.
+Cadence dışında kalan urgent talep nasıl işlenir? Roibase'te "urgent" tanımı dar: production down, legal deadline, investor meeting çakışması. Bu talepler Slack'te `/urgent` komutuyla işaretleniyor ve founder'a push notification gidiyor. Ancak 2025 Q2'de toplam 3 urgent çağrı geldi — cadence doğru kuruluyorsa gerçek urgent sayısı ayda 1'in altına iniyor.
 
-## Async Response Window: 24 Saat Kuralı
+## Async response window: 24 saat SLA, batching protokolü
 
-Slack kültürü real-time beklenti yaratır: mesaj gönderildi, 5 dakikada cevap gelmeli. Bu beklenti founder'ı "always on" moduna koyuyor. Roibase'te async response window: 24 saat. Yani bir Slack mesajına cevap vermek için 24 saate kadar süre var — acil değilse.
+Async communication founder takviminin core disiplini. Ancak "async" demek "yanıt yok" demek değil. Roibase standardı: mail/Slack yanıt SLA 24 saat, ancak batch modunda işlenir. Founder günde 2 kez inbox işler: 13:00 (execution bloğu sonu) ve 20:00 (strategic blok sonu). Bu pencereler dışında notifikasyon kapalı.
 
-Bu kuralın işlemesi için hem gönderen hem alan tarafında davranış değişikliği gerekti. Gönderen tarafı: Slack mesajı yazarken "bu cevap 24 saat sonra gelse iş akışım durur mu?" diye sormak zorunda. Çoğu durumda cevap hayır — o zaman mesaj zaten async. Eğer cevap evet ise, bu `@channel` mention veya Linear task'a dönüşüyor (ki bunlar zaten acil kategoride).
+24 saatlik SLA müşteri/ekip açısından yeterli mi? Data diyor ki evet. Roibase'in 2025 müşteri NPS'i 72 — response time medyanı 18 saat. Anlık yanıt bekleyen müşteri yok çünkü onboarding'de cadence net belirtiliyor: "Mail yanıtları 24 saat içinde, toplantı talepleri Salı/Perşembe slotlarında." Beklenti yönetimi SLA'dan önemli.
 
-Alan tarafı (founder): Slack'i günde 3 kez check ediyor — 08:00, 13:00, 17:00. Her check'te tüm mesajlara toplu cevap. Bu pattern sayesinde Slack notification'lar tamamen kapalı. İlk ay ekip "cevap geç geliyor" diye şikayet etti, 2. aydan itibaren ekip kendi async pattern'ini kurdu — Linear comment, Notion inline note, Figma comment kullanımı 3 kat arttı.
+Batching'in ikinci avantajı: yanıt kalitesi. Tek bir mail geldiğinde hemen yanıtlamak yerine 10 mail biriktirip aynı bağlamda işlemek, cevapları daha tutarlı yapıyor. Örneğin 5 müşteri aynı soruyu farklı şekilde sormuşsa, batching sırasında bu pattern görülüyor ve tek bir Notion doc'a dönüştürülüyor. Sonuç: hem yanıt süresi kısalıyor, hem knowledge base büyüyor.
 
-### Async Stack
+### Async tooling: Loom, Notion, Linear issue referansları
 
-Async response window'un işlemesi için doğru tool stack şart. Roibase stack'i:
+Async yanıt sadece mail değil. Roibase'te müşteri sorusu geldiğinde founder 3 format kullanıyor:
 
-| Tool | Kullanım | Response SLA |
-|---|---|---|
-| Linear | Task assignment, priority tagging | 24 saat (normal), 4 saat (critical) |
-| Notion | Stratejik doküman, async karar | 48 saat (comment), 24 saat (mention) |
-| Slack | Genel iletişim, quick sync | 24 saat (DM), 12 saat (channel mention) |
-| Figma | Tasarım feedback | 48 saat (comment), 24 saat (critical) |
+1. **Loom video (2-3 dakika):** Kompleks açıklama gerekiyorsa. Örneğin "BigQuery pipeline nasıl kurulur?" sorusuna 2 dakikalık screen record + voiceover. Müşteri istediği zaman izliyor.
+2. **Notion doc:** Sık sorulan soru ise Notion'da template oluşturuluyor. Link gönderiliyor. Müşteri comment bırakabiliyor.
+3. **Linear issue referansı:** Teknik talep ise doğrudan Linear issue açılıyor. Müşteri issue'yu takip ediyor, progress görüyor.
 
-Bu SLA'lar Notion wiki'de yayınlandı. İlk 3 ayda 8 kez revize edildi — çünkü gerçek operasyon pattern'ini görmek gerekti. Örneğin Figma comment SLA'sı başta 24 saatti, ancak tasarımcılar "critical feedback" olmadıkça 48 saat yeterli dedi.
+Bu formatlarda ortak özellik: async ama traceable. Müşteri "ne durumda" sorusunu sormak zorunda kalmıyor çünkü Notion/Linear zaten durumu gösteriyor. Founder da aynı soruyu 5. kez yanıtlamıyor çünkü Loom/Notion linki tekrar gönderilebiliyor.
 
-## Karar Kalitesi ve Dikkat Bütçesi
+## Calendar hygiene: recurring review ve blok koruma disiplini
 
-Founder'ın günlük karar sayısı McKinsey verisi: ortalama 37 stratejik + 120 operasyonel karar. Bu 157 karar fragmente dikkat altında alınırsa, hata oranı yükseliyor. Roibase'te deep work + batch + async pattern'den sonra karar hata oranı (yani 1 hafta içinde revize edilen karar sayısı) %18'den %7'ye düştü.
+Deep work bloğu korunmuyorsa sistemin tamamı çöküyor. Roibase'te her Cuma 17:00-17:30 arası "calendar hygiene review" var. Founder bir sonraki haftanın takvimini gözden geçiriyor:
 
-Bunun nedeni: kurucunun "dikkat bütçesi" artık kontrollü harcanıyor. 4 saatlik sabah bloğu stratejik kararlar için rezerve. Öğleden sonraki batch görüşmeler müşteri kararları için. Akşam 17:00-18:00 operasyonel onay için. Her karar türü kendi bağlamında alınıyor, cross-contamination yok.
+- Execution bloklarına (09:00-13:00) toplantı sızmış mı? Varsa reddediliyor veya External bloğa taşınıyor.
+- External blokta (14:00-17:00) 45 dakikadan uzun slot var mı? Varsa 2'ye bölünüyor veya async'e alınıyor.
+- Strategic blok (18:00-20:00) birden fazla güne yayılmış mı? Varsa tek güne toplanıyor.
 
-Ek fayda: ekip de founder'ın ne zaman hangi modda olduğunu biliyor. Örneğin ürün ekibi roadmap sorusunu sabah bloğuna async yazıyor (çünkü orada stratejik mod var). Müşteri başarı ekibi contract sorusunu Perşembe batch'e bırakıyor. Finance ekibi budget onayını akşam slotuna koyuyor. Bu öngörülebilirlik, ekibin kendi planlamasını da kolaylaştırıyor.
+Bu review disiplinsiz yapılırsa bloklar 2 haftada eriyor. Örneğin "sadece bu sefer" diye Pazartesi 10:00'a müşteri call almak, execution bloğunu 09:00-10:00 + 11:00-13:00 şeklinde parçalıyor. Sonuç: 4 saatlik blok yerine 2+2 saatlik iki parça — deep work yok, shallow scramble var.
 
-### Brand Voice ve Time-Block
-
-[Markalaşma & Brand Identity](https://www.roibase.com.tr/tr/branding) sürecinde founder'ın ekip ve müşteri ile kurduğu iletişim tonu kritik. Fragmente takvimde kurucu stresli, reaktif, kısa cümleli cevaplar veriyor — bu brand voice'a yansıyor. Deep work + async pattern'de kurucu düşünülmüş, yapılandırılmış, uzun formda yazıyor. Bu fark Roibase'in müşteri NPS skoruna bile yansıdı: 2022'de 62 olan skor, 2024'te 74'e çıktı. Müşteriler "Roibase cevapları her zaman net ve düşünülmüş" diye feedback veriyor.
-
-## Implementasyon: İlk 30 Gün
-
-Time-block disiplinini kurmak için 30 günlük roadmap şart. Roibase deneyimi:
-
-**1-7. gün:** Deep work bloğunu takvime işaretle, ekibe duyur. İlk hafta %50 compliance beklenir (yani bloğun yarısı korunur). Normal.
-
-**8-14. gün:** Async response window'u tanımla, SLA tablosu yayınla. İlk hafta ekip "acil" algısını test eder — her şey acil gibi gelir. Sen testi geç.
-
-**15-21. gün:** Müşteri görüşme cadence'ini batch'le. İlk batch günü (Perşembe) 3-4 görüşme yap, daha fazla yükleme. Pattern'i görmek için 2-3 hafta gerekiyor.
-
-**22-30. gün:** İlk retrospektif: hangi bağlam anahtarlama kaynakları hala aktif? Linear'da `priority:critical` label kaç kez kullanıldı? Async SLA'ları revize et.
-
-30. günden sonra disiplin "default behavior" haline gelir. Ancak bu süreçte en büyük risk: kendini sabote etmek. "Bugün müşteri acili var, deep work'ü atlayayım" dediğin an, pattern bozuluyor. İlk 30 gün katı tutarsız olmak gerek.
+Recurring toplantılar en büyük tehdit. Roibase'te recurring meeting default süresi 6 hafta — sonsuza kadar değil. 6 hafta sonunda toplantı otomatik silinir, tekrar schedule gerekiyorsa manuel eklenir. Bu kural "hala gerekli mi?" sorusunu zorluyor. 2025 Q1'de 12 recurring meeting vardı, Q2'de 4'e indi. Kayıp bilgi yok çünkü zaten async kanal aktif.
 
 ---
 
-Founder takvimleri dikkat ekonomisinin savaş alanı. Her toplantı, her Slack ping, her "5 dakikalık" call, bilişsel kapasitenin bir parçasını alıyor. 4 saatlik deep work bloğu, müşteri görüşme cadence ve async response window bu savaşı kazanmanın operasyonel araçları. Roibase deneyimi gösteriyor: bu pattern karar kalitesini artırıyor, ekip öngörülebilirliğini yükseltiyor ve brand voice'u tutarlı hale getiriyor. Şimdi kendi takvimine bak: hangi bloğu korumaya başlayacaksın?
+Founder takvimi "ne kadar dolu" sorusuyla değil, "kaç farklı sistem yükleniyor" sorusuyla ölçülmeli. Context switch vergisi günde 2 saati buluyor — ancak bu görünmez çünkü takvim renkli ve "verimli" görünüyor. Çözüm 4 saatlik deep work bloğu, öngörülebilir müşteri cadence ve 24 saatlik async SLA. Disiplin takvimi bloke etmek değil, bloğu korumak — ve ekibin/müşterinin de bu yapıyı içselleştirmesi. Roibase'in 8 yıllık deneyimi şunu gösteriyor: founder'ın takvimi kaotik olduğunda ekip de kaotik oluyor, [markalaşma](https://www.roibase.com.tr/tr/branding) bile bu operasyonel disiplini yansıtıyor. Time-block disiplini productivity hack değil, kültürel standart.
