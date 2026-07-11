@@ -1,73 +1,78 @@
 ---
 title: "MMM + Incrementality: L'attribution setup di 2026"
-description: "Robyn, Meta Lift e geo experiments — quale metodo funziona quando? Guida tecnica per ricostruire l'attribution nell'era post-cookie."
-publishedAt: 2026-06-23
-modifiedAt: 2026-06-23
+description: "Robyn, Meta Lift e geo experiments: quale strumento quando nel measurement post-cookie, test setup e decision tree."
+publishedAt: 2026-07-11
+modifiedAt: 2026-07-11
 category: marketing
-i18nKey: marketing-004-2026-06
+i18nKey: marketing-004-2026-07
 tags: [mmm, incrementality, attribution, robyn, meta-lift]
 readingTime: 9
 author: Roibase
 ---
 
-L'attribution su ultimo click è morta nel 2023, l'attribution multi-touch nel 2024. Nel 2026 la misurazione del marketing si è divisa in due poli: Marketing Mix Modeling (MMM) a livello macro, test di incrementality a livello micro. Server-side conversion API costruiscono il ponte tra i due. Questo articolo spiega quale metodo funziona in quale contesto, quale output alimenta quale decisione — non filosofia astratta di attribution, ma uno stack tangibile e costruibile in pratica.
+La misurazione del marketing post-cookie ha ridefinito il significato di "attribution". Nel 2026, non si tratta più di tracciare quale utente ha visto quale annuncio, ma di isolare quale canale genera effettivamente un incremento di vendite misurabile. Marketing Mix Modeling (MMM) e incrementality test sono i pilastri di questo nuovo approccio — eppure entrambi rispondono alla stessa domanda in orizzonti temporali diversi e con livelli di confidenza differenti. La scelta tra Robyn di Meta, Conversion Lift test e geo-based experiments dipende dal timing della campagna, dalla flessibilità di budget e dalla data maturity dell'organizzazione.
 
-## Marketing Mix Modeling funziona ora su base settimanale
+## MMM: Leggere il Passato per Prevedere il Futuro
 
-Nel 2015 MMM significava "una presentazione all'anno per il CEO". Nel 2026 strumenti aperti come Robyn di Meta eseguono modelli Bayesiani ogni settimana, aggiornando il contribution dei canali in tempo reale. La struttura è questa: prendi i dati storici di spesa, impression, conversion e fattori esterni (stagionalità, festività, indice competitivo), modellali con regressione time-series, estrai il ROAS marginale di ogni canale. Domanda: se aggiungo 100.000 TL a un canale, quanti acquisti extra ottengo? MMM risponde a questa domanda.
+Marketing Mix Modeling appartiene alla famiglia delle regressioni. Integra 2-3 anni di dati su spesa, impression, fattori macroeconomici e vendite per isolare il contributo di ogni canale alle vendite totali. Framework open source come Robyn aggiungono Bayesian optimization, calibrando automaticamente gli iperparametri del modello (adstock, curve di saturazione).
 
-La setup non è semplice ma i requisiti tecnici sono trasparenti: almeno 52 settimane di dati giornalieri (idealmente 104 settimane), righe di spesa allocabili per canale, numero di conversioni (preferibilmente con revenue). Robyn funziona in Python e R, legge da BigQuery o Snowflake, calcola la distribuzione posterior con Prophet o Stan. L'output è un grafico di channel contribution, curve di saturazione e response curve — quale canale risente del budget-cutting, quale è già in diminishing returns.
+L'output di Robyn è una serie di "response curve": per ogni canale, mostra il ROAS marginale dell'incremento di spesa. Ad esempio, investire 100.000 TL ulteriori su Meta potrebbe generare 3,2x ROAS, mentre lo stesso importo su Google Search potrebbe rendere 4,1x — questo tipo di decisioni richiede la base dati cumulativa di MMM. Nel 2026, Robyn v4.1 automatizza la decomposizione della stagionalità basata su Prophet e analizza gli effetti delle festività; i dummy event manuali sono ormai deprecati.
 
-Nel 2026 Robyn aggiunge granularità geo-level: se dividi l'Italia in 7 regioni, calcola il threshold di saturazione per ogni regione. Milano potrebbe essere al 35% di saturazione Meta mentre il Sud è al 10% — vedere questa differenza cambia la decisione di riallocazione del budget. Ma attenzione: MMM non dimostra causalità, mostra correlazione. "La spesa su Google Ads è aumentata e le vendite sono aumentate" non è la stessa cosa di "Google Ads ha causato le vendite". Questo gap è colmato da incrementality.
+Il limite di MMM è la latenza: la costruzione del modello richiede 4-6 settimane perché necessita di almeno 100-120 settimane di dati (2+ anni). Se avete lanciato un nuovo canale (ad esempio TikTok), i dati delle prime 12 settimane sono incredibilmente rumorosi; MMM non può assegnare coefficienti affidabili. In questo scenario entra in gioco il test di incrementalità a breve termine.
 
-## Meta Lift ha risolto incrementality dentro la piattaforma
+## Meta Conversion Lift: Rapido, Circoscritto, Costoso
 
-Il test Conversion Lift di Meta è un vero trial controllato randomizzato (RCT). Divide il tuo pubblico in due: mostra il video al gruppo test, non lo mostra al gruppo di controllo. La differenza di conversion tra i due è il **contribution netto** di quella campagna. Nel 2026 questo sistema è sceso da campaign level a creative level — tre video diversi nella stessa campagna vengono misurati separatamente per incrementality.
+Meta Conversion Lift (precedentemente Lift Studies) funziona secondo un design randomized controlled trial: gli utenti sono divisi in gruppi di test (esposti agli annunci) e control (esposti a PSA), calcolando la differenza di conversione. Ottenete risultati in 2-4 settimane — ben più veloce di MMM per decisioni real-time.
 
-La setup tecnica funziona così: in Ads Manager al posto di "Create A/B Test" scegli "Create Lift Test", con minimo 200.000 reach e durata di 2 settimane (Meta lo enforce). Il gruppo di controllo dovrebbe stare tra il 10-20% — meno e la potenza statistica scende, più e la perdita di revenue cresce. Quando il test finisce, Meta ti fornisce: "Gruppo test 1000 conversion, gruppo controllo 700 conversion → 30% incremental lift, confidence interval 18%-42%".
+Il prerequisito del Lift test è un reach minimo di 200.000 utenti e la disponibilità di allocare il 5-10% del budget di campagna normale al gruppo control come "spesa di test". In pratica, significa 50.000-100.000 TL di impression waste, poiché il gruppo control vede PSA ma le loro conversioni non vengono conteggiate. Meta non rimborsa questo costo — lo dovete considerare come parte della spesa di test.
 
-Questo numero si lega direttamente al budget. Se la campagna ha speso 100.000 TL e mostra 30% lift, 30.000 TL di quella spesa hanno generato vendite aggiuntive davvero — i restanti 70.000 TL sarebbero comunque arrivati organicamente o tramite altri canali. Da qui calcoli il costo marginale per conversione incrementale: 100.000 / 300 = 333 TL. Confronta questo numero con l'output di MMM: "Gli ultimi 1000 TL spesi su Meta hanno generato 2,8 acquisti" — i due numeri dovrebbero validarsi, una differenza del 15-20% è normale (gap metodologico), oltre il 50% significa un problema nei dati.
+Nel 2026, Meta ha integrato Conversion Lift con gli event lato server: gli event `Purchase` inviati via CAPI possono essere utilizzati direttamente nel calcolo del lift. Anche per gli utenti iOS 17+, i risultati sono affidabili perché l'assegnazione test/control è legata agli ID lato server. L'unico vincolo: Lift misura esclusivamente Meta — non cattura l'halo effect cross-channel. Se la campagna Instagram aumenta il traffico organico su Google Search, Lift non lo vede.
 
-Il limite di Meta Lift: funziona solo nell'ecosistema Meta, non misura gli effetti cross-canale. Se Google Ads + Meta lavorano insieme, c'è un lift sinergico? Lo misura geo experiment.
+## Geo Experiments: Catturare l'Halo Cross-Channel
 
-## Geo experiments guardano sinergia cross-canale
+I test di incrementalità geo-based confrontano città/regioni in treatment vs. control. Ad esempio, aumentate la spesa Meta del 30% a Istanbul e Ankara, mantenendo stabile Izmir e Bursa. Dopo 4-6 settimane, osservate il delta nelle vendite totali — questo metodo cattura anche lo spillover tra canali.
 
-Il framework di Geo Experiments di Google funziona così: dividi l'Italia in 10 regioni, aumenta la spesa del 20% in 5 di esse (o tagliala completamente), lascia le altre invariate. Dopo 4 settimane guarda la differenza di vendite tra i due gruppi — se c'è differenza e statisticamente significativa (p<0.05), il cambio di spesa ne è la causa. Questo è diverso da Meta Lift: non distingue il canale, guarda l'effetto totale regione per regione.
+Lo strumento GeoX di Google automatizza il processo: utilizza synthetic control method per costruire una curva di vendite "controffattuale" per ogni geo di test. In pratica, stima le vendite di Istanbul combinando il trend di 5-6 città con caratteristiche demografiche e stagionali simili, calcolando il peso. La differenza tra le vendite reali post-treatment e questa stima è l'incrementalità.
 
-In pratica: in Campaign Manager 360 o Google Ads scegli "Experiments" > "Geo experiment" (nel 2026 può essere lanciato anche da GA4). Per definire le regioni usi codici postali, province o aree DMA (in Italia le regioni NUTS2). Serve minimo 6 settimane di dati baseline, il test dura almeno 3 settimane (idealmente 6 — per attenuare il rumore stagionale). Il motore Bayesian di Google aggiorna il posterior ogni giorno, al termine del test fornisce: "Un aumento di spesa del 20% ha aumentato le vendite dell'8,5% (CI: 4,2% - 12,8%)".
+Il vantaggio del geo test: copre tutti i canali online e offline. Lo svantaggio: il rischio di spillover geografico (un annuncio a Istanbul potrebbe influenzare Kocaeli) e le disparità di dimensione di mercato. Funziona efficacemente per brand con 10-12+ cluster geografici; operazioni più piccole non hanno power sufficiente.
 
-Questo metodo è particolarmente potente per testare strategie cross-canale. Ad esempio: "Google + Meta insieme generano 15% di vendite in più rispetto a usarli separatamente?" — Nel gruppo A accendi entrambi i canali al massimo, nel gruppo B riduci Google del 50%. Se la differenza di vendite è meno del 10%, la sinergia non esiste e riallocare il budget. Il limite di geo experiment: setup è costoso (6 settimane baseline + 6 settimane test = 3 mesi), i risultati sono significativi solo quando testare cambiamenti di budget sufficientemente grandi. Se provi a misurare un tweak del 5% ti perderai nel noise.
+Nel 2026, GeoX è nativamente integrato con Google Cloud BigQuery — potete estrarre dati da GA4 + dati di prodotto da BigQuery e inviarli direttamente alla pipeline di test. Setup richiede 2 settimane, durata del test 4-6 settimane, cycle time totale 6-8 settimane.
 
-## Quale metodo quando — decision tree
+## Quale Strumento Quando
 
-Puoi restringere la decisione con 3 domande:
+Applicate il seguente decision tree:
 
-1. **Qual è lo scope della decisione?** Budget annuale per canale → MMM. Confronto creative campaign-specifico → Meta Lift. Test sinergia cross-canale → Geo experiment.
+| Situazione | Strumento | Perché |
+|---|---|---|
+| Avete 2+ anni di dati, allocherete il budget strategicamente | Robyn (MMM) | Curve di risposta a lungo termine + identificazione della saturazione |
+| Testate un nuovo formato creativo (ad es. Reels vs. Feed) | Meta Conversion Lift | Rapido, specifico del formato, risultati in 2-4 settimane |
+| Sospettate effetto halo cross-channel (ad es. YouTube + Search sinergia) | Geo experiment | Cattura lo spillover tra canali |
+| Partite da zero | Prima Lift, poi MMM | Primi 6 mesi optimize tatticamente con Lift, poi strategico con MMM |
 
-2. **È pronta la base dati?** MMM richiede 52+ settimane di spesa pulita + conversion. Lift richiede 200K+ reach e 2 settimane. Geo richiede 6 settimane baseline + segmentazione geografica.
+Per Robyn, il setup minimo: ambiente Python/R, 120+ settimane di dati su spesa + vendite, un nodo in cui Prophet funziona (2-4 core sufficienti). L'output si aggiorna settimanalmente ma il rebuild del modello dovrebbe avvenire una volta al mese.
 
-3. **Che velocità di decisione serve?** Ottimizzazione settimanale → Meta Lift sempre attivo. Strategia trimestrale → MMM refresh mensile. 1-2 grandi pivot all'anno → Geo experiment.
+Per Meta Lift: campagna attiva in Business Manager, reach settimanale 200k+, event di conversione inviato via CAPI. L'approvazione del Lift richiede 3-5 giorni lavorativi, deve superare la revisione interna di Meta.
 
-La tabella:
+Per GeoX: minimo 10+ cluster geografici, integrazione BigQuery, GA4 + dati transazionali. Google ha reso pubblico questo tool in closed beta Q4 2025, è in produzione completa nel 2026.
 
-| Metodo | Output | Durata | Dati minimi | Uso ideale |
-|---|---|---|---|---|
-| MMM (Robyn) | Channel contribution, saturazione | 52+ settimane | Spesa + conversion (giornaliero) | Strategia allocation budget |
-| Meta Lift | Conversioni incrementali per campagna/creative | 2-4 settimane | 200K reach | Creative testing, campagna pruning |
-| Geo Experiment | Sinergia cross-canale, lift regionale | 6-12 settimane | 6 settimane baseline + dati geografici | Test sinergia canali, expansion regionale |
+## Pitfall Pratici di Robyn
 
-Questi tre metodi non sono alternativi, sono complementari. MMM dice "quale canale vale quanto", Lift dice "questa campagna ha davvero aggiunto valore", Geo dice "due canali insieme funzionano meglio". Un team che usa tutti e tre ancora la strategia di [Performance Marketing](https://www.roibase.com.tr/it/ppc) all'evidenza sperimentale, non alla previsione.
+Quando impostate Robyn, il primo ostacolo è il tuning degli iperparametri. Il framework prova di default 100.000 combinazioni di modelli — su una macchina a 8 core, questo richiede 6-8 ore. In produzione, se lo eseguite una volta a settimana, il costo di compute è tollerabile, ma se volete un refresh quotidiano serve un cluster Spark distribuito.
 
-## Costruire lo stack in pratica
+Il secondo pitfall: la finestra dell'adstock effect. Robyn usa di default una finestra di 13 settimane — l'impatto della spesa di una settimana decade sulle vendite per 13 settimane. Ma per brand di fast fashion con ciclo di vita del prodotto di 4-6 settimane, una finestra di 13 settimane non ha senso. Dovete sovrascrivere manualmente questo parametro per categoria, altrimenti il modello sovrastima i canali long-tail come la TV.
 
-Per tradurre il framework teorico in pratica, hai bisogno di questi layer:
+Il terzo pitfall: stagionalità. Prophet automatizza la decomposizione di Fourier ma in Turchia ci sono festività mobili come Ramadan, Eid al-Adha e Black Friday. Dovete aggiungerle manualmente al dataframe `holidays`. Nel 2026, Robyn v4.1 supporta l'import in formato iCal — potete estrarre direttamente da Google Calendar.
 
-**Raccolta dati:** Manda i segnali di conversion tramite server-side GTM parallelo a Google Ads, Meta CAPI e BigQuery. Se ti affidi solo a cookie client-side perdi 30-40% dei segnali (iOS 17, Firefox, Brave). L'infrastruttura [Dijital Pazarlama](https://www.roibase.com.tr/it/dijitalpazarlama) di Roibase combina sGTM + data layer first-party — da lì viene la granularità di spesa che MMM richiede.
+## Quale Confidenza per Quale Decisione
 
-**Pipeline del modello:** Alimenta Robyn da BigQuery. Con dbt modella spesa + conversion al grain giornaliero. Uno script Python gira settimanale (Cloud Function o Airflow), l'output va in Looker Studio. Lancia i test Lift manualmente da Ads Manager ma estrai i risultati via API (l'endpoint `insights` della Marketing API restituisce la metrica lift), scrivi in BigQuery e join con l'output di MMM.
+L'output di MMM è probabilistico — ogni canale ha un coefficiente medio e un intervallo di confidenza del 95%. Se il ROAS di Meta è 3,2 ± 0,7, il valore reale si trova tra 2,5 e 3,9 con probabilità 95%. Se questo range è ampio (es. ±1,2), il coefficiente del canale è instabile e dovete raccogliere più dati.
 
-**Geo experiment:** L'API di Google Ads consente setup programmatico tramite la risorsa `experiments`. Quando il test finisce estrai i risultati con `experiment_id`, scrivi in BigQuery e confronta con i risultati di MMM. Visualizzare tutto in un dashboard unico è molto prezioso: "Secondo MMM il contribution Meta è 22%, secondo Lift test è 28% incrementale, secondo il test geo la variance regionale è 12-34%" — questi 3 numeri insieme chiariscono la decisione strategica.
+La confidenza del Lift test è fissa: Meta usa una soglia di confidenza del 90%. Se il risultato del test è "non statisticamente significativo", significa che il sample size è troppo piccolo o non c'è effettivamente lift. In pratica, con 200k reach potete rilevare un lift del 10%, ma per lift inferiore al 5% servono 500k+ di reach.
 
-**Ciclo decisionale:** Refresh MMM ogni trimestre, esegui 1-2 test Lift al mese, 1 geo experiment ogni 6 mesi. Per team piccoli questo ritmo può essere troppo — in quel caso inizia con MMM (2 settimane di setup se hai i dati), poi automatizza Meta Lift (aggiungilo di default a ogni campagna), usa Geo solo prima di grandi pivot.
+La confidenza dell'esperimento geo dipende dalla qualità dell'adattamento del controllo sintetico: se il MAPE (mean absolute percentage error) tra le vendite reali e il controllo sintetico nel periodo pre-treatment è sotto il 5%, è affidabile; sopra il 10%, dovete ricalibrare i cluster geografici.
 
-Nel 2026 l'attribution non è uno strumento singolo, è l'orchestrazione di tre. Ognuno risponde a una domanda diversa, insieme fondano la decisione nella realtà post-cookie. Non previsione ma test, non correlazione ma causalità, non dashboard ma risultati di experiment — la crescita si costruisce su questo fondamento.
+## Nota Finale: Incorporare il Decision Tree nel Workflow
+
+Nel 2026, i team di [performance marketing](https://www.roibase.com.tr/it/ppc) di successo utilizzano MMM + incrementality nella stessa pipeline decisionale: Robyn gira la prima settimana di ogni mese, aggiornando l'allocation di budget trimestrale. I Lift test girano durante i launch di nuovi creative/format, generando decisioni di pivot tattico in 2-4 settimane. Gli esperimenti geo vengono eseguiti 2-3 volte all'anno, per validare prima di major shift di channel mix (ad esempio, prima di aumentare il budget TikTok del 50%).
+
+Per implementare questo setup, la vostra data pipeline deve eseguire tre flow separati: (1) i dati su transazioni e spesa giornalieri fluiscono in BigQuery, (2) Robyn consuma questi dati per il refresh settimanale, (3) i risultati di Lift e GeoX vengono importati manualmente nel dashboard BI. Tutto converge in un'unica dashboard Looker presentata al CMO — "il mese scorso Meta aveva ROAS 3,4 (MMM), il nuovo formato Reels ha generato 12% lift (Lift), il geo test di TikTok ha fallito (GeoX)".
