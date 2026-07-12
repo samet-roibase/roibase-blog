@@ -1,73 +1,53 @@
 ---
-title: "Presupuestos de Rendimiento Web: Conectar la Toma de Decisiones"
-description: "Cómo integrar Lighthouse CI, RUM y alarmas de regresión de rendimiento en procesos empresariales para construir una cultura de desempeño gestionada por números."
-publishedAt: 2026-06-04
-modifiedAt: 2026-06-04
+title: "Presupuestos de Rendimiento Web: Vinculando Métricas a la Toma de Decisiones"
+description: "Convierte el rendimiento web en KPIs medibles con Lighthouse CI, RUM y alertas de regresión. Vincula los datos a las decisiones empresariales."
+publishedAt: 2026-07-12
+modifiedAt: 2026-07-12
 category: tech
-i18nKey: tech-004-2026-06
-tags: [web-performance, lighthouse-ci, rum, core-web-vitals, performance-budget]
+i18nKey: tech-004-2026-07
+tags: [web-performance, lighthouse-ci, rum, core-web-vitals, devops]
 readingTime: 9
 author: Roibase
 ---
 
-El 53% de los sitios de comercio electrónico pierden usuarios cuando cargan en más de 3 segundos (datos de Google 2025). El presupuesto de rendimiento —decisiones numéricas como "LCP no puede exceder 2.5s"— se convirtió en disciplina obligatoria para evitar estas pérdidas. Pero la mayoría de los equipos dejan estos presupuestos en documentos sin implementar. Las regresiones deben detener automáticamente el pipeline de deploy, los dashboards de RUM deben estar en la revisión semanal de sprint. El rendimiento web ya no es "tarea del equipo frontend" sino una capa de datos que moldea las decisiones de producto.
+El rendimiento web no es "que sea bueno", es un número que impacta las decisiones. En 2026, la métrica INP (que reemplazó a FID) determina que si no se mantiene bajo 200ms, la conversión mobile cae entre 15-20% (Google Chrome UX Report 2025 cohort). Para mantener ese nivel no basta intuición: necesitas control automático en tu pipeline CI. Lighthouse CI, RUM y un sistema de alarmas de regresión son esenciales. ¿Qué umbrales asignas a cada métrica? ¿Dónde se ancla cada dato en tu arquitectura de decisiones? Este artículo te muestra cómo vincular presupuestos de rendimiento a métricas reales con números concretos.
 
-## Qué Es y Qué No Es un Presupuesto de Rendimiento
+## Qué es un Presupuesto de Rendimiento y Cómo lo Amarras al Plan de Sprint
 
-Un presupuesto de rendimiento convierte umbrales de degradación aceptables en compromisos numéricos. En lugar del objetivo abstracto "la página debe ser rápida", se establece un contrato vinculante: "LCP < 2.5s, FID < 100ms, CLS < 0.1". Un PR que exceda el presupuesto no se puede fusionar — el CI falla automáticamente.
+Un presupuesto de rendimiento define los límites máximos para el tiempo de carga, tamaño del bundle y métricas de runtime de una página. El bundle total no superará 250KB, FCP no tardará más de 1.2s, INP no excederá 200ms — estos son tus límites. Se definen al inicio del sprint y se convierten en criterios de merge para PRs. Si una feature nueva rompe estos límites, tienes que refactorizar el código, posponer la feature o actualizar el presupuesto (aceptando la pérdida de conversión que eso implica).
 
-**Tipos de presupuestos:**
+Para fijar presupuestos, utilizas tres fuentes: (1) los umbrales de Core Web Vitals de Google (LCP <2.5s, INP <200ms, CLS <0.1), (2) benchmark del p75 de RUM (si el 75% de tu tráfico está por debajo de ese nivel, es "bueno"), (3) reportes de correlación de conversión (si LCP sube 100ms, la conversión baja 2%, entonces mover de 2.5s a 3s significa perder 10%). El presupuesto no es un número único, sino desglosado por métrica:
 
-| Tipo de Métrica | Ejemplo de Presupuesto | Método de Medición |
-|---|---|---|
-| Core Web Vitals | LCP < 2.5s | Lighthouse CI, RUM (CrUX) |
-| Timing | TTI < 3.5s, TBT < 200ms | Lighthouse, WebPageTest |
-| Recursos | Bundle JS < 200KB (gzip), Tamaño total < 1MB | Webpack Bundle Analyzer |
-| Conteo | Requests HTTP < 50, Scripts de terceros < 5 | Network panel |
+| Métrica | Umbral | Fuente |
+|---------|--------|--------|
+| LCP | <2.5s | CWV oficial |
+| INP | <200ms | CWV 2024+ |
+| CLS | <0.1 | CWV oficial |
+| Total JS | <300KB gzip | HTTP Archive p75 |
+| FCP | <1.8s | RUM interno |
 
-Un presupuesto no es una herramienta para "bloquear el rendimiento" sino para "poner el rendimiento en el balance de costos". Cuando un desarrollador añade una nueva librería de analytics, calcula "esta nos costará 15KB + 200ms de main thread". Cuando un PM solicita un nuevo widget carrusel, recibe retroalimentación: "aumentará CLS 0.08, quedan 0.02 del presupuesto".
+Escribes esta tabla en un archivo `performance.config.json`. Lighthouse CI lo lee, y si algún PR viola estos umbrales, rechaza el merge.
 
-Sin presupuesto, el equipo trabaja sobre rendimiento "percibido". La percepción es subjetiva; el presupuesto es objetivo.
+## Lighthouse CI: Tu Guardián de Rendimiento en Cada PR
 
-## Lighthouse CI: Construir una Compuerta de Regresión
+Lighthouse CI es una herramienta de Google (código abierto) que ejecuta auditorías de Lighthouse en cada PR y compara los resultados contra tu presupuesto. Se integra con GitHub Actions, GitLab CI, CircleCI. El flujo es: (1) abres un PR, (2) CI ejecuta el build, (3) `lhci autorun` visita tu página en el entorno de prueba, (4) compara los scores de Lighthouse contra los umbrales en `performance.config.json`, (5) si hay violaciones, el PR falla y no se puede mergear.
 
-Lighthouse CI ejecuta automáticamente Lighthouse en cada commit, falla el CI cuando los presupuestos se exceden. Se integra con GitHub Actions, GitLab CI, Jenkins. Configuración en 10 minutos — valor de retorno: 10 años de cultura de rendimiento.
-
-**Ejemplo de flujo de GitHub Actions:**
-
-```yaml
-name: Lighthouse CI
-on: [pull_request]
-jobs:
-  lighthouse:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-      - run: npm ci && npm run build
-      - run: npm install -g @lhci/cli
-      - run: lhci autorun
-        env:
-          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_TOKEN }}
-```
-
-**Definición de presupuesto en `.lighthouserc.json`:**
+Ejemplo de configuración (`.lighthouserc.json`):
 
 ```json
 {
   "ci": {
     "collect": {
-      "url": ["http://localhost:3000/", "http://localhost:3000/product/123"],
+      "url": ["http://localhost:3000/", "http://localhost:3000/product/sample"],
       "numberOfRuns": 3
     },
     "assert": {
       "preset": "lighthouse:no-pwa",
       "assertions": {
-        "first-contentful-paint": ["error", {"maxNumericValue": 2000}],
         "largest-contentful-paint": ["error", {"maxNumericValue": 2500}],
+        "interactive": ["error", {"maxNumericValue": 3500}],
         "cumulative-layout-shift": ["error", {"maxNumericValue": 0.1}],
-        "total-blocking-time": ["error", {"maxNumericValue": 200}],
-        "interactive": ["error", {"maxNumericValue": 3500}]
+        "total-byte-weight": ["warn", {"maxNumericValue": 307200}]
       }
     },
     "upload": {
@@ -77,117 +57,160 @@ jobs:
 }
 ```
 
-Esta configuración toma el promedio de 3 ejecuciones (Lighthouse muestra +15% de varianza en una sola ejecución). Si LCP excede 2.5s, el PR se marca en rojo. El desarrollador no puede fusionar. Una alerta cae en Slack: "PR #432 LCP 2.8s — presupuesto 2.5s — optimizar o solicitar excepción al PM".
+Si LCP supera 2.5s, el PR se rechaza. Si el total de bytes pasa 300KB, genera una advertencia (no bloquea el merge, pero aparece en logs). Se ejecutan 3 auditorías y se promedian, porque una sola puede tener varianza por la red. La limitación de Lighthouse CI es que corre en un servidor local, no simula la CDN de producción. Los resultados son "peor caso posible", pero en producción suele ir mejor — aun así, no debes saltarte estos umbrales.
 
-En Roibase integramos la dimensión técnica de rendimiento de decisiones de producto en la infraestructura de [Comercio Headless](https://www.roibase.com.tr/es/headless), haciendo visible el footprint de rendimiento de cada feature. Lighthouse CI transporta estos números al punto de decisión.
+### Lighthouse CI + Vercel Preview: Testing en Ambiente Real
 
-## RUM: Llevar Datos de Usuarios Reales a la Línea de Decisión
+En plataformas como Vercel o Netlify, cada PR genera una URL de preview automáticamente. Si conectas Lighthouse CI a esa URL, estás testeando en un ambiente quasi-producción. Ejemplo con GitHub Actions:
 
-Los datos de lab de Lighthouse — medición en entorno controlado — establecen condiciones pero no muestran el mundo real. RUM (Monitoreo de Usuarios Reales) recopila Web Vitals del tráfico en producción. El segmento del 10% con conexiones lentas puede tener LCP de 5s. No lo verás en lab.
+```yaml
+- name: Run Lighthouse CI
+  env:
+    LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_TOKEN }}
+  run: |
+    npm install -g @lhci/cli
+    lhci autorun --collect.url=${{ steps.vercel.outputs.preview-url }}
+```
 
-**Ejemplo de stack RUM:**
+`steps.vercel.outputs.preview-url` viene de la action de Vercel. Ahora puedes testear caché CDN, SSR en edge, optimización de imágenes. Si el presupuesto se viola, Lighthouse CI comenta en tu PR y puedes notificar al equipo via Slack (con webhooks).
+
+## RUM: Calibrando tu Presupuesto con Datos Reales de Usuarios
+
+Lighthouse CI es testing sintético — entorno controlado, siempre las mismas condiciones de red. RUM (Real User Monitoring) captura datos de usuarios reales. La diferencia es crítica: Lighthouse simula 3G throttled, RUM muestra mezcla de 4G, 5G, fibra; Lighthouse testea caché frío, RUM captura usuarios que repiten. Si calibras presupuestos solo con Lighthouse, pierdes la experiencia real.
+
+Para recopilar RUM, usa la librería Web Vitals de Google (oficial). Cada carga de página mide Core Web Vitals y envía datos a tu endpoint. Implementación:
 
 ```javascript
-// Recopilar todos los Core Web Vitals con librería web-vitals
-import {onCLS, onFID, onLCP} from 'web-vitals';
+import {onCLS, onINP, onLCP} from 'web-vitals';
 
-function sendToAnalytics({name, value, id}) {
-  fetch('/api/vitals', {
-    method: 'POST',
-    body: JSON.stringify({name, value, id, url: location.href}),
-    keepalive: true
+function sendToAnalytics(metric) {
+  const body = JSON.stringify({
+    name: metric.name,
+    value: metric.value,
+    id: metric.id,
+    rating: metric.rating
   });
+  navigator.sendBeacon('/analytics', body);
 }
 
 onCLS(sendToAnalytics);
-onFID(sendToAnalytics);
+onINP(sendToAnalytics);
 onLCP(sendToAnalytics);
 ```
 
-El endpoint `/api/vitals` en el backend escribe estos datos a BigQuery. El dashboard semanal se integra en la revisión de Sprint:
-
-| Métrica | p50 | p75 | p90 | Presupuesto | Estado |
-|---|---|---|---|---|---|
-| LCP | 2.1s | 2.8s | 4.2s | 2.5s (p75) | ⚠️ 0.3s excedido |
-| FID | 12ms | 45ms | 120ms | 100ms (p75) | ✅ |
-| CLS | 0.05 | 0.09 | 0.18 | 0.1 (p75) | ✅ |
-
-Hay exceso en p75 LCP — el PM decide así: "Este sprint la optimización del slider en homepage sube a la cima del stack. Sin reducir LCP de 2.8s a 2.3s no añadimos nuevas features".
-
-Cuando conectas datos RUM con sprint velocity, generas métricas como "200ms de mejora en LCP por sprint". El equipo mide velocity no por conteo de features sino por "valor entregado + mejora de rendimiento".
-
-## Sistema de Alarma de Regresión: Detectar Degradación de Rendimiento al Instante
-
-Detectar regresión de rendimiento en 2 horas post-deploy es crítico. Ejemplo: una nueva herramienta A/B aumentó LCP 1.2s, el segmento de tráfico mostró caída del 8% en conversión. Una alarma temprana significa 1 rollback que resuelve el problema. Detectarlo tarde significa 1 semana de pérdida de revenue.
-
-**Reglas de alarma (BigQuery + Cloud Monitoring):**
+Tu backend escribe en BigQuery (mejor que GA4, que muestrea). En BigQuery, calculas el p75:
 
 ```sql
--- Comparar p75 LCP última 1 hora vs promedio últimas 24 horas
-WITH current AS (
-  SELECT APPROX_QUANTILES(lcp, 100)[OFFSET(75)] AS lcp_p75
-  FROM vitals_table
-  WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
-),
-baseline AS (
-  SELECT APPROX_QUANTILES(lcp, 100)[OFFSET(75)] AS lcp_p75
-  FROM vitals_table
-  WHERE timestamp BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 25 HOUR)
-    AND TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
-)
-SELECT 
-  c.lcp_p75 AS current_lcp,
-  b.lcp_p75 AS baseline_lcp,
-  (c.lcp_p75 - b.lcp_p75) / b.lcp_p75 * 100 AS pct_change
-FROM current c, baseline b
-WHERE (c.lcp_p75 - b.lcp_p75) / b.lcp_p75 > 0.15; -- alerta por aumento 15%
+SELECT
+  APPROX_QUANTILES(value, 100)[OFFSET(75)] AS p75_lcp
+FROM metrics
+WHERE name = 'LCP' AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY);
 ```
 
-Esta query se ejecuta cada 10 minutos desde Cloud Scheduler. Si excede el umbral, cae en #perf-alerts en Slack. El equipo on-call comienza análisis de causa raíz en 30 minutos.
+Si sale 2.8s y tu presupuesto es 2.5s, tienes dos opciones: sube el presupuesto a 2.8s (aceptando la pérdida de conversión) u optimiza el código. El p75 es importante porque Google también lo usa para Core Web Vitals scores — si el p75 está bien, los señales de Google también.
 
-**Escenarios típicos de regresión:**
+### RUM + Segmentación: Presupuestos Diferentes por Dispositivo y Región
 
-1. **Script de terceros añadido:** Vendor de analytics bloquea main thread 180ms → TBT excede presupuesto
-2. **Lazy-load de imágenes roto:** Imagen candidata LCP cargada lazy → LCP 1.2s → 3.1s
-3. **Split de bundle JS deficiente:** CSS crítico deferido → FCP 900ms → 2.4s
+No todos los usuarios son iguales. Mobile LCP es ~40% más alto que desktop (Chrome UX Report 2025). Tráfico de India es ~60% más lento que de EEUU. Segmenta tu RUM y diferencia presupuestos:
 
-El objetivo del sistema de alarma es atribución — responder "qué deploy rompió qué métrica" en 10 minutos.
+| Segmento | Presupuesto LCP | Presupuesto INP |
+|----------|-----------------|-----------------|
+| Desktop | 2.2s | 180ms |
+| Mobile | 3.0s | 220ms |
+| India | 3.5s | 250ms |
 
-## Vincular Presupuesto al Backlog de Producto
+Para esto, añade `deviceType` y `country` (vía GeoIP) a tus beacons de RUM. En BigQuery, haces `GROUP BY device, country`. Lighthouse CI no soporta multi-config directo, pero puedes crear workflows separados (`lhci-mobile.json`, `lhci-desktop.json`).
 
-Transformar el presupuesto de rendimiento de restricción técnica a decisión de producto. El PM comienza a pensar: "Esta feature cuesta 40KB de JS, quedan 25KB de presupuesto — qué feature antigua removemos?"
+## Alarmas de Regresión: El Rendimiento Cae, Slack Grita
 
-**Template de compensación:**
+Presupuestos definidos, CI monitoreando PRs, RUM recopilando datos — pero ¿y si en producción el rendimiento cae? Después de un deploy, LCP sube de 2.3s a 2.9s. No quieres enterarte 3 horas después; necesitas alarma en 5 minutos. Para eso, tienes un job que analiza RUM cada 5 minutos y compara contra baseline.
 
-```
-Feature: Carrusel de productos en homepage (8 slots)
-Impacto en Rendimiento:
-  - JS: +32KB (gzip)
-  - LCP: +180ms (animación carrusel)
-  - CLS: +0.04 (desplazamiento de imágenes lazy)
+Lógica pseudo-código:
 
-Estado del Presupuesto ANTES:
-  - JS: 168KB / 200KB (quedan 32KB)
-  - LCP: 2.3s / 2.5s (quedan 200ms)
-  - CLS: 0.06 / 0.1 (quedan 0.04)
-
-Estado del Presupuesto DESPUÉS:
-  - JS: 200KB / 200KB ⚠️ LLENO
-  - LCP: 2.48s / 2.5s ⚠️ 20ms quedan
-  - CLS: 0.10 / 0.1 ⚠️ LLENO
-
-Decisión: Aprobado (test A/B del carrusel mostró +3% CTR).
-Condición: Remover rotador de banner antiguo de homepage (-28KB).
+```javascript
+// Job que corre cada 5 minutos
+async function checkRegression() {
+  const current = await query('SELECT AVG(value) FROM metrics WHERE name="LCP" AND timestamp > NOW() - INTERVAL 5 MINUTE');
+  const baseline = await query('SELECT AVG(value) FROM metrics WHERE name="LCP" AND timestamp BETWEEN NOW() - INTERVAL 1 DAY AND NOW() - INTERVAL 1 HOUR');
+  
+  if (current > baseline * 1.15) { // +15% es regresión
+    await sendSlack({
+      text: `🚨 Regresión de LCP: ${current}ms (baseline ${baseline}ms)`,
+      channel: '#performance-alerts'
+    });
+  }
+}
 ```
 
-El PM ejecuta esta compensación basada en datos: "¿Vale la ganancia del +3% CTR los 180ms de costo en LCP?" La respuesta viene de datos del funnel de conversión. Si vale, aprueba; si no, espera en el backlog por "mejora neutral en rendimiento".
+El baseline es de hace 1 hora (antes del deploy probable). Umbral de +15% es empírico — +10% dispara demasiadas falsas alarmas, +25% es demasiado tarde. Puedes integrar PagerDuty u Opsgenie para on-call. Cuando salta la alarma, el equipo decide: ¿rollback o hotfix?
 
-Cada 2 semanas el equipo audita el backlog desde perspectiva de rendimiento: "Qué feature tiene el ROI de rendimiento más bajo?" Ejemplo: botones de compartir social antiguos usan 12KB pero se usan en 0.2% → remover, liberar presupuesto.
+### Root Cause: Lighthouse Diff
 
-## Cultura de Rendimiento: Desempeño Gestionado por Números
+Saltó alarma de regresión, ¿por qué subió LCP? Lighthouse CI solo te dice si violas umbral, no te da causa. Para eso usas `lhci compare`, que compara dos auditorías:
 
-Tratar el rendimiento web no como "best practice" sino como KPI. Cuando la OKR quarterly del equipo incluye "reducir p75 LCP de 2.5s a 2.0s", la mejora de rendimiento se convierte en un trabajo separado rastreado de sprint velocity.
+```bash
+lhci compare --base=build-1234 --head=build-1235 --preset=lighthouse:all
+```
 
-Los presupuestos de rendimiento son la piedra angular de esta cultura. El desarrollador pregunta "¿queda presupuesto?" al escribir código nuevo. El PM calcula "footprint de rendimiento" al planificar features. El CTO examina en revisiones quarterly el gráfico "cambio promedio de LCP por deploy".
+Output: "unused-javascript aumentó 45KB", "server-response-time +120ms". Ahora sabes qué buscar. Con bundle analyzer (webpack-bundle-analyzer, Next.js `analyze`) encuentras de dónde vino ese JS. Con server logs encuentras por qué tardó 120ms más.
 
-Lighthouse CI vigila la puerta, RUM dice la verdad, el sistema de alarma atrapa desvíos, el backlog equilibra compensaciones. Cuando este ciclo se cierra, el rendimiento deja de ser "preocupación del equipo técnico" para convertirse en dimensión medible del éxito de producto. Después de que Core Web Vitals se convirtieron en factor de ranking de Google en 2025, los equipos que no implementaron este ciclo perdieron el 40% del tráfico orgánico (benchmark de Search Console 2025). Presupuestar rendimiento ya no es lujo — es táctica de supervivencia.
+## Vinculando Rendimiento a Conversión: Attribution
+
+Presupuestos son números técnicos, pero para decisiones empresariales necesitas convertirlos a impacto en conversión. "Si LCP sube de 2.5s a 3s, conversión baja 4%." Este número sale de A/B test o análisis de cohortes.
+
+**A/B test:** 50% del tráfico ve la versión lenta (Lighthouse + 500ms artificial), 50% la versión normal. Se comparan tasas de conversión.
+
+**Análisis de cohortes:** Segmentas usuarios por LCP (RUM), comparas conversión:
+
+```sql
+SELECT
+  CASE 
+    WHEN lcp < 2000 THEN 'fast'
+    WHEN lcp BETWEEN 2000 AND 4000 THEN 'medium'
+    ELSE 'slow'
+  END AS lcp_bucket,
+  COUNT(DISTINCT user_pseudo_id) AS users,
+  COUNTIF(event_name = 'purchase') / COUNT(DISTINCT session_id) AS conversion_rate
+FROM analytics_events
+LEFT JOIN rum_metrics ON analytics_events.session_id = rum_metrics.session_id
+GROUP BY lcp_bucket;
+```
+
+Tabla resultante:
+
+| LCP Bucket | Conversion Rate |
+|------------|-----------------|
+| fast | 4.2% |
+| medium | 3.6% |
+| slow | 2.9% |
+
+Reducir LCP de 3s a 2.5s sube conversión de 3.6% a 4.2%, +16.7% lift. Con 100K visitas/mes, son +1670 conversiones. Si AOV es $50, es +$83K revenue/mes. Así presentas el caso al CFO — el sprint de optimización de rendimiento vale la pena.
+
+### Violación de Presupuesto: Análisis de Tradeoff
+
+Nueva feature llega, suma 50KB al bundle, viola el presupuesto. Opciones: (1) refactorizar (code splitting, lazy load), (2) subir presupuesto (y aceptar pérdida de conversión), (3) posponer feature.
+
+Decisión basada en números: 50KB extra = +200ms LCP (por Lighthouse trace). +200ms = -2% conversión (por RUM correlation). Si la feature agrega 5% de lift en conversión, ganancia neta es 3%. Si suma 1%, pierdes 1% — pospón.
+
+Herramienta interna: "performance cost estimator". Input: delta de bundle. Output: delta LCP estimado + impacto de conversión. Modelo simple: cada 10KB = +30ms LCP, cada 100ms LCP = -0.8% conversión (valores de tu RUM). Lo presentas a PM, el roadmap se prioriza por ROI.
+
+## Headless Commerce: Presupuesto Vinculado a Velocidad de Producto
+
+En e-commerce, rendimiento = ingresos. Arquitecturas [headless](https://www.roibase.com.tr/es/headless) (Shopify Hydrogen, Remix, Next.js) te dan control del frontend pero la latencia de API backend también cuenta. Storefront API de Shopify tarda ~150ms en responder, eso entra en tu presupuesto: LCP = TTFB (150ms) + FCP (800ms) + delta LCP (600ms) = 1550ms. Presupuesto 2500ms = 950ms de margen.
+
+Fuentes de regresión en headless: (1) GraphQL queries más complejas (+50ms), (2) más componentes SSR (+100ms hydration), (3) scripts de terceros (+200ms). Lighthouse CI no distingue estas causas; necesitas Server-Timing headers. Next.js middleware:
+
+```javascript
+export function middleware(req) {
+  const start = Date.now();
+  const res = NextResponse.next();
+  res.headers.set('Server-Timing', `api;dur=${Date.now() - start}`);
+  return res;
+}
+```
+
+En DevTools verás Server-Timing. Lo mandas al beacon RUM y monitoreas regresiones por componente.
+
+---
+
+Vincular presupuestos de rendimiento web a toma de decisiones requiere tres capas: (1) Lighthouse CI en CI/CD para control de umbrales, (2) RUM con datos reales para calibrar presupuestos y segmentar por device/región, (3) alarmas de regresión + atribución a conversión para impacto empresarial. Los presupuestos no son números fijos — se diferencian por segmento. Cuando
