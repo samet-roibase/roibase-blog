@@ -1,190 +1,173 @@
 ---
 title: "Cohort Tablo Mimarisi: Retention Analizinin Production'da Ölçeklenmesi"
-description: "Materialized view, partitioning ve query cost optimization ile cohort analizlerini günlük 10M+ event üzerinde milisaniye latency'de çalıştırın."
-publishedAt: 2026-06-26
-modifiedAt: 2026-06-26
+description: "Materialized views, partitioning ve query cost optimization ile cohort analizini production ortamında nasıl ölçeklendirirsiniz? BigQuery ve dbt üzerinde somut tablo mimarisi."
+publishedAt: 2026-07-12
+modifiedAt: 2026-07-12
 category: data
-i18nKey: data-007-2026-06
-tags: [cohort-analysis, bigquery-optimization, materialized-views, retention-engineering, data-partitioning]
+i18nKey: data-007-2026-07
+tags: [cohort-analysis, bigquery, materialized-views, query-optimization, retention]
 readingTime: 8
 author: Roibase
 ---
 
-Retention dashboard'unuz her yüklenişte 45 saniye bekletiyorsa, sorun cohort tanımınız değil — tablo mimarinizdir. Günlük 10 milyon event üzerinde D1, D7, D30 retention'ı hesaplamak BigQuery'de 2TB scan ve 10 dolarlık cost'a mal olabilir. Ya da doğru partition stratejisi, incremental materialized view ve pre-aggregation ile 200MB scan ve 50 milisaniye'ye düşebilir. Fark production-ready ile "çalışıyor ama kimse kullanamıyor" arasındaki sınırdır.
+Retention analizi pazarlama datası içinde en kritik metriklerden biri. Hangi kullanıcı grubunun ne kadar süre kaldığını, hangi kampanyanın kalıcı değer yarattığını anlamak için cohort tablolarına ihtiyacınız var. Sorun şu: klasik cohort sorguları on milyonlarca satır event datasında her defasında yeniden çalıştığında query cost astronomik boyutlara ulaşıyor. Production'da her sabah güncellenen, analistin sorgu atınca 3 saniyede dönen, ama aynı zamanda doğru partition stratejisiyle maliyeti minimize eden bir cohort mimarisi kurmak ayrı bir mühendislik problemi. Bu yazıda BigQuery ve dbt üzerinde somut bir cohort tablo mimarisini, materialized view stratejisini ve query cost optimizasyonunu adım adım açıklıyoruz.
 
-## Cohort Analizi Neden Production'da Patlıyor
+## Cohort tablosu neden ayrı bir tablo olmalı
 
-Retention hesabı doğası gereği full-scan işlemidir. Her kullanıcının ilk işlem tarihini bul, sonraki günlerde ne yaptığını say, cohort'a göre grupla, yüzdeleri hesapla. Naive SQL yaklaşımı şudur:
+Retention hesabı her seferinde raw event tablosundan yapılamaz. Bir e-ticaret firmasının günlük 50 milyon eventi varsa, "Ocak 2026'da kayıt olan kullanıcıların 30. gün aktivite oranı nedir?" sorusunu cevaplamak için BigQuery'nin 1.5 milyar satır taraması yapması gerekir. Bu sorgu 10-15 saniye sürer ve 200-300 GB işler. Analist günde 20 farklı cohort segmenti çekerse aylık query cost $500'ü geçer.
 
-```sql
-WITH first_events AS (
-  SELECT user_id, MIN(event_date) AS cohort_date
-  FROM events
-  GROUP BY user_id
-),
-retention_raw AS (
-  SELECT 
-    f.cohort_date,
-    DATE_DIFF(e.event_date, f.cohort_date, DAY) AS day_offset,
-    COUNT(DISTINCT e.user_id) AS active_users
-  FROM events e
-  JOIN first_events f USING(user_id)
-  GROUP BY 1, 2
-)
-SELECT * FROM retention_raw;
-```
+Cohort tablosu bu problemi çözer: event datasını önceden grup bazında toplayıp, her cohort'un her gündeki metriklerini önceden hesaplayıp saklarsınız. Böylece analist sorgu attığında BigQuery sadece cohort tablosunu tarar, ham event datasına dokunmaz. 1000 cohort × 90 gün × 5 metrik = 450.000 satır. Bu tabloya sorgu atmak 200 ms sürer ve 5 MB işler.
 
-Bu sorgu her çalışmada events tablosunu baştan sona okur. 500 günlük data × 10M daily event = 5 milyar satır. BigQuery'de slot kullanımı patlar, dashboard 40 saniye bekletir, BI tool timeout verir. Sorun şu üç noktada toplanır:
+Fakat bu yaklaşımın kendisi yeni bir problem yaratır: cohort tablosu nasıl güncellenir? Her gün yeni event geldiğinde tüm tarihi yeniden mi hesaplarsınız? Incremental mı işlersiniz? Hangi partition stratejisi hem query performansını hem de güncelleme maliyetini optimize eder? Bu soruların cevabı materialized view ve incremental dbt model tasarımında gizli.
 
-**1. Full table scan:** Partition pruning yok, çünkü `user_id` JOIN'i partition sınırını ezer.  
-**2. Tekrarlayan hesaplama:** Her cohort_date zaten biliniyor ama her sorguda yeniden hesaplanıyor.  
-**3. Aggregation overhead:** 5 milyar satırdan 500 cohort × 90 gün = 45.000 satır çıkarıyorsun — compute/output oranı 100.000:1.
+## Partition stratejisi: cohort_date mi, observation_date mi?
 
-Production'da bu yaklaşım sürdürülemez. Çözüm tablo mimarisini yeniden tasarlamaktır.
+Cohort tablosunun partition anahtarı seçimi kritik. İki adayınız var: cohort oluşturulma tarihi (`cohort_date`) ve gözlem tarihi (`observation_date`).
 
-## Materialized Cohort Base: İlk Adım İnkremental Snapshot
+**`cohort_date` partition:** Kullanıcıların ilk aktivite tarihine göre partition. Ocak 2026 cohort'u bir partition'da, Şubat başka bir partition'da. Avantaj: yeni cohort oluştuğunda sadece o partition'a yazarsınız, eski partition'lara dokunmazsınız. Dezavantaj: aynı cohort'un 90 günlük retention verisini çekmek için BigQuery 90 farklı partition'ı taramak zorunda kalır. Query performansı düşer.
 
-Cohort analizinin maliyetli kısmı `MIN(event_date)` hesabıdır. Bu hesabı bir kere yap, sonucu snapshot table'a yaz, günlük sadece yeni kullanıcıları ekle. BigQuery'de incremental materialized view yerine dbt incremental model kullanıyoruz:
+**`observation_date` partition:** Her gün için bir partition. Bugün 12 Temmuz ise, 12 Temmuz partition'ına tüm cohort'ların bugünkü metrikleri yazılır. Avantaj: "Son 7 gündeki retention trendi" gibi sorguları cevaplarken sadece 7 partition taranır. Dezavantaj: her gün tüm cohort'ları güncellemek zorunda kalırsınız, incremental update maliyeti yüksek.
+
+Doğru cevap **iki tabloyla hybrid mimari:** bir "snapshot table" (`observation_date` partitioned) ve bir "aggregated table" (`cohort_date` partitioned). Snapshot tablo her gün güncellenir, analistin dashboard'u buradan beslenir. Aggregated tablo haftalık güncellenir, derin cohort karşılaştırmaları burada yapılır. Bu yapı BigQuery best practice'lerine uyar: narrow ve wide table separation.
 
 ```sql
--- models/cohorts/user_cohort_base.sql
-{{ config(
-  materialized='incremental',
-  unique_key='user_id',
-  partition_by={'field': 'cohort_date', 'data_type': 'date'},
-  cluster_by=['cohort_date', 'user_id']
-) }}
-
+-- Snapshot tablo şeması (observation_date partitioned)
+CREATE TABLE `analytics.cohort_retention_snapshot`
+PARTITION BY observation_date
+CLUSTER BY cohort_date, channel, device_category
+AS
 SELECT
-  user_id,
-  MIN(event_date) AS cohort_date,
-  COUNT(*) AS first_day_events
-FROM {{ source('raw', 'events') }}
-{% if is_incremental() %}
-WHERE event_date >= (SELECT MAX(cohort_date) FROM {{ this }})
-  AND user_id NOT IN (SELECT user_id FROM {{ this }})
-{% endif %}
-GROUP BY user_id
+  observation_date,
+  cohort_date,
+  channel,
+  device_category,
+  cohort_size,
+  day_n,
+  active_users,
+  retention_rate
+FROM ...
 ```
 
-Bu model ilk run'da tüm history'yi tarar (one-time cost), sonraki günlük run'larda sadece dünün yeni kullanıcılarını ekler. Partition by `cohort_date` yaptığımız için BigQuery eski partition'lara dokunmaz — query cost günlük event volume ile orantılı kalır (10M yeni event → ~50MB scan).
+## Materialized view vs incremental model tradeoff'u
 
-Cluster by ile `user_id` eklenmesi JOIN performansını artırır. Downstream retention sorguları `user_cohort_base`'e JOIN yaparken BigQuery micro-partition'larda binary search yapar — 5 milyar satır yerine sadece ilgili cluster bloklarını okur.
+BigQuery'de materialized view (MV) otomatik incremental refresh yapar — yeni event geldiğinde base query'yi yeniden çalıştırır ve sonucu cache'ler. Ama MV'nin 3 kısıtı var: join sayısı (max 5), window function kullanımı (yok), ve partition yönetimi (manuel değil).
 
-### Partition Stratejisi: Tarih mi, Cohort mu?
+Cohort hesabı genellikle 3+ join içerir (users, events, subscriptions tabloları) ve `LAG()`, `FIRST_VALUE()` gibi window function'lara ihtiyaç duyar. Bu durumda MV kullanılamaz. Alternatif: dbt incremental model.
 
-Events tablosunu `event_date` ile partition'ladıysanız, cohort base'i `cohort_date` ile partition'lamak şarttır. Çünkü retention sorguları "Ocak 2026 cohort'unun Şubat ayı retention'ı" gibi cross-period sorgular yapar. `event_date` partition'ı bu case'de pruning yapamaz. `cohort_date` partition'ı ise "Ocak cohort" dediğinizde sadece Ocak partition'ını okur — 30 günlük veri yerine 1 günlük.
-
-Ancak partition sayısı 4000'i geçmesin (BigQuery limiti). 10 yıllık data = 3650 partition — sınırda. Eğer cohort granularity haftalık/aylık yeterliyse partition'ı `DATE_TRUNC(cohort_date, WEEK)` yapın.
-
-## Pre-Aggregated Retention Cube: Maliyeti 100x Düşürme
-
-`user_cohort_base` hazır ama hala her retention query'sinde events tablosuna JOIN yapıyorsunuz. Bir sonraki adım günlük retention metric'lerini önceden hesaplayıp materialized table'a yazmaktır:
+dbt incremental model, custom merge stratejisi tanımlamanıza izin verir. Her gün sadece son 7 günün partition'larını güncellersiniz (`WHERE observation_date >= CURRENT_DATE() - 7`). Bu yaklaşım query cost'u %85 düşürür. Örnek dbt model:
 
 ```sql
--- models/cohorts/daily_retention_cube.sql
 {{ config(
-  materialized='incremental',
-  unique_key=['cohort_date', 'day_offset'],
-  partition_by={'field': 'cohort_date', 'data_type': 'date'}
+    materialized='incremental',
+    partition_by={
+      "field": "observation_date",
+      "data_type": "date"
+    },
+    cluster_by=['cohort_date', 'channel'],
+    incremental_strategy='insert_overwrite'
 ) }}
 
-WITH cohort_activity AS (
+WITH daily_cohorts AS (
   SELECT
-    c.cohort_date,
-    DATE_DIFF(e.event_date, c.cohort_date, DAY) AS day_offset,
-    COUNT(DISTINCT e.user_id) AS active_users
-  FROM {{ ref('user_cohort_base') }} c
-  JOIN {{ source('raw', 'events') }} e USING(user_id)
+    DATE(first_seen_at) AS cohort_date,
+    user_id,
+    acquisition_channel AS channel
+  FROM {{ ref('users') }}
+  WHERE first_seen_at IS NOT NULL
+),
+
+daily_activity AS (
+  SELECT
+    DATE(event_timestamp) AS activity_date,
+    user_id,
+    COUNT(*) AS event_count
+  FROM {{ ref('events') }}
+  WHERE event_name IN ('page_view', 'purchase')
   {% if is_incremental() %}
-  WHERE e.event_date >= CURRENT_DATE() - 1
+    AND DATE(event_timestamp) >= CURRENT_DATE() - 7
   {% endif %}
   GROUP BY 1, 2
 )
+
 SELECT
-  cohort_date,
-  day_offset,
-  active_users,
-  active_users / FIRST_VALUE(active_users) OVER (
-    PARTITION BY cohort_date ORDER BY day_offset
-  ) AS retention_rate
-FROM cohort_activity
+  a.activity_date AS observation_date,
+  c.cohort_date,
+  c.channel,
+  DATE_DIFF(a.activity_date, c.cohort_date, DAY) AS day_n,
+  COUNT(DISTINCT c.user_id) AS cohort_size,
+  COUNT(DISTINCT a.user_id) AS active_users,
+  SAFE_DIVIDE(COUNT(DISTINCT a.user_id), COUNT(DISTINCT c.user_id)) AS retention_rate
+FROM daily_cohorts c
+LEFT JOIN daily_activity a
+  ON c.user_id = a.user_id
+WHERE a.activity_date >= c.cohort_date
+{% if is_incremental() %}
+  AND a.activity_date >= CURRENT_DATE() - 7
+{% endif %}
+GROUP BY 1, 2, 3, 4
 ```
 
-Bu tablo her gün run olur, sadece dünün yeni activity'sini ekler. Partition by `cohort_date` ile eski cohort'ların partition'larına dokunmaz. Sonuç: **5 milyar satırlık events** yerine **500 cohort × 90 gün = 45.000 satırlık cube**. Dashboard sorguları artık doğrudan bu cube'u okur — scan volume 100.000x düşer, latency 45 saniyeden 50 milisaniye'ye iner.
+Bu model her gün çalıştığında sadece son 7 günün partition'larını overwrite eder. BigQuery işleme maliyeti günlük 20 GB'dan 2 GB'a düşer. Yıllık $2400 query cost tasarrufu.
 
-### Window Function Stratejisi: Retention Rate Hesabı
+### Clustering anahtar seçimi
 
-`FIRST_VALUE(active_users) OVER (PARTITION BY cohort_date ORDER BY day_offset)` ifadesi D0 kullanıcı sayısını her satıra taşır. Bu sayede retention rate hesabı query-time değil write-time'da yapılır. Alternatif olarak D0'ı ayrı bir JOIN ile çekebilirsiniz ama window function BigQuery'de optimize edilmiş slot kullanımı sağlar (partition içinde sıralı okuma).
+Partition yeterli değil, clustering de gerekli. Cohort tablosu 3 boyutta filtrelenebilir: cohort_date (zaman), channel (kaynak), device_category (cihaz). BigQuery'de clustering anahtarı sırası önemli: en yüksek kardinaliteye sahip alan en başta olmalı.
 
-Dikkat: `OVER` clause partition pruning'i bozmaz çünkü physical partition (`cohort_date`) ile window partition aynıdır. BigQuery her partition'ı bağımsız işler, cross-partition shuffle olmaz.
+Kardinalite analizi:
+- `cohort_date`: 365 değer (1 yıl)
+- `channel`: 15-20 değer (organic, paid_search, social, email...)
+- `device_category`: 3-4 değer (desktop, mobile, tablet)
 
-## Query Cost Optimization: Slot Kullanımı ve Caching
+Doğru sıralama: `CLUSTER BY cohort_date, channel, device_category`. Bu sıralama "2025 Q4'te Instagram'dan gelen mobile kullanıcıların 30. gün retention'ı" gibi sorguları 10x hızlandırır.
 
-BigQuery'nin cost modeli scan edilen byte üzerindendir (5 dolar/TB). Ancak production latency için slot kullanımı daha kritiktir. Materialized view stratejisi cost'u düşürür ama slot contention hala olabilir — özellikle dashboard'da 10 kullanıcı aynı anda farklı cohort filter'ları çekiyorsa.
+## Query cost optimizasyonu: pre-aggregation depth seviyesi
 
-**BI-engine caching:** BigQuery BI Engine 100GB'a kadar hot data'yı RAM'de tutar. `daily_retention_cube` 45.000 satır × 200 byte ≈ 9MB ise tamamen cache'lenir. Sonraki sorgular 0 slot kullanır, 10 milisaniye'nin altında döner. BI Engine reservation manuel açılır (BigQuery console → Capacity Management → 100GB tier = 300 dolar/ay). ROI yüksektir — 1000 günlük query × 0.01 dolar slot cost = 10 dolar/gün yerine flat 10 dolar/gün.
+Cohort tablosunun granularity seviyesi de maliyet-performans dengesini belirler. Her gün, her channel, her cihaz için ayrı satır mı saklarsınız, yoksa sadece genel toplam mı?
 
-**Query result caching:** BigQuery sorgu sonuçlarını 24 saat cache'ler. Dashboard'da "son 7 günün cohort'ları" her kullanıcı için aynı sorgu ise ilk hit sonrası cache'den döner. Ancak parametre değişince (date range, segment filter) cache miss olur. Bu durumda pre-aggregated cube yine devreye girer.
+**Option 1: Granular tablo** — her cohort × channel × device × day_n kombinasyonu ayrı satır. Toplam satır sayısı: 365 cohort × 20 channel × 4 device × 90 gün = 2.6 milyon satır. Avantaj: analist istediği segmentte pivot yapabilir. Dezavantaj: yüksek storage cost ($50/TB → aylık $0.15).
 
-**Slot allocation:** On-demand pricing yerine flat-rate (500 slot = 10.000 dolar/ay) düşünüyorsanız, retention pipeline'ını dedicated slot pool'a atayın. Peak saatlerde BI query'leri ile retention hesaplaması slot için compete etmesin. Roibase'de production BigQuery setup'ında scheduled query'ler off-peak (03:00-05:00) çalışır, kullanıcı-facing dashboard'lar flex slot (otoscale 100-500) kullanır.
+**Option 2: Aggregated tablo** — sadece cohort × day_n, channel ve device ayrıştırması yok. Toplam satır sayısı: 365 × 90 = 32.850 satır. Avantaj: minimal storage ve query cost. Dezavantaj: channel breakdown yapılamaz.
 
-## Identity Resolution Entegrasyonu: Cross-Device Cohort
+Doğru yaklaşım **iki seviye tablo:** core metrics granular (channel, device ayrıştırması ile), extended metrics aggregated (sadece cohort_date × day_n). Bu yapı storage'ı optimize ederken analitik esneklik sağlar. Core metrics tablosu dashboard'ları besler, extended metrics ad-hoc analiz için kullanılır.
 
-Klasik cohort analizi `user_id` üzerinden yürür ama cross-device kullanıcı journey'sinde aynı kişi 3 farklı ID taşıyabilir (web anonymous, app logged-in, CRM). Retention %15 çıkıyorsa gerçek retention %22 olabilir — ID fragmentation yüzünden.
+Ayrıca BigQuery partition expiration policy tanımlayın: 90 günden eski partition'lar otomatik silinir. Retention analizi genellikle 90 gün ötesine bakmaz, bu policy yıllık storage cost'u %60 düşürür.
 
-[First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) çerçevesinde identity graph kuruluyor: `identity_map` tablosu her `anonymous_id`, `user_id`, `crm_id`'yi canonical `person_id`'ye bağlar. Cohort base modelini bu graph ile zenginleştirin:
+## Identity resolution sorununu cohort seviyesinde çözmek
+
+Cohort analizinin en karanlık noktası: user_id çakışmaları ve identity resolution. Bir kullanıcı masaüstünde kayıt olup mobilde işlem yaparsa, iki ayrı user_id oluşur. Cohort tablosu bu iki kimliği birleştirmezse retention %20 düşük hesaplanır.
+
+Çözüm: cohort tablosu oluşturmadan önce identity graph tablosunu birleştirin. [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) sürecinde kurduğunuz canonical_user_id sütunu burada devreye girer. dbt model'da `users` tablosu yerine `users_unified` view'ını kullanın.
 
 ```sql
-WITH resolved_events AS (
+WITH unified_users AS (
   SELECT
-    COALESCE(i.person_id, e.user_id) AS person_id,
-    e.event_date
-  FROM {{ source('raw', 'events') }} e
-  LEFT JOIN {{ ref('identity_map') }} i ON e.user_id = i.user_id
+    canonical_user_id,
+    MIN(first_seen_at) AS cohort_date,
+    ARRAY_AGG(DISTINCT acquisition_channel IGNORE NULLS ORDER BY first_seen_at LIMIT 1)[OFFSET(0)] AS channel
+  FROM {{ ref('users_unified') }}
+  GROUP BY 1
 )
-SELECT person_id, MIN(event_date) AS cohort_date
-FROM resolved_events
-GROUP BY person_id
 ```
 
-Bu JOIN maliyetli olabilir ama `identity_map` günlük incremental update alır, cluster by `user_id` vardır — BigQuery hash join yapar, broadcast join overhead'i yoktur. Sonuç cohort'unda D7 retention gerçek değeri gösterir, pazarlama kararları (budget reallocation, LTV forecast) doğru data üzerinden alınır.
-
-## Incremental Refresh Stratejisi: Backfill vs Daily Delta
-
-Materialized view'ların kritik riski: upstream data düzeltildiğinde (örneğin late-arriving event, GDPR deletion) downstream view stale kalır. BigQuery'de materialized view otomatik refresh yoktur — siz tetiklersiniz.
-
-**İki strateji:**
-
-1. **Daily delta:** Her gün sadece yeni partition'ı hesapla. Hızlı ama geçmiş düzeltmeleri yakalamaz.
-2. **Rolling backfill:** Son 7 günü her run'da yeniden hesapla. Late event'leri yakalar ama 7x compute harcar.
-
-Roibase production setup'ında hybrid yaklaşım: daily delta + haftalık full refresh. dbt'de şöyle:
+Bu yaklaşım cross-device retention'ı doğru hesaplar. Production'da %15-25 retention farkı yaratır. Identity resolution tablosu güncellendiğinde cohort tablosu da yeniden materialize edilmeli — bu nedenle dbt DAG'da dependency tanımlayın:
 
 ```yaml
-# dbt_project.yml
 models:
-  cohorts:
-    daily_retention_cube:
-      +full_refresh: "{{ var('force_backfill', false) }}"
+  - name: cohort_retention_snapshot
+    config:
+      materialized: incremental
+    depends_on:
+      - ref('users_unified')
 ```
 
-Normal run `dbt run --select daily_retention_cube` (incremental). Hafta sonu `dbt run --select daily_retention_cube --vars '{force_backfill: true}'` (full refresh). Bu şekilde cost-accuracy tradeoff'u kontrol edilir.
+## Production checklist: monitoring ve alerting
 
-## Performans Benchmark: Naive vs Optimized
+Cohort tablosu production'a alındığında 3 metriği sürekli izleyin:
 
-Production dataset: 10M event/gün, 18 ay history, 5.4 milyar satır.
+1. **Freshness:** Son partition ne zaman güncellenmiş? dbt-core'da `freshness` testi tanımlayın, 24 saatten eski partition varsa Slack alert gönderin.
+2. **Row count drift:** Bugünkü cohort_size dünkü cohort_size'dan %30 farklıysa data pipeline'da sorun var. BigQuery scheduled query ile `STDDEV()` kontrolü yapın.
+3. **Query cost spike:** Cohort tablosuna atılan sorguların ortalama maliyeti $0.01'den $0.10'a çıktıysa partition pruning çalışmıyor demektir. INFORMATION_SCHEMA.JOBS tablosunu kontrol edin.
 
-| Metrik | Naive SQL | Materialized Cube | İyileşme |
-|--------|-----------|-------------------|----------|
-| Scan volume (D7 retention) | 2.1 TB | 18 MB | 116x |
-| Query latency (p95) | 42 sn | 0.08 sn | 525x |
-| BigQuery cost/query | 10.50 dolar | 0.01 dolar | 1050x |
-| Dashboard load time | timeout | <1 sn | - |
-| Slot usage (peak) | 2000 | 5 | 400x |
+Bu 3 metrik için Google Cloud Monitoring dashboard'u kurun. Threshold aşıldığında PagerDuty entegrasyonu tetikleyin. Production cohort mimarisi "build and forget" değil, sürekli monitoring gerektiren bir sistemdir.
 
-Test sorgusu: "Ocak 2026 cohort'unun 30 günlük retention curve'ü". Naive query events tablosunu 18 kere tarıyor (her gün için). Materialized cube ise 30 satır okuyor.
-
-BI-engine cache açıkken latency 80ms'den 12ms'ye düştü — slot kullanımı sıfır oldu. Dashboard'da 50 concurrent kullanıcı test ettik, %99.5 uptime, median response 18ms. Bu production SLA'sı — marketing team gerçek zamanlı cohort segmentation yapabiliyor (örn. "D3 retention <20% olanları push campaign'e al").
-
-Retention analizi modern growth stack'inin merkezidir ama naive implementation production'da çalışmaz. Partition stratejisi, incremental materialized view, pre-aggregation ve BI-engine caching ile milyon kullanıcı ölçeğinde <100ms latency yakalanır. Cost 100x düşer, slot contention ortadan kalkar, marketing team data-driven karar alma hızı kazanır. Mimarinizi bugün değerlendirin — eğer retention dashboard'unuzda spinning wheel görüyorsanız, sorun data değil, tablo tasarımıdır.
+Cohort tablo mimarisi doğru kurulduğunda retention analizi mühendislik ürününe dönüşür: her sabah güncellenir, analist 3 saniyede insight çeker, query cost öngörülebilir. BigQuery partition stratejisi, dbt incremental model ve identity resolution entegrasyonu bu mimarinin 3 direği. Production'da ölçeklenebilir cohort analizi için teknik derinliğe inmek zorunda kalırsınız — ama karşılığı ölçülebilir: yıllık $5000+ query cost tasarrufu ve %20 daha doğru retention metrikleri.
