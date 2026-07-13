@@ -1,61 +1,71 @@
 ---
 title: "Code Review Kültürü: Ölçülebilir Kalite, Kişisel Çatışma Yok"
-description: "Time-to-review, comment density, PR size metrikleriyle code review'ü kişisel değerlendirmeden çıkarıp sistem disiplinine dönüştürmek."
-publishedAt: 2026-07-01
-modifiedAt: 2026-07-01
+description: "Time-to-review, comment density, PR size kuralları ile code review sürecini kişisel yoruma kapatıp ölçülebilir disipline bağlamak."
+publishedAt: 2026-07-13
+modifiedAt: 2026-07-13
 category: lifestyle
 i18nKey: lifestyle-003-2026-07
-tags: [code-review, engineering-culture, pr-metrics, async-workflow, team-discipline]
-readingTime: 7
+tags: [code-review, async-workflow, developer-experience, team-culture, engineering-discipline]
+readingTime: 8
 author: Roibase
 ---
 
-Code review'ü "senior developer'ın yorumunu bekleme" ritüeline indirgeyen ekipler kalite kontrolü yapamıyor, sadece zaman kaybediyor. Review süreci ölçülebilir değilse — time-to-review, comment density, PR size takip edilmiyorsa — süreç kişisel beğeniye dayalı bir darboğaz haline gelir. Roibase'de 8 yıldır uyguladığımız sistemde review metriği vardır, kişisel çatışma yoktur: 24 saat içinde approval veya açık soru, 300 satır üstü PR reddedilir, yorum yoğunluğu sprint retrospective'de takip edilir.
+Code review, çoğu ekipte "senior developer'ın yorumu" ile başlayıp "PR sahibinin ego kırıklığı" ile biten bir süreç. Bu yapı ölçeklenmiyor. 12 kişilik ekipte kim neyin sorumlusu belli değil, merge süresi 3 gün oluyor, "bu neden red yedi" tartışması Slack'te 40 mesaj sürüyor. Soruna yakından bakarsan kök neden aynı: review kuralları kişisel tercihe, kalite kriteri ise "ben beğendim/beğenmedim" eksenine oturmuş. Roibase'de 8+ yıldır uygulanan disiplin basit: review'ı sayısal eşiklere bağla, kişisel yoruma kapatma alanı daralt, async akışı zorla. 2026'da artık "code review kültürü" başlığında konuşulacak şey "kültür" değil — ölçülebilir metrikler ve kurallar.
 
-## Review Kültürünün Ölçülebilir Temelleri
+## Time-to-Review: Async Workflow'un Omurgası
 
-Code review'ü "senior baksın onaylasın" tutumundan kurtarmanın yolu, süreci ölçülebilir kriterlere bağlamaktır. Time-to-review metriği — PR açıldığı andan ilk yorum veya approval gelene kadar geçen süre — ekip disiplininin en net göstergesidir. Roibase'de bu süre 24 saat ile sınırlıdır: PR açıldı, 24 saat içinde ya review tamamlandı ya da "şu 3 noktayı açıklayabilir misin" sorusu geldi. 48 saat sessizlik kabul edilemez — bu async workflow'un temel kuralıdır.
+Time-to-review, bir PR'ın açılışı ile ilk review yorumunun bırakılması arasındaki süre. Bu sayı 4 saatten uzunsa async workflow çöküyor. Ekip üyesi PR açtı, 6 saat sonra hâlâ kimse bakmadı, o arada başka işe geçti — bağlam anahtarlama maliyeti arttı. Roibase ekibinde time-to-review hedefi 2 saat. Bu hedefi tutturmak için 3 kural var: (1) Slack'te PR bildirimi otomatik, channel'da pin'leniyor; (2) Her developer günde 2 kez "review window" açıyor (öğleden önce 11:00, öğleden sonra 16:00); (3) PR boyutu 400 satırı geçemez — geçerse otomatik olarak "too large" etiketi ile geri dönüyor.
 
-Comment density — yorum sayısı / değiştirilen satır oranı — review derinliğini gösterir. Çok düşükse (0.01 altı) superficial bakılıyor demektir, çok yüksekse (0.15 üstü) PR muhtemelen çok karmaşık ya da scope'u kötü planlanmış. İdeal oran 0.03-0.08 arasıdır: 300 satırlık PR'da 9-24 yorum. Bu oran sprint sonunda takip edilir, "bu sprint review yoğunluğu düştü" tespiti yapılabilir.
+Bu sistemi kurarken en büyük direnç "ben o saatte başka işle meşgulüm" tepkisi. Haklı. Çözüm: review window'u takvimde bloklarsan, o 30 dakika senin "review zamanın" oluyor, başka iş orada planlanmıyor. Developer experience açısından da kazançlı: PR sahibi öngörülebilir bir timeline içinde feedback alıyor, yarım gün "acaba biri bakacak mı" endişesi ile beklemek yerine yeni PR'a geçebiliyor.
 
-PR size kuralı net: 300 satır üstü değişiklik tek PR'a sığdırılmaz. İstisna: dependency upgrade veya auto-generated migration. Bu kural zorla uygulanır — 350 satırlık PR açılırsa otomatik bot yorumu düşer: "PR size limit aşıldı, split et." Büyük feature 3 PR'a bölünür: backend API + frontend integration + UI polish. Her PR kendi başına review edilebilir, merge edilebilir olmalı — monolithic diff'e hiçbir review sürecinde yer yok.
+Örnek senaryo: Frontend developer yeni bir checkout flow bileşeni yazdı, PR'ı 10:30'da açtı. 11:00 review window'unda backend lead baktı, API entegrasyonunda eksik error handling olduğunu işaretledi. 11:20'de PR sahibi fix'i yaptı, 16:00 review window'unda ikinci bakış yapıldı, merge edildi. Toplam süre: 5.5 saat, ama aslında 2 review window (1 saat) + 2 fix window (20 dakika). Geri kalanı paralel iş zamanı — bağlam anahtarlama yok.
 
-## Async Review Workflow: Senkron Toplantı Gerektirmez
+## Comment Density: Kaliteyi Ölçülebilir Kılmak
 
-Senkron review meeting'i — "hadi şimdi 30 dakika PR'a bakalım" — time-boxing yanılgısıdır. Review async yapılır: reviewer kendi deep work bloğunda PR'ı inceler, inline comment bırakır, thread açar. Author da kendi bloğunda yanıtlar. Real-time Slack ping'i yasaktır — "PR'a bakabilir misin hemen" mesajı kabul edilemez.
+Comment density, bir PR'daki toplam yorum sayısının değiştirilen satır sayısına oranı. İdeal aralık: her 50 satır için 1-2 yorum. 50 satırda 6 yorum varsa ya kod gerçekten kötü, ya da reviewer nitpicking yapıyor. 200 satırda 0 yorum varsa ya kod mükemmel (olası değil), ya da reviewer bakmadı.
 
-Review request GitHub'da tag ile yapılır: `/cc @reviewer` veya otomatik CODEOWNERS dosyası ile. Reviewer 24 saat içinde ya approve eder ya da soru sorar. Soru gelirse author 12 saat içinde yanıtlar veya ek commit atar. İkinci tur review 12 saat içinde tamamlanır. Toplam süreç 48 saati geçmez — bu cycle time hedefidir.
+Roibase ekibinde comment density 0.02-0.04 aralığında tutuluyor (50 satırda 1-2 yorum). Bu metrik haftalık sprint retrospective'de takip ediliyor. Eğer bir developer'ın comment density'si sürekli 0.06'nın üstündeyse iki olasılık var: (1) PR'lar kalitesiz geliyor, o zaman pre-commit hook'ları güçlendirilmeli; (2) Reviewer gereksiz detaya giriyor, o zaman review guide'da "actionable" tanımı hatırlatılmalı.
 
-Inline comment thread'leri resolve edilir veya "later" tag'iyle issue'ya taşınır. "Sonra konuşuruz" belirsizliği kabul edilemez — ya hemen çözülür ya da issue olarak backlog'a alınır, PR merge edilir. Review blocker'ı net olmalı: security bug, API contract breaking, performance regression. Code style tartışması blocker değildir — linter zaten var, tercihe bağlı detaylar resolve without change ile kapatılabilir.
+Actionable yorum kriteri: Yorumda "neden" ve "nasıl düzeltilir" olmalı. "Bu kötü olmuş" actionable değil, "Bu fonksiyon O(n²) — line 47'deki loop'u Map'e çevir, O(n) olsun" actionable. Roibase'in GitHub Actions workflow'u her PR'a otomatik comment density raporu ekliyor. 0.06'yı aşarsa "High comment density detected — consider splitting PR or clarifying review focus" uyarısı düşüyor.
 
-### Review Bot: Otomatik Kontrol, Manuel Yoğunlaşma
+Örnek: 250 satırlık bir PR'da 12 yorum var (density: 0.048). Rapor "within range but trending high" diyor. Sprint retro'da bakılınca 12 yorumun 5'i "naming convention" ile ilgili — eslint rule'u eksikmiş. Sonraki sprint'te bu rule devreye girdi, density 0.03'e düştü.
 
-CI pipeline'ında otomatik checkler review yükünü düşürür: linter (ESLint, Prettier), test coverage diff (yeni kod için %80 altı kabul edilemez), bundle size diff (+50KB üstü alarm), security scan (npm audit). Bu checkler pass olmazsa review request bile gönderilemez — kırmızı cross yeşile dönmeden PR draft'tan çıkmaz.
+## PR Size: Küçük PR, Hızlı Merge
 
-Review blocker otomasyonu: regex ile "TODO" veya "FIXME" commit message'ında geçiyorsa PR reject edilir. API endpoint değişikliği varsa (`@app.route` decorator'unda değişiklik) API dokümantasyon güncellemesi aynı PR'da olmalı — yoksa bot blocker koyar. Bu kurallar manuel review'ü semantik derinliğe odaklar: business logic doğru mu, edge case handling yeterli mi, test senaryosu eksik mi.
+PR boyutu, review sürecinin en önemli değişkeni. 400 satırı geçen bir PR'ı doğru review etmek imkânsız. Reviewer ya "kabaca baktım, ok" diyor ya da 2 saat ayırıp her satırı okumaya çalışıyor — ikisi de verimsiz. Roibase kuralı: PR boyutu 400 satırı (diff line sayısı, boş satır ve yorum dahil) aşamaz. Eğer feature daha büyükse feature branch'de küçük PR'lara bölünüyor, her biri ayrı merge ediliyor.
 
-## Comment Kategorileri: Nit, Question, Blocker
+Bu kural iki şeyi zorluyor: (1) Developer önceden task'ı parçalamayı düşünmeli — "checkout flow" yerine "checkout validation logic" + "checkout UI components" + "checkout API integration" gibi; (2) Feature branch stratejisi gerekli — main branch'e her PR direkt gitmeyecek, staging/feature branch üstünden merge zinciri oluşuyor.
 
-Her review comment kategorize edilir — reviewer yazarken tag ekler. **[nit]**: tercih meselesi, merge blocker değil ("bu değişken ismi daha açıklayıcı olabilir"). **[question]**: anlayamadım, açıkla ("bu regex pattern'in edge case'i ne?"). **[blocker]**: merge edilemez, düzeltilmeli ("bu null check eksik, production'da crash atar").
+Örnek: Yeni bir ödeme gateway entegrasyonu var. Developer baştan 3 PR planladı: (1) Gateway API client (250 satır), (2) Internal transaction service katmanı (300 satır), (3) Frontend checkout widget (200 satır). Her PR ayrı ayrı review edildi, toplam merge süresi 18 saat. Eğer tek PR'da gönderilseydi 750 satır olacaktı — review süresi muhtemelen 48 saat+, üstüne çatışma riski yüksek.
 
-Nit yorumlar resolve without change ile kapatılabilir — author "kabul, ama bu PR'da değiştirmeyeceğim, sonraki refactor'da alırım" der, reviewer approve eder. Question yorumlar thread'de yanıtlanır, yeterli açıklama gelirse resolve edilir. Blocker yorumlar mutlaka ek commit gerektirir — blocker unresolved iken PR merge butonuna basılamaz (GitHub branch protection rule ile zorlanır).
+PR boyutu eşiği otomatik kontrol ediliyor. GitHub Actions workflow'u her PR'da `git diff --stat` çıktısını parse ediyor, 400 satır üstünde "pr-too-large" etiketi ekliyor ve merge'i engelliyor. Developer'a "Split this PR into smaller units" mesajı düşüyor.
 
-Comment density metriği bu kategorileri ayırır: blocker yoğunluğu %20 üstüyse PR scope'u kötü planlanmış demektir, nit yoğunluğu %60 üstüyse review superficial yapılıyor — önce lint config'i düzelt. İdeal dağılım: %15 blocker, %50 question, %35 nit. Sprint retrospective'de bu oranlar tartışılır: "Bu sprint blocker oranı arttı, PR planlama aşaması zayıflamış" tespiti yapılabilir.
+## Kişisel Çatışmayı Kuralla Kapatmak
 
-## Review Metriklerinin Sprint Retrospective'deki Yeri
+Code review'da en büyük kültürel sorun, "kişisel eleştiri" algısı. Developer PR'ını "benim yazdığım kod" olarak görünce review yorumunu "bana saldırı" olarak okuyabiliyor. Bu psikolojiyi kırmak için review kurallarını kişiselleştirmeye kapatmak gerekiyor. Roibase'de 3 yöntem uygulanıyor: (1) Review yorumu her zaman kod satırı üstünde — genel yorum yasak; (2) Yorum kategorisi etiketlenmeli: `[blocker]`, `[nit]`, `[question]`; (3) Reviewer kim olursa olsun aynı checklist'i kullanıyor — kişisel "bana göre" tercihi yok.
 
-Her sprint sonunda review dashboard'u açılır: ortalama time-to-review, PR size dağılımı, comment density histogramı, en çok revise edilen dosyalar, review load dağılımı (kimde kaç PR birikiyor). Bu metrikler subjektif "code quality artıyor mu" tartışmasını somut veriye dönüştürür.
+Blocker yorumu: Merge edilemez, düzeltilmesi zorunlu (örn. security açığı, performance regression, test coverage düşüşü). Nit yorumu: Merge edilebilir, ama düzeltilmesi tercih edilen (örn. naming convention, comment eksikliği). Question yorumu: Developer'a bağlam sorusu — neden böyle yapıldı, alternatif düşünüldü mü.
 
-Time-to-review 36 saati geçtiyse — hedef 24 saat — neden analizi yapılır: reviewer load çok mu yüksek, PR'lar iş saati dışı mı açılıyor, context switching mi fazla. Load dengesizliği varsa (bir developer 12 PR review yapmış, diğeri 2) CODEOWNERS rotation'ı değişir. PR'lar iş saati dışı açılıyorsa async workflow sorunlu demektir — PR draft aşamasında takım sync eder, ready hale gelince açar.
+Bu sistemde "ben beğenmedim" ifadesi niteliksiz. Ya blocker nedeni var (sayısal: test coverage %80'in altı, response time 200ms'den yavaş), ya nit nedeni var (stil guide'a aykırı), ya da question — ama "bu yaklaşım yanlış" gibi subjektif yorum checklist'te yok.
 
-Comment density düştüyse — önceki sprint 0.05 iken bu sprint 0.02 — review derinliği azalmış demektir. Bu genellikle yüksek velocity dönemlerinde olur: herkes feature yetiştirmeye odaklanmış, review shallow yapılmış. Retrospective'de "velocity artarken review kalitesi düşmemeli, PR size'ı küçültüp review cycle'ı hızlandırmalıyız" kararı alınır. Metrik olmadan bu tespit yapılamaz — herkes "iyi review yaptık" der, ama veri aksini söyler.
+Örnek: Bir developer API endpoint'te caching yapmış, reviewer `[question] Why memcache instead of Redis? Redis supports TTL per key.` diye sordu. Developer cevap verdi: "This endpoint has <10 req/sec, memcache sufficient. Redis would add infra cost." Reviewer `[nit] Add comment explaining cache choice for future ref` diye kapattı. Kişisel tartışma olmadı, bağlam netleşti.
 
-## Çatışma Yoktur, Sistem Vardır
+## Async Review, Senkron Approval
 
-Review'de kişisel çatışma çıkmasının nedeni sistemsizliktir: hangi durum blocker, hangi durum merge edilebilir, kim ne zaman review yapacak belirsizse yorumlar "bana göre yanlış" tartışmasına döner. Sistem netse çatışma olmaz: 24 saat kuralı ihlal edilirse author escalate eder (team lead'e ping atar), 300 satır aşılmışsa bot reject eder, blocker comment unresolved iken merge edilemez. Herkes aynı kuralları oynar, kişisel yorum kalmaz.
+Review süreci async, ama final approval senkron olmalı — yoksa "bu PR merge edildi mi edilmedi mi" belirsizliği oluyor. Roibase workflow'u: (1) İlk review async, yorumlar GitHub'da; (2) Developer fix'leri yapıp "ready for re-review" etiketi ekliyor; (3) Re-review 2 saat içinde, bu sefer approval veya blocker comment; (4) Approval'dan sonra 15 dakika içinde merge — gecikirse bağlam kaybolur.
 
-Review feedback'i kişiye değil, koda yapılır: "sen her zaman böyle yapıyorsun" yerine "bu dosyada null check pattern'i eksik, diğer handler'larda var". Retrospective'de de kişi adı geçmez: "developer X review yapmıyor" yerine "time-to-review metriği hedefin üstünde, load dağılımını değiştirelim". Metrik objektivite sağlar — herkes dashboard'daki sayıya bakar, tartışma çözülür.
+Bu akışta sync noktası tek: approval sonrası merge. Roibase ekibinde approval'ı CI/CD pipeline tetikliyor — Slack'te "PR #123 merged, deployment started" bildirimi düşüyor, ekip aynı anda görüyor. Developer o sırada başka işle meşgulse bile deployment'ı takip edebiliyor, rollback gerekirse hızlı müdahale ediliyor.
 
-Code review kültürü [markalaşma](/tr/branding) kadar ekip identity'sine bağlıdır: ekip "biz 24 saat içinde review yaparız, 300 satır üstü PR açmayız" dediğinde bu disiplin onboarding'den itibaren yerleşir. Yeni developer ilk PR'ında bu kuralları görür, kültüre uyum sağlar. Sistem subjektif liderliğe bağımlı değildir — lider değişse de metrikler devam eder.
+Deployment sonrası 24 saat "author on-call" kuralı var. PR sahibi, merge sonrası ilk 24 saatte production issue'su olursa ilk müdahale ediyor — bu da developer'ı "merge edip unutma" mantığından çıkarıyor, kod kalitesine daha dikkatli yaklaşmasını sağlıyor.
 
-Time-to-review 24 saat, PR size 300 satır, comment density 0.03-0.08 — bu sayılar takımınızda farklı olabilir. Önemli olan sayıların olması, ölçülmesi, sprint retrospective'de tartışılmasıdır. Code review kültürü senior developer'ın subjektif onayı değil, takımın disiplinli sistem tasarımıdır. Sistemsiz review yapıyorsanız kalite kontrolü yapmıyorsunuz, darboğaz yaratıyorsunuz. Şimdi yapılacak şey: son 10 PR'ınızın time-to-review ortalamasını ölçmek ve 48 saatin üstündeyse neden analizi başlatmaktır.
+## Roibase'de Review Metriklerinin İzlenmesi
+
+Roibase'in 8 yıllık operasyonunda review disiplini [markalaşma & brand identity](https://www.roibase.com.tr/tr/branding) kadar önemli hale geldi — ekip içi iletişim kalitesi dışarıya da yansıyor. Her sprint sonunda 4 metrik takip ediliyor: (1) Ortalama time-to-review (hedef: <2 saat); (2) Ortalama comment density (hedef: 0.02-0.04); (3) PR boyutu dağılımı (hedef: %90'ı <400 satır); (4) Merge-to-deploy süresi (hedef: <30 dakika). Bu rakamlar Notion dashboard'unda görünür, retrospective'de tartışılır.
+
+Metrikler "şaming" için değil, sistem tasarımını optimize etmek için kullanılıyor. Örneğin time-to-review 3 saate çıkmışsa soru: "Review window'lar yeterli mi, yoksa PR bildirimi Slack'te gözden mi kaçıyor?" Comment density yükselmişse soru: "Linter rule'ları eksik mi, yoksa reviewer guide güncel değil mi?"
+
+Bu yaklaşımda developer'a "senin kodun kötü" denmiyor, sisteme "otomasyonu nerede eksik" diye bakılıyor. Sonuç: developer experience iyileşiyor, çatışma olmuyor, merge hızı düşmüyor.
+
+---
+
+Code review kültürü, kurallarını sayısallaştırdığın anda kişisel çatışma alanından çıkar. Time-to-review, comment density, PR size eşikleri operasyonel disipline dönüşür. Ekip büyüdükçe "senior'ın kişisel tercihi" değil, "sistemin ölçülebilir kriteri" konuşulur. Roibase'in 8 yıllık deneyimi gösteriyor ki: async workflow ölçeklenebilir ancak metrik takibi varsa. Yoksa "kültür" lafta kalır, ekip 12 kişiyi geçtiğinde review süreci kaosa döner.
