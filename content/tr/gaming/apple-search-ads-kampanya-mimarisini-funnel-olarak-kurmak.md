@@ -1,113 +1,75 @@
 ---
 title: "Apple Search Ads: Kampanya Mimarisini Funnel Olarak Kurmak"
-description: "Discovery, competitor, brand, broad match — bütçe akışını funnel mantığıyla yöneten ASA kampanya mimarisi. Tier-1 piyasalarda install-to-LTV optimizasyonu."
-publishedAt: 2026-07-01
-modifiedAt: 2026-07-01
+description: "Discovery, competitor, brand ve broad match kampanyalarını funnel mimarisine göre kurup bütçe akışını optimize etmek için yapısal rehber."
+publishedAt: 2026-07-15
+modifiedAt: 2026-07-15
 category: gaming
 i18nKey: gaming-005-2026-07
-tags: [apple-search-ads, asa-kampanya-mimarisi, mobile-user-acquisition, funnel-optimization, gaming-growth]
+tags: [apple-search-ads, aso, mobile-growth, funnel-architecture, campaign-structure]
 readingTime: 8
 author: Roibase
 ---
 
-Apple Search Ads kampanyalarını tek seviye broad match ile yönetiyorsan bütçenin %40'ını yanlış kullanıcıya harcıyorsundur. 2026'da ASA'nın algoritmik öğrenme kapasitesi arttı ama funnel mantığı yoksa makine sana yanlış sinyalleri öğretiyor. Discovery'de daha ucuz install, brand'de daha yüksek D7 LTV — ama bunları birbirine karıştırırsan her ikisini de kaybedersin. Kampanya mimarisini funnel katmanı olarak kurmak sadece bütçe verimliliği değil, attribution sinyalini doğru beslemek demek.
+Apple Search Ads'i ayrı ayrı kampanya tipleri olarak yönetmek yerine birbirine bağlı bir funnel mimarisi olarak kurmak, performans oyununun kurallarını değiştirir. Discovery, competitor, brand ve broad match modları tek başına düşünüldüğünde bütçe dağılımı keyfi kalır — ama bunları funnel katmanları olarak organize ettiğinizde her kampanya tipi bir üstüne sinyal besler, bir altından nitelik alır. 2026 ortası itibariyle mobil oyun büyütme ekiplerinin çoğu hâlâ kampanyaları izole yönetiyor ve bu yüzden CPT'lerinde %30-40 verimlilik kaybediyor. Bu yazı kampanya mimarisini funnel logic ile nasıl kuracağınızı, bütçe akışını hangi sinyallere göre yönlendireceğinizi ve ASO ile entegrasyonun neden kritik olduğunu anlatıyor.
 
-## Discovery Katmanı: Broad Match ile Keşif Motoru Olarak Çalışmak
+## Funnel Mantığı: Her Kampanya Tipi Farklı Katmanda Durur
 
-Discovery kampanyası ASA'nın geniş ağını kullanarak yeni kullanıcı segmentlerini bulmak için var. Broad match, generic keyword, category term — install hacmi yüksek, IPM düşük ama burada öğrenme sinyali üretiyorsun. Algoritma henüz hangi profil senin oyununa uygun bilmiyor, sen de tahmin yapamıyorsun. Discovery kampanyasının görevi ilk 72 saatte hangi kullanıcıların engagement verdiğini saptamak.
+Apple Search Ads'de dört temel kampanya tipi var: discovery (Search tab), competitor (rakip marka sorguları), brand (kendi marka sorguları) ve broad match (geniş kategori terimleri). Bunları birbirinden kopuk görmek yerine şöyle düşünün: discovery en üstte, bilinirliği olmayan kullanıcıyı yakalıyor. Broad match ortada, intent sinyali var ama rekabet yüksek. Competitor daha dar, rakibin markasını arayan nitelikli kullanıcı. Brand en altta, zaten sizi biliyor. Bu hiyerarşiyi tersine çevirirseniz bütçe dağılımı bozulur — mesela brand kampanyaya %60 atarsanız satış yaparsınız ama kullanıcı havuzunu büyütmezsiniz. Tam tersi, discovery'ye %70 verirseniz CPT düşük ama retention çöker çünkü soğuk trafik dönüşüm hunisini yormadan içeri giriyor.
 
-Bütçe dağılımı discovery katmanında toplam ASA harcamasının %25-30'u olmalı. Bunun üzerinde kalırsan CPI düşük görünür ama LTV geri dönmez. Altında kalırsan yeni kullanıcı segmentine ulaşmadan rakiplerin bulduğu kitle içinde dönersin. Örnek: aylık $50K ASA bütçen varsa $12-15K'lık kısım discovery'e ayrılır. Kampanya hedefi CPT (cost-per-tap) değil CPIn (cost-per-install) olmalı çünkü bu katmanda tap kalitesi değil hacmi önemli.
+Funnel mantığında her katman bir öncekine sinyal gönderir. Discovery'den gelen kullanıcı retention D7'de %12'nin üstüne çıkıyorsa onun segment profilini broad match'e negative keyword listesi olarak yazarsınız — böylece broad daha dar hedefler. Competitor kampanyada IPM (install per mille) %8'in altındaysa o rakibin kullanıcı profili sizinkiyle örtüşmüyor demektir, kampanyayı durdurun. Brand kampanya CPA'sı aniden %40 artarsa bu ASO rank'inizin düştüğünü gösterir, sorun kampanya değil metadata — önce [App Store Optimization](https://www.roibase.com.tr/tr/aso) düzeltilmeli. Kampanyaları izole yönetince bu sinyaller kaybolur.
 
-Keyword stratejisi:
+Bütçe akışını da aynı mantıkla kurarsınız. Discovery başlangıçta %40-50 alır çünkü kullanıcı havuzunu dolduruyor. 3-4 hafta sonra retention profili oturduğunda broad match'e %30 verip discovery'yi %30'a çekersiniz. Brand her zaman %15-20'de sabit kalır çünkü markayı zaten bilenler ucuz gelir ama hacmi sınırlıdır. Competitor opsiyoneldir — tier-1 pazarda (ABD, UK) %10-15 ayırabilirsiniz, emerging market'te (LATAM, SEA) gereksizdir çünkü marka bilinci düşük.
 
-- Kategori terimleri (örn. "puzzle game", "strategy rpg")
-- Geniş intent sorguları ("free games", "offline games")
-- Rakip oyun isimleri (broad match ile ilgili oyunlar da tetiklenir)
+## Discovery Kampanya: Soğuk Trafik Deneyinin Laboratuvarı
 
-Discovery kampanyalarında negative keyword listesi daralttıkça öğrenme alanını daraltırsın. İlk 2 hafta hiç negative eklemeden çalıştır, 3. haftadan sonra D1 retention %15 altında kalan search term'leri engelle.
+Discovery kampanyalar Search tab'de çıkar. Kullanıcı oyun açar, alt bölümde "Bunları da beğenebilirsin" önerileri gelir. Intent sinyali zayıf — kullanıcı sizin oyunun kategorisini bile aramıyor olabilir. O yüzden burada hedef install hacmi değil, kullanıcı segmenti profili çıkarmaktır. Discovery'yi A/B test arenası olarak kullanırsınız: 4-5 farklı creative set koyun (custom product page ile), her birini 1 hafta 5000 impression'a maruz bırakın, IPM + D1 retention cross-check yapın. IPM %4'ün altı doğrudan reddedilir. IPM %6-8 arasıysa ama D1 retention %35'in altındaysa creative yanıltıcı — kapanış sahnesini değiştirin.
 
-## Competitor Katmanı: Exact Match ile Rakip Kullanıcısını Çalmak
+Discovery'nin bütçe mantığı şudur: ilk 2 haftada agresif harcayın (%50 toplam bütçe), veriler oturmaya başladığında %30'a çekin. Ama hiç kesmeyin çünkü soğuk trafik testini durdurunca broad match ve competitor için segment girdisi üretemezsiniz. 2026'da Apple Search Ads'in makine öğrenmesi 72 saat içinde stabilize oluyor, yani 3 gün sonra CPA'nız platoya ulaşır. Eğer 5. günde hâlâ volatilite varsa hedefleme çok geniş demektir — yaş/cinsiyet/coğrafya filtresi ekleyin.
 
-Competitor kampanyası ASA'nın en yüksek intent trafiğini hedefler. Kullanıcı rakip oyunun ismini yazıyorsa kararlı bir download niyeti var — senin görevin alternatif sunmak. Broad match'te rakip ismine "yakın" aramaları da yakalarsın ama competitor katmanı exact match ile çalışmalı çünkü bütçe kontrolü kritik. Rakip oyunun ismini arayan kullanıcı ya o oyunu indirmek istiyor, ya alternatif arıyor, ya da zaten o oyunu oynuyor ve yeni oyun arıyor.
+Discovery'de keyword kullanmazsınız, Apple otomatik eşleşir. Ama negative keyword listesi koyabilirsiniz — özellikle rakip oyun türlerine ait terimleri (örn. sizinki match-3 ise "battle royale" negative yapın). Bir tuzak: Apple kategori bazlı öneri de yapar. Eğer oyununuz "Casual" kategorisinde yayınlanmışsa ama asıl mekanizması "Puzzle"a yakınsa, metadata'da kategoriyi yanlış seçmişsiniz demektir. Bu durumda kampanya değil ASO metadata düzeltilir — kategori değişimi + subtitle optimizasyonu. Discovery kampanya performansı düşükse ilk yapılacak ASO audit'tir, bütçe artışı değil.
 
-Bütçe payı %20-25 aralığında. Rakip oyun sayısı arttıkça bu oran artabilir ama her rakibi eşit şekilde hedefleme. Tier-1 rakip (piyasa lideri, seninkine mekanik olarak yakın oyun) ile tier-2 rakip (farklı mekanik, ama aynı kullanıcı profili) aynı CPI'a çalışmaz. Tier-1 rakipler için bid çarpanı %120-150, tier-2 için %80-100 olmalı.
+## Competitor ve Broad Match: Nitelik Filtresi ve Bütçe Dinamikleri
 
-Competitor kampanyalarında creative farkı belirleyici. Kullanıcı rakip oyunu biliyor, senin custom product page'in rakiple karşılaştırma yapmalı — ama açıkça isim geçirmeden. Örnek: rakip oyun turn-based combat kullanıyorsa senin CPP "real-time PvP" öne çıkarmalı. [App Store Optimization](https://www.roibase.com.tr/tr/aso) çalışmasında CPP varyantlarını bu katman için özel olarak hazırlamak IPM'i %18-25 artırıyor.
+Competitor kampanyalar sadece tier-1 pazarda mantıklıdır. Türkiye, Brezilya, Endonezya gibi pazarlarda marka bilinci düşük olduğu için kullanıcı rakip isim aramaz, genel kategori terimi arar. ABD'de "Candy Crush" diye arayan 1 milyon kullanıcı var, Türkiye'de 50 bin — bu yüzden competitor kampanyaya bütçe ayırmak Türkiye'de ROI negatif çıkar. Eğer tier-1'desiniz, competitor kampanyayı dar tutun: sadece doğrudan rekabette olduğunuz 3-5 oyunu hedefleyin. Her keyword için TTR (tap-through rate) minimum %5 olmalı, altında kalırsa creative'iniz rakibin kullanıcısını çekemiyor demektir — icon + screenshot set değiştirin.
 
-Negatif sinyal kritik: rakip oyunu daha önce indirip silen kullanıcıyı tekrar o oyunun kelimesiyle yakalamaya çalışma. ASA'da "previous downloader" sinyali yok ama D1 retention %10 altındaysa bu kullanıcı segmenti zaten yanmış demektir.
+Competitor kampanyada bid stratejisi agresiftir: maksimum CPA'nızın %120'sine kadar çıkabilirsiniz çünkü rakibin kullanıcısı niteliklidir, sizinle benzer oyun oynamış demektir. Ama 2 hafta sonra LTV/D30 ölçün — eğer rakipten gelen kullanıcı retention'da %15 düşükse bu segment sizin oyun mekaniğinizle uyuşmuyor, kampanyayı kapatın. Yaygın hata: rakip büyükse onun kullanıcısı da bizde çalışır demek. Hayır — "PUBG Mobile" kullanıcısı "Among Us" kullanıcısından tamamen farklıdır, aynı "battle royale" kategorisinde olsalar bile.
 
-## Brand Katmanı: Exact Match ile Mevcut Kullanıcıyı Korumak
+Broad match kampanyalar kategori terimleri içindir: "puzzle game", "strategy rpg", "idle game". Burada keyword exact/broad kontrol edilebilir. Başlangıçta broad açın, 1 hafta sonra search terms raporunu indirin, alakasız terimleri negative yapın. Örnek: sizin oyununuz "merge" mekaniğine dayanıyor, ama broad match "match-3" sorgularını da getiriyorsa "match-3" negative ekleyin. Broad match'in bütçesi %25-35 arasında olmalı — daha fazla verirseniz discovery'den gelen segment verisini kullanmadan dağıtmış olursunuz, daha azsa yeterli hacim yakalayamazsınız.
 
-Brand kampanyası ASA'da savunma hattıdır. Senin oyunun ismini arayan kullanıcı seni zaten biliyor — ama rakiplerin senin brand term'ine reklam veriyor. Brand kampanyası olmazsa rakip reklamı senin oyunun üstünde çıkıyor ve %8-12 arasında kullanıcı kaybı yaşarsın. Bu katman en düşük CPI'yı verir ama trafiği küçük, LTV ise en yüksek çünkü kullanıcı bilinçli gelir.
+## Brand Kampanya: Savunma ve ASO Sağlık Göstergesi
 
-Bütçe payı %10-15 — küçük ama kesintisiz. Brand kampanyasını pause edersen rakip 48 saat içinde fark eder ve bid'ini artırır. Keyword stratejisi sadece oyun ismi ve varyantları:
+Brand kampanya kendi oyun adınızı hedefler. "Ama zaten birinci sıradayız, para vermeye gerek var mı?" sorusu yanlış sorudur. Apple organik sıralamada birinci olsanız bile Search Ads'de rakipler sizin markanızı hedefleyebilir — yani "Sizin Oyun" diye aratıldığında rakip çıkar. Brand kampanya o trafik sizde kalsın diye korunur. Ayrıca CPA en düşük burada çıkar (genelde discovery'nin 1/5'i), bu yüzden bütçenin %15-20'sini koymanın ROI'si pozitiftir.
 
-| Keyword tipi | Örnek | Match type |
-|---|---|---|
-| Oyun ismi | "Your Game Name" | Exact |
-| Kısaltma | "YGN" | Exact |
-| Typo varyantları | "Your Gam Name" | Broad (sadece typo için) |
+Brand kampanyanın ikinci işlevi ASO sağlık göstergesi olmasıdır. Eğer brand CPA'nız aniden artıyorsa (örn. 2 haftada %30 yükseldi), bu organik rank'inizin düştüğü anlamına gelir. Çünkü organik sıralama düşünce daha az görünürlük olur, kullanıcı Search Ads'deki brand kampanyanızı daha fazla tıklar, Apple daha fazla ücret keser. Bu durumda sorunu kampanya optimizasyonu ile çözemezsiniz — ASO metadata (keyword density, subtitle, IAP naming) ve rating/review yönetimi ile düzeltirsiniz. Brand kampanyayı "erken uyarı sistemi" olarak kullanırsınız.
 
-Brand kampanyasında creative test yapma. Kullanıcı zaten oyunu biliyor, görselde consistency önemli — app icon, oyun logosu, bilinen karakter. CPP varyantı kullanırsan kafası karışır.
+Brand keyword'e bid agresif olmalı: maksimum CPA'nızın %150'si. Çünkü rakip de sizin markanızı hedefliyorsa bid savaşı olur, kaybederseniz trafik kaybolur. Bazı ekipler "zaten organik geleceğim" diyerek brand kampanyaya düşük bid verir — bu strateji sadece rekabet yoksa işler. Tier-1 pazarda rekabet her zaman vardır, bu yüzden brand kampanya passif değil aktif savunmadır.
 
-Bid stratejisi düşük tutulabilir çünkü Apple brand term'de zaten sana avantaj veriyor. Rakip brand term'ine %150 bid verse bile senin %100 bid'in üstte çıkar. Ama bid'i sıfıra çekme, rakibin organik listeyi itmesini önlemek için minimum $0.50 bid gerekli.
+## Bütçe Akışı Senaryosu: 4 Haftalık Pilot
 
-## Broad Match Modu: Farklı Katmanlarda Farklı Kullanım
+Diyelim 30 gün boyunca $15000 bütçeniz var, yeni bir idle RPG oyunu launch ediyorsunuz, ABD pazarı. İlk hafta: discovery %50 ($1875), broad %25 ($937), brand %20 ($750), competitor %5 ($187). Competitor düşük çünkü henüz segment profili yok. İlk 7 gün discovery'den 2500 install gelir, bunun D1 retention'ını ölçersiniz — %32 çıktı. D7 ölçmek için 1 hafta bekliyorsunuz.
 
-Broad match ASA'da tek bir ayar değil, her katmanda farklı amaca hizmet eder. Discovery katmanında broad match keşif aracıdır — maksimum reach, minimum negatif. Competitor katmanında broad match risklidir çünkü ilgisiz sorguları tetikler ve bütçeyi dağıtır. Brand katmanında broad match sadece typo varyantları için kullanılır.
+14. günde D7 retention %18 geldi (idle RPG için kabul edilebilir). Discovery'den gelen kullanıcıların %60'ı 25-34 yaş erkek, %30'u 18-24 kadın. Bu profili broad match kampanyaya yaş/cinsiyet filtresi olarak eklersiniz. Bütçeyi şu şekilde revize edersiniz: discovery %35, broad %35, brand %20, competitor %10. Çünkü artık segment profili var, broad match daha nitelikli çalışacak.
 
-Broad match'in öğrenme kapasitesi 2026'da arttı ama hâlâ kontrol mekanizması gerekiyor. ASA algoritması hangi search term'in conversion verdiğini öğrenir ama hangi kullanıcı profilinin D7 LTV verdiğini bilemez. Bu yüzden broad match kampanyaları 14 günlük döngülerle analiz edilmeli:
+21. günde competitor kampanyadan 150 install geldi, ama D1 retention %22 — discovery'den %10 düşük. Bu segment oyununuzla uyuşmuyor. Competitor'ı kapatırsınız, %10'luk bütçeyi broad match'e eklersiniz. Son hafta: discovery %30, broad %45, brand %25. Bu dağılım artık sabit kalır çünkü funnel dengeye oturmuştur. 30 günün sonunda toplam 7200 install, blended CPA $2.08, D30 retention %9.5 — tier-1 idle RPG için iyi bir baseline.
 
-1. **Gün 1-7:** Hiç negative eklemeden çalıştır, search term raporunu topla
-2. **Gün 8-14:** D1 retention <15% olan term'leri negative ekle, bid'leri %10 artır
-3. **Gün 15-21:** D7 LTV verisini kontrol et, negatif listeyi güncelle
+## Ölçüm ve İterasyon: Hangi Sinyallere Bakarsınız
 
-Broad match kampanyalarında bid çarpanı discovery için %80-90, competitor için %100-120 olmalı. Algoritma "benzer sorguları" bulurken bid sinyalini de kullanıyor, düşük bid öğrenme sürecini uzatır.
+Kampanya mimarisini kurduktan sonra ölçüm 3 katmanda yapılır: kampanya seviyesi (CPA, IPM, TTR), funnel seviyesi (D1/D7/D30 retention), ekonomik seviye (LTV/CAC). Her kampanya tipinin kendi kriterleri var. Discovery için IPM ve D1 retention yeterli, LTV beklemezsiniz çünkü soğuk trafik. Broad match için D7 retention kritik — %15'in altı kabul edilemez. Competitor için TTR öncelikli — %5'in altıysa creative zayıf. Brand için CPA artışı ASO alarm verir.
 
-## Bütçe Akışını Funnel Mantığıyla Yönetmek
+Haftalık iterasyon döngüsü şöyle olur: Pazartesi sabah kampanya metriklerini çek (Apple Search Ads Console), retention verilerini MMP'den al (Adjust, AppsFlyer), LTV projeksiyonunu BI dashboard'dan oku. Cuma gününe kadar şu kararları ver: hangi creative set kapatılacak, hangi keyword negative olacak, hangi kampanya bütçesi artacak. İki haftada bir daha büyük strateji değişikliği yaparsınız: funnel bütçe dağılımı, yeni pazar testi, ASO metadata güncellemesi.
 
-Kampanya katmanlarını kurduktan sonra bütçe akışı funnel olarak çalışmalı. Discovery'den gelen install hacmi yüksek ama LTV belirsiz, competitor'den gelen install orta hacim ama LTV tahmin edilebilir, brand'den gelen install düşük hacim ama yüksek LTV. Bütçe dağılımı sabit değil, haftalık LTV raporuna göre dinamik ayarlanır:
+Bir tuzak: Apple Search Ads makine öğrenmesi sizi sürekli "bütçe artır" diye uyarır. Bu uyarıyı her gördüğünüzde artırmayın. Önce mevcut bütçenin tamamını harcıyor musunuz kontrol edin — %80'in altındaysa zaten yeterli impression alamıyorsunuz demektir, sorun hedefleme. %95'in üstündeyse ve CPA hedef dahilindeyse artırın, ama maksimum %20 — ani artışlar makine öğrenmesini bozar.
 
-**Hafta 1 (keşif fazı):**
-- Discovery %35
-- Competitor %25
-- Brand %15
-- Rezerv %25 (test için beklet)
+## ASO ile Entegrasyon: Kampanya Metadata'yı Besler
 
-**Hafta 2-4 (öğrenme fazı):**
-- Discovery %30 (negatif liste arttıkça oran düşer)
-- Competitor %30 (kazanan rakipler için artır)
-- Brand %15
-- Rezerv %25
+Apple Search Ads kampanyaları ASO'dan bağımsız yönetilemez. Çünkü kampanyanın gösterdiği metadata (icon, screenshot, subtitle, promotional text) doğrudan App Store sayfanızdan gelir. Eğer discovery kampanyada IPM düşükse ama competitor'da yüksekse bu icon'unuzun generic göründüğü anlamına gelir — çünkü rakip markası aratanlar zaten intent yüksek, icon çekici olmasa da tıklar. Ama soğuk trafik (discovery) icon'a bakar, ilgi çekmezse scroll eder.
 
-**Hafta 5+ (optimizasyon fazı):**
-- Discovery %25
-- Competitor %35 (LTV pozitif rakipler için scale et)
-- Brand %15
-- Rezerv %25 (yeni test veya seasonal push)
+Custom product pages (CPP) buraya girer. Apple artık her kampanyaya farklı CPP atayabilmenize izin veriyor. Discovery için daha bold, animasyonlu screenshot set kullanırsınız. Brand için daha minimal, logo-forward tasarım. Competitor için rakiple karşılaştırma yapan screenshot (mümkünse guidelines dahilinde). Bu ayrımı yapmadan tek metadata ile tüm kampanyaları koşarsanız conversion huni optimize edilemez. [App Store Optimization](https://www.roibase.com.tr/tr/aso) sürecinde CPP stratejisini kampanya mimarisi ile paralel kurmalısınız.
 
-Rezerv bütçeyi asla sabit kampanyalara dağıtma. Seasonal event, yeni feature launch, rakip oyunun büyük güncelleme anı gibi fırsatlar için beklet. ASA'da ani bütçe artışı algoritmanın öğrenme sürecini bozar, rezervden yavaş yavaş akıtmak daha verimli.
+ASO metadata her 4-6 haftada bir revize edilir — keyword density Apple'ın algoritması değiştikçe güncellenir, rating/review yönetimi churn sinyallerini önler, IAP naming'de fiyat testi yapılır. Bu değişiklikler doğrudan kampanya performansını etkiler. Örneğin subtitle'da "merge" kelimesini "build" ile değiştirdiniz, 1 hafta sonra broad match kampanyada "build game" sorgusu artmaya başlar — o keyword'ü manuel eklemelisiniz. ASO ve Search Ads aynı ekip tarafından, aynı sprint döngüsünde yönetilmelidir.
 
-## Funnel Kampanya Mimarisinin Ölçüm Katmanı
+## Sonuç: Mimari Tek Seferlik Kurulum Değil, Dinamik Sistem
 
-Kampanya katmanlarını kurduktan sonra attribution sinyali bozulmamalı. ASA native olarak SKAdNetwork ile çalışır ama D7 LTV gibi post-install metrikler için MMP entegrasyonu gerekli. AppsFlyer, Adjust, Singular gibi araçlar ASA kampanya ID'sini cohort analizine bağlar. Discovery, competitor, brand her birinin ayrı campaign ID'si olmalı ki LTV verisini katmana göre ayırabilirsin.
+Kampanya mimarisini funnel olarak kurmak bir defada bitmez. İlk 30 gün pilot, sonraki 60 gün stabilizasyon, ondan sonra sürekli iterasyondur. Bütçe akışı her ay %10-15 değişir çünkü oyunun live ops takvimi (event, season, IAP sale) kampanya dinamiklerini etkiler. Discovery agresif olduğunuzda broad match 2 hafta sonra performansı artırır, çünkü kullanıcı havuzu dolmuştur. Brand kampanya CPA'sı yükseldiğinde ASO düzeltilir, kampanya bütçesi artırılmaz.
 
-Ölçüm altyapısı olmadan funnel mimarisi sadece bütçe dağılımı olur, optimizasyon yapılamaz. Her katmanın kendi başarı metriği var:
-
-| Katman | Birincil metrik | İkincil metrik | Negatif sinyal |
-|---|---|---|---|
-| Discovery | IPM (install per mille) | D1 retention | CPI >$3 ve D1 <15% |
-| Competitor | D7 LTV | CPIn | D7 LTV <$2 |
-| Brand | CR (conversion rate) | D30 LTV | CPIn >$1.5 |
-
-Metrikler haftalık değil 14 günlük döngülerle analiz edilmeli çünkü ASA algoritması öğrenme sürecini 10-14 günde tamamlıyor. Günlük optimizasyon yaparsan sinyali bozarsın.
-
-## Kampanya Mimarisini Test Etmek ve Scale Etmek
-
-İlk kurulumda 3 kampanya (discovery, competitor, brand) ile başla. Bütçe $10K altındaysa tek kampanyada çoklu ad group kullan ama bu yapı LTV katmanını bulanıklaştırır. İdeal başlangıç bütçesi aylık $15K — bu seviyede her katmana yeterli hacim düşer ve öğrenme hızlanır.
-
-Scale sürecinde yeni katman eklemek yerine mevcut katmanları derinleştir. Örnek: competitor kampanyasını tier-1 ve tier-2 olarak ayır, discovery kampanyasını coğrafyaya göre böl (tier-1 ülkeler vs emerging market). Her yeni bölünme öğrenme sürecini sıfırlar, bu yüzden scale kararını LTV verisi stabilize olduktan sonra ver.
-
-Test sürecinde A/B kampanyası oluşturma. ASA'da duplicate kampanya algoritmanın kendi reklamınla yarışmasına neden olur. Bunun yerine Creative Set ile CPP varyantlarını test et, kazanan varyantı tüm kampanyalara uygula. [Premium Yayıncı Programı](https://www.roibase.com.tr/tr/premiumyayinci) kapsamında ASA creative test sonuçlarını cross-channel (UAC, Meta) ile birleştirip iterasyon hızını artırabilirsin.
-
-Funnel mimarisi bir kez kurulduktan sonra bakım düşük ama kesintisiz olmalı. Haftalık search term raporu, 14 günlük LTV raporu, aylık cohort analizi — bu döngüyü atlarsan kampanya kendini optimize edemez. ASA algoritması sana sinyal veriyor, sen de ona doğru sinyali geri vermelisin. Discovery'den öğrendiğin profili competitor'a taşı, competitor'den kazandığın LTV'yi brand korumasına yansıt. Kampanya mimarisi statik liste değil, dinamik öğrenme döngüsü olarak çalışmalı.
+Bu yapıyı kurmadan önce sorulması gereken sorular: segment profili net mi, retention baseline'ınız var mı, ASO metadata test edilebilir durumda mı, MMP entegrasyonu sağlıklı mı. Bu dört bileşen yoksa kampanya mimarisi hayal kırıklığı yaratır. Varsa funnel mantığı ile bütçe verimliliğiniz ilk 90 günde %30-40 artar, çünkü her kampanya tipi doğru katmanda, doğru sinyalle çalışıyor demektir. Şimdi mevcut kampanya dağılımınıza bakın — funnel olarak kurulu değilse bu ay başlatacağınız pilot senaryo yukarıdaki 4 haftalık modeli takip etmeli.
