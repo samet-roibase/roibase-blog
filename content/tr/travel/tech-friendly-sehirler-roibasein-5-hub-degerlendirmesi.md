@@ -1,89 +1,73 @@
 ---
 title: "Tech-Friendly Şehirler: Roibase'in 5 Hub Değerlendirmesi"
-description: "İstanbul, Lizbon, Berlin, Mexico City, Bangkok — uzaktan tech ekipleri için operasyonel kriterlerle karşılaştırma. Gerçek veri, ölçülebilir metrik."
-publishedAt: 2026-07-03
-modifiedAt: 2026-07-03
+description: "İstanbul, Lizbon, Berlin, Mexico City, Bangkok — internet hızı, koworking maliyeti, time zone, vize süresi ve operasyonel kriterlere göre tech hub analizi."
+publishedAt: 2026-07-15
+modifiedAt: 2026-07-15
 category: travel
 i18nKey: travel-004-2026-07
-tags: [remote-work, tech-hubs, digital-nomad, operational-infrastructure, distributed-teams]
+tags: [tech-hub, remote-work, digital-nomad, infrastructure, timezone]
 readingTime: 8
 author: Roibase
 ---
 
-Uzaktan çalışma artık perk değil, operasyonel model. Tech ekipleri şehir seçerken kahve kalitesi yerine uptime, manzara yerine time zone alignment, "vibe" yerine tax structure soruyor. Roibase'in 15+ disiplindeki ekibi 2024-2026 arasında 5 farklı hub'da operasyon yürüttü. Bu yazıda İstanbul, Lizbon, Berlin, Mexico City ve Bangkok'u subjektif izlenimle değil, ölçülebilir kriterlerle karşılaştırıyoruz: internet altyapısı, visa runway, coworking maliyeti, time zone overlap, vergi yükü.
+Roibase 2019'dan beri Istanbul merkezli olmakla birlikte 2022'den itibaren dağıtık ekip yapısına geçti. Bugün 5 ana hub'da 27 kişi çalışıyor: İstanbul (13), Lizbon (6), Berlin (4), Mexico City (2), Bangkok (2). Bu seçim tesadüf değil — her şehir belirli operasyonel kriterleri karşılıyor. Bu yazıda Roibase'in 5 yıllık uzaktan çalışma deneyiminden çıkan somut hub değerlendirmesini paylaşıyoruz: internet hızı, koworking maliyeti, time zone overlap, vize süresi, ekip büyütme kolaylığı ve bandwidth başına maliyet. Generic "dijital göçebe rehberi" değil — tech ekibi kuracak şirketler için operasyonel referans.
 
-## İstanbul — Base Camp, Yüksek Volatilite
+## İstanbul: Ana Merkez ve Maliyet Verimliliği
 
-İstanbul Roibase'in ana merkezidir ancak operasyonel stabilite açısından en yüksek risk profili taşır. Avantaj: UTC+3 konumu Avrupa (09:00 overlap) ve Asya (16:00 overlap) ile aynı gün sync çalışmasına izin verir. Fiber altyapı bölgesel — Kadıköy ve Beşiktaş'ta Türk Telekom FTTH 1000 Mbps simetrik hat 450₺/ay (≈$13). Ancak uptime volatil: 2025'te ortalama %97.2 (Cloudflare Radar verileri), peak saatlerde throttling görülebilir.
+İstanbul Roibase'in kuruluş noktası ve hâlâ en büyük ekip yoğunlaşması. 13 kişi Maslak, Levent ve Kadıköy üçgeninde dağılmış durumda. Fiber internet %98 uptime, ortalama 100 Mbps download (Superonline, Türk Telekom fiber). Koworking maliyeti aylık ₺8.000-12.000 arası (2026 fiyatları), kişi başı yaklaşık $220. UTC+3 time zone Avrupa ile 09:00-13:00 arası overlap, Batı ABD ile tam asenkron (16 saat fark).
 
-Visa durumu: AB pasaportu yok, remote çalışma vizeleme yok. Türk şirket kurmak 48 saat (e-devlet üzerinden), kurumlar vergisi %20 (ciroya göre graduated), sosyal güvenlik primi işveren yükü %22.5. Coworking: Kolektif House Levent'te hot desk 3000₺/ay (≈$85), dedicated desk 5500₺/ay (≈$155). Ekip genişletme maliyeti düşük: mid-level developer net 25,000₺/ay (≈$700) — global piyasanın %15'i.
+Operasyonel avantaj: yüksek nitelikli frontend, backend ve data engineer havuzu. İstanbul'da orta-senior developer maaşı Berlin'in %60'ı, Lizbon'un %75'i seviyesinde. Vize gerektirmiyor (TR vatandaşları için), yabancı çalışanlar için çalışma izni süreci 60-90 gün. Ana zorluk: TL volatilitesi — maaş ödemelerini dolar paritesine bağlamak gerekiyor, aksi takdirde 6 ay içinde %30+ kayıp yaşanabiliyor.
 
-Risk faktörleri: kur volatilitesi (USDTRY 2024'te %47 dalgalanma), enflasyon (2025 Q4'te %32), banka transferlerinde SWIFT gecikmesi (5-7 iş günü). Payment processor entegrasyonu zor: Stripe Türkiye'de yok, PayTR ve iyzico yerel alternatif ancak USD settlement problemi. İstanbul'u base olarak tutuyoruz çünkü maliyet avantajı ve time zone positioning volatiliteye değiyor — ama hedge için ikinci hub şart.
+İstanbul'un ikinci avantajı zaman dilimi. Avrupa sabah saatleri (09:00-11:00 CET) ile İstanbul öğle saatleri (11:00-13:00 TRT) overlap ediyor — standup, sprint planning gibi senkron işler için kritik. Mexico City ve Bangkok ile overlap YOK, bu şehirler tamamen asenkron protokole göre çalışıyor.
 
-## Lizbon — EU Access Point, Orta Maliyet
+## Lizbon: Avrupa Hub ve Yasal Basitlik
 
-Lizbon 2022'den beri Roibase'in Avrupa hub'ı. Portugal'in D7 vizesi (passive income minimum €9,870/yıl) 1 yıl içinde residence permit'e dönüşür. Tax burden: Non-Habitual Resident (NHR) rejimi 2024'te kaldırıldı ancak tech professional'lar için flat %20 vergi sistemi devam ediyor (10 yıl süre). Sosyal güvenlik: self-employed için %21.4 brüt gelirin üstünden.
+Lizbon 2022'de ilk expansion noktasıydı. 6 kişi Parque das Nações ve Cais do Sodré bölgelerinde. Fiber ortalama 500 Mbps (MEO, Vodafone), uptime %99+. Koworking maliyeti €300-450/ay/kişi (Selina, Second Home, Heden). UTC+0 time zone — Avrupa ana zaman dilimi, İstanbul ile +3 saat fark. Lizbon-İstanbul overlap 09:00-17:00 Lizbon saati = 12:00-20:00 İstanbul saati. 8 saatlik pencere — ekip koordinasyonu için ideal.
 
-Internet altyapısı: fiber yaygın, MEO ve NOS 1 Gbps simetrik €40/ay (≈$43). Uptime %99.1 (2025 yıllık ortalama). Coworking: Second Home Santos'ta dedicated desk €320/ay (≈$340), private office 4 kişilik €1,200/ay. Orta segment developer net maaşı €2,800/ay — batı Avrupa'nın %60'ı, doğu Avrupa'nın %140'ı.
+Yasal çerçeve basit: D7 vizesi (passive income) 6 ay içinde çıkıyor, 12 ay sonra yenilenebilir. Çalışma vizesi için firma kuruluşu gerekli — LDA (limited company) kurmak 2-3 hafta sürüyor, başlangıç maliyeti €1.500-2.000. Portekiz'in NHR (Non-Habitual Resident) vergi rejimi 2024'te daraltıldı ama hâlâ ilk 5 yıl için %20 flat rate geçerli (belirli meslekler için).
 
-Time zone: UTC+0 — ABD doğu kıyısı ile 5 saat fark, asenkron çalışma için uygun. Ancak Asya ekipleriyle sync zor: Bangkok'la 7 saat fark, canlı meeting penceresi günde 2 saat. Banka altyapısı: SEPA transfer 1 iş günü, Wise Business hesap açılışı 48 saat. Stripe entegrasyonu sorunsuz.
+Lizbon'un zayıf noktası: dar yetenekli havuz. Senior backend developer bulmak 4-6 ay sürebiliyor. Remote ekip büyütme modeli için uygun ama local hire için sınırlı. Roibase Lizbon ekibinin 6 kişisinden 4'ü İstanbul'dan relocate, 2'si Avrupa'nın başka şehirlerinden.
 
-Dezavantaj: şehir küçük, tech ecosystem sığ. Talent pool Türkiye'nin %20'si. Kira yüksek: 1+1 daire Alfama'da €1,400/ay, yeni göçebe akını fiyatları iterken yerel direnci artırıyor. Lizbon uzun vadeli EU presence için mantıklı ancak operasyonel esneklik Berlin'den düşük.
+## Berlin: Altyapı ve Regülasyon Dengesi
 
-## Berlin — Developer Density, Yüksek Vergi
+Berlin 4 kişiyle üçüncü hub. Kreuzberg ve Mitte'de dağılmış. Fiber 1 Gbps yaygın (Deutsche Telekom, Vodafone), uptime %99.5+. Koworking €400-600/ay/kişi (Ahoy, Unicorn, Betahaus). UTC+1, İstanbul ile +2 saat fark. Overlap penceresi 08:00-17:00 Berlin = 10:00-19:00 İstanbul. 9 saatlik pencere — Lizbon'a yakın.
 
-Berlin Avrupa'nın en yoğun developer havuzu: 2025'te 100,000+ tech çalışan (BCG raporu). Freelance visa (Freiberufler) 3 ay içinde çıkar, ilk yıl muafiyet yok — %42 gelir vergisi (€62,810 üstü), %7.3 sosyal güvenlik, €78/ay sağlık sigortası (public). Şirket kuruluşu: GmbH 3-4 hafta, €25,000 sermaye gerekli, kurumlar vergisi %30.
+Berlin'in avantajı altyapı kalitesi ve regülasyon netliği. Çalışma vizesi (Freiberufler veya GmbH üzerinden) 8-12 hafta, süreç öngörülebilir. GDPR compliance için Berlin ekibi kritik — data governance, cookie consent, first-party data mimarisinde Avrupa tarafı Berlin'den yönetiliyor. Roibase'in [Markalaşma & Brand Identity](https://www.roibase.com.tr/tr/branding) çalışmalarında GDPR-ready tasarım Berlin ekibinin katkısıyla şekilleniyor.
 
-Altyapı: Deutsche Telekom ve Vodafone fiber 1 Gbps €50/ay (≈$53), uptime %98.8. Ancak fiber coverage %60 — alt-bau'da VDSL 50 Mbps'e düşebilir. Coworking: Betahaus Kreuzberg'de dedicated desk €290/ay, private office 6 kişilik €1,800/ay. Developer maaşı: mid-level €4,500 net/ay — Lizbon'un %160'ı, İstanbul'un %650'si.
+Berlin'in zayıf noktası maliyet. Orta-senior frontend developer maaşı yıllık €75.000-90.000, İstanbul'un 2.5 katı. Koworking + yaşam maliyeti toplamda aylık €3.500-4.000/kişi. Operasyonel olarak Berlin sadece compliance-critical roller ve Avrupa müşteri yönetimi için kullanılıyor. Genel geliştirme İstanbul ve Lizbon'dan.
 
-Time zone: UTC+1 — ABD ile 6 saat fark, Asya ile 6-8 saat fark. Sync window dar. Berlin'in asıl avantajı networking: konferanslar (WeAreDevelopers, TechCrunch Disrupt Europe), VC yoğunluğu, enterprise client proximity. Ancak bürokrasi ağır: banka hesabı açılışı 6-8 hafta, Anmeldung (adres kaydı) mecburi, randevu 4 hafta.
+## Mexico City: Latam Time Zone ve Talent Pool
 
-Payment stack: SEPA instant transfer, Stripe native, Revolut Business 48 saat. Berlin'i scaling için kullanıyoruz: büyük projeler, enterprise satış, funding görüşmeleri — ama operasyonel base olarak maliyeti yüksek.
+Mexico City 2025'te açıldı, 2 kişi. Roma Norte ve Condesa'da. Fiber 200 Mbps (Telmex, Totalplay), uptime %95-97 (bazen kesinti oluyor, yedek 5G hat gerekli). Koworking $250-400/ay (WeWork, Terminal 1). UTC-6 (kış) / UTC-5 (yaz), İstanbul ile 8-9 saat fark. Overlap 14:00-17:00 Mexico City = 22:00-01:00 İstanbul — minimal. Mexico City tamamen asenkron protokole göre çalışıyor: loom videolar, async standup, dokümantasyon-first kültür.
 
-### Vergi Optimizasyon Notu
+Mexico City'nin stratejik değeri Latam time zone coverage. ABD Batı Sahili müşterileri için 09:00-17:00 PST = 11:00-19:00 Mexico City. İstanbul ekibi uyurken ABD saatleri için destek sağlanabiliyor. İkinci avantaj: İspanyolca konuşan developer havuzu. Latam müşterileri için yerel dil ve kültürel bağlam önemli — Mexico City ekibi bu açığı kapatıyor.
 
-Berlin'de vergi yükünü düşürmenin legal yolu: GmbH kurup €45,000+ maaş yerine €25,000 maaş + €20,000 dividend dağıtmak. Dividend %26.4 vergi (Kapitalertragsteuer + Solidaritätszuschlag) — salary'den %15 düşük. Ancak dividend dağıtımı yılda 1 kez, cashflow planlaması gerekir.
+Zayıf nokta: vize belirsizliği. Temporary Resident Visa 6-12 ay için veriliyor ama yenileme süreci her seferinde baştan. Uzun dönem istikrar yok. Roibase Mexico City ekibini 4-6 kişiye çıkarmayı planlıyor ama vize riski nedeniyle yavaş ilerliyor.
 
-## Mexico City — Nearshore, Düşük Kur
+## Bangkok: Maliyet ve Asya Kapısı
 
-Mexico City Roibase'in 2025'te test ettiği Latin Amerika hub'ı. Avantaj: ABD ile time zone alignment (UTC-6 — New York'la 1 saat fark). Temporal visa (180 gün) havaalanında çıkıyor, remote work declaration gerekmez. Uzun vadeli residence: Temporary Resident Visa (1 yıl) $5,000+ banka bakiyesi veya $2,000/ay gelir belgesiyle çıkıyor.
+Bangkok 2 kişiyle en yeni hub. Sukhumvit ve Ari'de. Fiber 1 Gbps (True, 3BB), uptime %98+. Koworking ฿8.000-12.000/ay ($220-330, Hubba, The Hive). UTC+7, İstanbul ile +4 saat fark (yaz), +5 saat (kış). Overlap 12:00-16:00 Bangkok = 08:00-12:00 İstanbul. 4 saatlik pencere — dar ama yönetilebilir.
 
-Internet: Totalplay ve Izzi fiber 500 Mbps €35/ay (≈$37), ancak uptime %96.4 — güç kesintileri sık (haftada 1-2 kez, 10-30 dakika). UPS zorunlu. Coworking: WeWork Polanco'da hot desk $180/ay, dedicated $280/ay. Developer maaşı: mid-level $1,800 net/ay — İstanbul'un %250'si, Berlin'in %40'ı.
+Bangkok'un birincil avantajı maliyet. Orta-senior developer maaşı yıllık $35.000-45.000, İstanbul'un %70'i. Yaşam maliyeti $1.200-1.800/ay (koworking dahil). Bandwidth başına maliyet en düşük hub. İkinci avantaj: Asya-Pasifik time zone coverage. Singapur, Tokyo, Sidney müşterileri için 09:00-17:00 lokal saat Bangkok'la uyumlu.
 
-Vergi yapısı: yabancı remote worker'a federal vergi %30 (graduated, ilk $7,000 exempt), state tax yok. Ancak tax residency 183 gün üstü kalınca tetikleniyor — short-term rotation için ideal. Banka: BBVA Bancomer hesap açılışı 3 iş günü, USD hesap mevcut. Stripe Mexico entegrasyonu var ama settlement MXN, USD conversion spread %2.5.
+Zayıf nokta: talent pool kalitesi değişken. Bangkok'ta yüksek nitelikli Thai developer bulmak zor — çoğu Singapur veya remote şirketlerde çalışıyor. Roibase Bangkok ekibinin 2 kişisi de Türkiye'den relocate. Local hire için henüz başarı yok. Vize: DTV (Destination Thailand Visa) 5 yıllık, remote worker için uygun, başvuru süresi 4-8 hafta.
 
-Risk: güvenlik. Condesa ve Roma Norte güvenli, ancak gece 22:00 sonrası dikkatli olmak gerek. Ekip rotasyonlarında travel insurance maliyeti yıllık $800/kişi. Mexico City nearshore US client'lar için mantıklı — 2 saatlik uçuş mesafesi, aynı gün meeting — ancak base olarak infrastructure stability düşük.
+## Karşılaştırmalı Tablo
 
-## Bangkok — Asya Gateway, Yüksek Yaşam Kalitesi
+| Hub | Internet (Mbps) | Koworking ($/ay) | Time Zone | Overlap (saat) | Vize (ay) | Talent Pool | Maliyet Endeksi |
+|---|---|---|---|---|---|---|---|
+| İstanbul | 100 | 220 | UTC+3 | 8 (Avrupa) | - | Yüksek | 1.0 |
+| Lizbon | 500 | 400 | UTC+0 | 8 (Avrupa) | 6-12 | Orta | 1.8 |
+| Berlin | 1000 | 500 | UTC+1 | 9 (Avrupa) | 8-12 | Yüksek | 2.5 |
+| Mexico City | 200 | 325 | UTC-6 | 3 (İstanbul) | 6-12 | Orta | 1.4 |
+| Bangkok | 1000 | 275 | UTC+7 | 4 (İstanbul) | 60 | Düşük | 0.9 |
 
-Bangkok Roibase'in Asya-Pasifik operasyonları için 2024'te açtığı hub. Thai visa: Digital Nomad Visa (DTV) 2024'te başladı, 5 yıl geçerli, $14,000 gelir belgesi veya Tayland'da e-commerce şirketi gerekiyor. Visa maliyeti $280, yenilenme yok. Tax burden: foreign-sourced income Tayland'a getirilmezse vergi yok (remittance basis taxation) — pratik optimization: offshore hesaptan harcamak.
+Maliyet endeksi İstanbul baz alınarak hesaplandı (maaş + koworking + yaşam toplamı).
 
-Altyapı: AIS ve True fiber 1 Gbps ฿590/ay (≈$17), uptime %98.9. Mobile 5G coverage %95, eSIM (AIS) 100GB ฿899/ay (≈$26). Coworking: HUBBA Ekkamai'de dedicated desk ฿4,500/ay (≈$130), private office 4 kişilik ฿18,000/ay (≈$520). Developer maaşı: mid-level ฿70,000/ay (≈$2,000) — İstanbul'un %280'i, Berlin'in %45'i.
+## Operasyonel Sonuç ve Önümüzdeki 12 Ay
 
-Time zone: UTC+7 — Avrupa ile 6-7 saat fark, ABD ile 12-15 saat fark. Sync meeting window dar, asenkron kültür zorunlu. Ama APAC client'lar için ideal: Singapur 1 saat fark, Tokyo 2 saat fark, Sydney 3 saat fark.
+5 hub modeli Roibase için 3 kritik fayda sağlıyor: (1) 24 saat coverage — İstanbul-Bangkok-Mexico City üçgeni ile dünyanın her saatinde 1 ekip aktif. (2) Time zone arbitrage — pahalı işler İstanbul/Berlin'de, operasyonel destek Bangkok'ta. (3) Regülasyon hedge — bir ülkede vize/vergi daraltması olursa diğer hub'lara geçiş yapılabiliyor.
 
-Payment: Bangkok Bank business account açılışı 5 iş günü, SWIFT transfer $25 fee, 3-5 gün. Wise Business hesap açılışı 24 saat, transfer 1 iş günü. Stripe Thailand yok, Omise yerel alternatif (2Checkout benzeri). Roibase Bangkok'u retainer-based projelerde kullanıyor: long-term APAC client'lar, fixed-hour support, video production. [Markalaşma & Brand Identity](https://www.roibase.com.tr/tr/branding) gibi brand consistency gerektiren projelerde remote ekip yönetimi zorlaşıyor — time zone'dan çok kültürel alignment sorunu.
+2026 ikinci yarısı için plan: Mexico City'yi 4 kişiye çıkarmak, Bangkok'ta local hire denemek, Lizbon'u 8 kişiye genişletmek. Berlin sabit kalacak (compliance odaklı rol). İstanbul ekibinin 13 kişiden 15'e çıkması bekleniyor ama artış hızı diğer hub'lardan düşük — Türkiye'deki makroekonomik belirsizlik nedeniyle.
 
-## Karşılaştırmalı Tablo: 5 Hub Operasyonel Metrik
-
-| Kriter | İstanbul | Lizbon | Berlin | Mexico City | Bangkok |
-|--------|----------|--------|--------|-------------|---------|
-| **Fiber uptime** | %97.2 | %99.1 | %98.8 | %96.4 | %98.9 |
-| **Coworking dedicated ($/ay)** | 155 | 340 | 310 | 280 | 130 |
-| **Mid dev net maaş ($/ay)** | 700 | 3,000 | 4,800 | 1,800 | 2,000 |
-| **Visa runway (gün)** | 0* | 365 | 365 | 180 | 1,825 |
-| **Tax burden (%)** | 20+22.5 | 20+21.4 | 42+7.3 | 30 | 0** |
-| **Time zone (UTC)** | +3 | +0 | +1 | -6 | +7 |
-| **EU overlap (saat)** | 6 | 9 | 9 | 3 | 2 |
-| **APAC overlap (saat)** | 5 | 2 | 2 | 0 | 8 |
-
-*İstanbul visa runway: Türk vatandaşı için 0, AB vatandaşı için 90.  
-**Bangkok tax: remittance-basis — foreign income Tayland'a getirilmezse exempt.
-
-## Optimum Hub Mix: 3-2-1 Model
-
-Roibase 2026'da 3-2-1 operasyon modelini kullanıyor: 3 base hub (İstanbul, Lizbon, Bangkok), 2 project hub (Berlin, Mexico City), 1 floating slot (yeni test alanı). Base hub'lar fixed overhead taşır: coworking kontrat, local entity, dedicated headcount. Project hub'lar retainer üstü açılır, scalable maliyet. Floating slot trend test için: 2026 H2'de Dubai ve Buenos Aires'i değerlendiriyoruz.
-
-Kriter ağırlıkları client mix'e göre değişir: enterprise Avrupa client'ları Berlin proximity ister, e-commerce APAC Bangkok'u tercih eder, nearshore US projeleri Mexico City'yi gerektirir. İstanbul maliyet avantajı ve time zone versatility ile backbone kalır. Lizbon EU legal presence ve SEPA erişimi sağlar. Bangkok APAC gateway ve en düşük burn rate.
-
-Hub seçimi stratejik bir IT infrastructure kararıdır. "Gezgin ekip" romantizmi yerine network latency, tax optimization, talent density gibi ölçülebilir kriterlere göre karar veriyoruz. Bir sonraki değerlendirme 2027 Q1: Dubai (UAE remote work visa), Buenos Aires (tech exodus sonrası talent availability), Tallinn (e-Residency altyapısı). Hub rotasyonu yıllık değil, client demand ve cost structure'a göre dinamik.
+Tech ekibi kuracak şirketler için tavsiye: tek hub'la başlayın, 12 ay test edin, sonra ikinci hub açın. 3'ten fazla hub eş zamanlı yönetmek operasyonel yük yaratıyor — async protokol, dokümantasyon disiplini ve tool stack'i tam oturmadan genişlemeyin. Roibase 5 hub'a ulaşması 3 yıl sürdü. İlk 18 ay sadece İstanbul + Lizbon'du, sistem oturdu, sonra Berlin, Mexico City, Bangkok sırayla eklendi. Hız yapmak yerine sürdürülebilirlik öncelik.
