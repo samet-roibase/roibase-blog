@@ -1,147 +1,153 @@
 ---
 title: "Consent Mode v2 ve TCF 2.2: Modeling Loss'u Nasıl Yönetiriz"
-description: "GDPR uyum + ölçüm kaybı tradeoff'unu Google Consent Mode v2 ve TCF 2.2 ile yönetme rehberi. Modeling accuracy, signal gap ve pratik çözümler."
-publishedAt: 2026-06-27
-modifiedAt: 2026-06-27
+description: "GDPR uyumlu ölçüm kaybını minimize etmek için Google'ın consent modeling altyapısını ve TCF 2.2 entegrasyonunu gerçek senaryolarla açıklıyoruz."
+publishedAt: 2026-07-16
+modifiedAt: 2026-07-16
 category: marketing
-i18nKey: marketing-006-2026-06
-tags: [consent-mode, gdpr, tcf-2-2, attribution, server-side-tracking]
+i18nKey: marketing-006-2026-07
+tags: [consent-mode, tcf, gdpr, conversion-modeling, gtm]
 readingTime: 8
 author: Roibase
 ---
 
-2024 Mart'ından itibaren Avrupa Ekonomik Alanı'nda (EEA) trafik gönderen herkes için Google Consent Mode v2 zorunlu hale geldi. TCF 2.2 (Transparency & Consent Framework) ise yasal tarafta IAB Europe'un getirdiği standart. İki sistemin kesişimi bir tradeoff yaratıyor: tam GDPR uyumu sağlarsın, ama %30-50 arası conversion sinyali kaybedersin. Bu kayıp "modeling loss" — yani Google'ın makine öğrenmesiyle tamamlamaya çalıştığı boşluk. Problem: modeling yeterince iyi değilse, bidding algoritman gerçeklikten kopuyor. Bu yazı, consent mekanizmasını doğru kurarak signal gap'i minimize etme yollarını açıyor.
+Google Consent Mode v2 ve IAB TCF 2.2 artık zorunlu. Mart 2024'ten bu yana, EEA + İngiltere trafiğinde Consent Mode olmadan Google Ads remarketing ve audience targeting işlemiyor. Ama yasal uyumu sağladığınızda yeni sorunla karşılaşıyorsunuz: kullanıcıların %40-70'i analytics cookie'sini reddediyor, conversion loss %15-35 arasına çıkıyor. Google'ın consent modeling altyapısı bu kaybı kapatmaya çalışıyor — ama ancak doğru kurulduğunda. Bu yazıda modeling loss'u minimize etmek için implementasyon katmanlarını, TCF entegrasyonunu ve veri kalitesi checklistini gerçek senaryolarla açıklıyoruz.
 
-## Consent Mode v2'nin Getirdiği Sinyal Kaybı
+## Consent Mode v2 Nedir ve Neden Modeling Kaçınılmaz
 
-Google Consent Mode v2 iki durumu destekliyor: `granted` ve `denied`. Kullanıcı analytics/ad_storage izinlerini reddedince, Google Analytics ve Google Ads tag'leri cookie set etmez. Bunun yerine "cookieless ping" gönderirler — conversion count'a dahil olur ama user-level attribution bilgisi yok. Google bu eksik veriyi modelleyerek tamamlamaya çalışır.
+Google Consent Mode, kullanıcı consent durumunu (granted/denied) platform API'lerine sinyal olarak ileten bir protokol. v2'de iki yeni parametre eklendi: `ad_user_data` (personalization için veri toplanabilir mi) ve `ad_personalization` (remarketing audience'a eklenebilir mi). Bu ikisi olmadan EEA trafiği Google Ads'te persona hedeflemesine giremez.
 
-Gerçek dünya örneği: 1000 session'lık bir site, %60 consent reddi görüyorsa (EEA ortalaması), Google sadece 400 session'dan tam sinyal alır. Geriye kalan 600 ping'de `gcs=G100` (denied state) parametresi vardır. Google bu 600 ping'i, 400 granted kullanıcının davranış örüntüsüne göre modelleyerek toplam conversion sayısını tahmin eder. Tahmin mekanizması bayesian inference temelli — yeterli granted veri varsa %90+ accuracy iddia eder.
+Consent Mode'un klasik problemi şu: kullanıcı analytics cookie'sini reddederse, Google Analytics conversion event'ini kaydedemiyor. Bu durumda Google Ads kampanyanızın dönüşüm verisi eksik kalıyor — bidding algoritması kör kalıyor. Consent modeling burada devreye giriyor: Google, consent vermeyen kullanıcıların davranışını consent veren benzer cohort'lardan tahmin ederek dönüşüm sayısını modellemeye çalışıyor.
 
-Problem: eğer granted kullanıcı kitlesi representative değilse (örneğin sadece teknik kullanıcılar kabul ediyor), model yanılıyor. 2025 Search Ads 360 raporları, Almanya'daki bazı retailer'larda modeling error'ın %18'e çıktığını gösterdi. Bu, Smart Bidding'in öğrenme döngüsünde %18 hata demek — CPA hedefi tutmuyor.
+Modeling'in çalışabilmesi için iki kritik girdiye ihtiyacı var: (1) yeterli consent granted veri (günlük en az 100 conversion, ideal 1000+), (2) consent status'ün doğru pinge edilmesi (`gtag('consent', 'update', {...})`). Bu ikisi eksikse modeling "insufficient data" moduna düşüyor ve loss kapanmıyor.
 
-### Modeling Accuracy'yi Artıran Faktörler
+### Modeling Loss'u Etkileyen Faktörler
 
-Google Consent Mode'un accuracy'si üç ana değişkene bağlı:
+Google'ın 2024 Q4 documentation'ına göre consent modeling, consent denial oranı %50 civarında olan hesaplarda ortalama %70 recovery sağlıyor. Yani %50 consent loss varsa, modeling bunu %15'e indirebiliyor. Ama bu oran şu değişkenlere bağlı:
 
-1. **Granted rate**: %40'ın üzerinde olmalı (Google'ın kendi önerisi). Altında model güvenilmez.
-2. **Traffic volume**: Günlük 100+ conversion olmalı. Küçük sitelerde statistical power yok.
-3. **Conversion çeşitliliği**: Tek bir conversion type (örneğin sadece purchase) yerine multi-funnel event olmalı (add_to_cart, begin_checkout, purchase) — model ara aşamaları görüp interpolate ediyor.
+- **Consent granted trafik hacmi:** Günlük 100'ün altındaysa model zayıf.
+- **CMP implementasyonu:** IAB TCF v2.2 uyumlu CMP (OneTrust, Cookiebot, Usercentrics) doğru purpose + vendor mapping'i yapıyorsa signal kalitesi yükseliyor.
+- **Server-side GTM kullanımı:** sGTM ile consent durumu backend'de de kontrol edilebilir, bu first-party context eklediği için modeling girdisini güçlendirir.
+- **Conversion type çeşitliliği:** E-ticaret checkout + add-to-cart + pageview birlikte izleniyorsa, model daha geniş funnel'dan öğreniyor.
 
-Örnek: %35 granted rate'li bir e-ticaret sitesi, günlük 50 purchase + 200 add_to_cart görüyorsa, Google modeli purchase sayısını %12 error margin'le tahmin ediyor (Google Analytics 4 Data Quality raporundan). Ama %20 granted + günlük 20 purchase varsa, error %30'a çıkıyor — o noktada bidding güvenilmez.
+Modeling zayıf kaldığında, Google Ads bidding stratejisi (Target ROAS, Max Conversions) underperform ediyor çünkü gerçek dönüşüm sinyali eksik. Bunu telafi etmek için offline conversion import veya CAPI (Conversions API) ile backend-to-Google entegrasyonu gerekiyor.
 
-## TCF 2.2 ve Vendor Consent Stack'i
+## TCF 2.2 Entegrasyonu: Purpose Mapping ve Vendor List
 
-TCF 2.2, IAB Europe'un gelişen consent string formatı. Google'ın "Additional Consent Mode" (ACM) ile çalışır — yani Google'ın vendor ID'si (755) TCF string'inde olmasa bile, ACM string'inde olabilir. Bu ayrım önemli: sadece TCF 2.2 string'ine güvenirsen, Google tag'lerine consent veremeyen kullanıcılar bile olabilir.
+IAB Transparency and Consent Framework (TCF) 2.2, kullanıcı consent'ini 10 purpose (amaç) kategorisine ayırıyor. Google Ads'in çalışabilmesi için en az Purpose 1 (store/access info) ve Purpose 2 (personalization) gerekli. TCF consent string'i CMP tarafından üretilip `__tcfapi` callback'iyle okunuyor ve GTM tag'ında Consent Mode'a çevriliyor.
 
-Consent Management Platform (CMP) seçerken dikkat et: Cookiebot, OneTrust, Usercentrics gibi büyük vendor'lar hem TCF 2.2 hem ACM string'lerini destekler. Ama küçük/custom CMP'ler bazen ACM string'i üretmez — Google o kullanıcıyı "denied" sayar.
-
-### CMP Konfigürasyonunda Kritik Hatalar
-
-Sık görülen hata: CMP'nin "legitimate interest" modunu Google tag'leri için açmak. TCF 2.2'de legitimate interest bazı vendor'lar için yasal, ama Google Ads specifically "consent" gerektirir (IAB Purpose 1 + Google-specific consent toggle). Eğer sadece legitimate interest ile tag tetiklersen, Google'ın server'ına `gcs=G110` (ad_storage denied, analytics granted) pinging gider — ad conversion atlanır.
-
-Doğru setup:
-- **Purpose 1** (Store and/or access information): Consent + legitimate interest her ikisi de açık
-- **Google vendor consent toggle**: Açık (755 + ACM)
-- **Custom consent signal**: `gtag('consent', 'update', {ad_storage: 'granted'})` — CMP'nin event listener'ı consent değişince bu kodu tetiklemeli
-
-Kod bloğu örneği (GTM event listener):
+Pratikte şöyle çalışıyor: kullanıcı CMP banner'ında "Kabul Et" dediğinde, CMP `tcData.purpose.consents` objesinde `{1: true, 2: true, ...}` set ediyor. Bu obje GTM Custom JavaScript variable'ında okunup şu şekilde map ediliyor:
 
 ```javascript
-window.addEventListener('CookiebotOnAccept', function () {
-  if (Cookiebot.consent.marketing) {
-    gtag('consent', 'update', {
-      ad_storage: 'granted',
-      analytics_storage: 'granted'
-    });
-  }
-});
+var tcData = window.__tcfapi || {};
+var purposes = tcData.purpose.consents;
+
+if (purposes[1] && purposes[2]) {
+  gtag('consent', 'update', {
+    ad_storage: 'granted',
+    ad_user_data: 'granted',
+    ad_personalization: 'granted'
+  });
+} else {
+  gtag('consent', 'update', {
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied'
+  });
+}
 ```
 
-Bu listener olmadan, CMP kullanıcı kabul etse bile Google tag'leri güncellenmiyor — sinyal kayıp devam ediyor.
+Bu mapping'i yaparken dikkat edilmesi gereken üç nokta var:
 
-## Server-Side GTM ile Signal Gap'i Kapamak
+1. **Vendor list kontrolü:** Google (vendor ID 755) TCF vendor listesinde varsa ve kullanıcı bunu approve etmişse sinyal verilebilir. Yoksa `ad_storage: 'denied'` kalmalı.
+2. **Legitimate interest modeli:** Purpose 2-7-9-10 "legitimate interest" (meşru menfaat) ile de çalışabilir. Türkiye'de bu yasal açıdan riskli — KVKK bu modeli tam tanımıyor.
+3. **Consent renewal periyodu:** TCF 2.2'de consent 13 ayda bir yenilenmeli. CMP'nizin otomatik refresh mekanizması yoksa, consent tarih geçince `denied`'a düşmeli.
 
-Client-side consent mekanizması cookie'lere bağlı olduğu için, ITP (Safari), ETP (Firefox) ve üçüncü-parti cookie block'ları zaten sinyali %20-30 düşürür. Consent Mode buna ek %30-50 kayıp getirirse, toplam signal loss %50-70'e varabilir.
+### CMP Seçimi ve QA Checklist
 
-Çözüm: [Dijital Pazarlama](https://www.roibase.com.tr/tr/dijitalpazarlama) altyapısını server-side tag management ile upgrade etmek. Server-side GTM (sGTM), consent signal'ını server'a iletir, orada Google Analytics 4 Measurement Protocol ve Google Ads Enhanced Conversions API'sine gönderir. Bu yapıda:
+CMP seçerken TCF 2.2 certification belgesi zorunlu. OneTrust ve Cookiebot sertifikalı, ama config'de custom purpose ekleyip IAB standardını bozabilirsiniz. QA checklist'i:
 
-1. **Client-side**: Consent durumu kaydedilir, minimal ping (pageview + `gcs` parametresi) server'a atılır.
-2. **Server-side**: Consent `granted` ise, server event_data'ya user IP, user-agent, client_id ekleyip Google'a gönderir. Consent `denied` ise, sadece aggregated ping gider.
-3. **Avantaj**: Safari/Firefox'un ITP/ETP'si server request'i görmez — first-party domain'den çıkan HTTP call olduğu için block edilmez.
+| Adım | Kontrol Noktası |
+|---|---|
+| 1 | CMP load sırası: GTM container'dan önce mi? (race condition yok mu?) |
+| 2 | `__tcfapi('getTCData', 2, callback)` cevap veriyor mu? |
+| 3 | Purpose 1, 2, 7, 9, 10 mapping'i doğru mu? |
+| 4 | Vendor 755 (Google) approved mı? |
+| 5 | Consent update sonrası GTM Data Layer'a `consent_update` eventi düşüyor mu? |
+| 6 | GA4 event'leri `ad_storage: denied` durumunda ping atıyor mu? (consent denied ping zorunlu) |
 
-2025 Google Ads case study (retail vertical, Almanya): sGTM + Consent Mode v2 kombinasyonu, pure client-side setup'a göre %18 daha fazla conversion signal yakaladı (granted kullanıcılarda bile, çünkü ITP kaybı ortadan kalktı).
+Adım 6 kritik: consent denied durumunda bile `gtag('event', ...)` ping'i atılmalı, sadece cookie set edilmemeli. Bu ping'ler Google'ın modeling'ine girdi sağlıyor.
 
-### sGTM + Enhanced Conversions Entegrasyonu
+## Server-Side GTM ile Hybrid Consent Mimarisi
 
-Enhanced Conversions, Google Ads'in SHA-256 hash'li first-party data (email, phone, address) ile conversion match yapma özelliği. Consent Mode v2 ile kombine edilince:
+Consent Mode v2'de sinyal kalitesini artırmanın en etkili yolu, server-side GTM (sGTM) üzerinden "hybrid consent" mimarisi kurmak. Bu modelde:
 
-- **Granted user**: Cookie + hashed email gönderilir → %95+ match rate
-- **Denied user**: Cookieless ping + hashed email (consent varsa) → %60-70 match rate
+1. **Client-side:** Kullanıcı consent durumu CMP'den okunup `gtag('consent', 'update', ...)` ile Google'a gönderiliyor.
+2. **Server-side:** sGTM container'ına gelen HTTP request'te consent header'ı kontrol ediliyor. Eğer consent granted ise, backend'den gelen server-side event (örn. checkout completion) doğrudan Google Ads Conversion endpoint'ine POST ediliyor.
 
-Ancak dikkat: email hash'leme için de GDPR consent şart. TCF 2.2'de bu Purpose 2 (Basic ads) altında. Eğer kullanıcı Purpose 2'yi kabul etmemişse, email hash'leme yasak.
+Bu yaklaşımın avantajı, iOS ATT reddi veya ad blocker kullanan kullanıcılar için bile server-side conversion sinyali gönderilebilmesi. Çünkü server-side event, kullanıcının tarayıcı cookie'sinden bağımsız — backend order ID'sine bağlı. Google bunu `gclid` (Google Click ID) ile match ediyor.
 
-Örnek flow tablo:
+Örnek senaryo: kullanıcı ad blocker kullanıyor, client-side GTM hiç yüklenmedi. Ama checkout'ta backend'iniz sGTM'ye HTTP POST atıyor:
 
-| Consent Durumu | Cookie Set? | Email Hash? | Match Mekanizması |
-|---|---|---|---|
-| Granted (Purpose 1+2) | ✓ | ✓ | Cookie + email → %95 match |
-| Denied Purpose 1, Granted Purpose 2 | ✗ | ✓ | Email-only → %70 match |
-| Denied (tümü) | ✗ | ✗ | IP-based modeling → %40 match |
+```json
+{
+  "event_name": "purchase",
+  "client_id": "hashed_user_id",
+  "gclid": "abc123",
+  "value": 250.00,
+  "currency": "TRY",
+  "consent_ad_storage": "denied"
+}
+```
 
-Email hash olmadan, Google sadece IP + user-agent'a güvenir — match rate %40'a düşer.
+sGTM bu event'i Google Ads'e iletirken, `consent_ad_storage: denied` olduğu için cookie set etmiyor ama conversion modellemesine girdi veriyor. Bunu yapmak için sGTM'de Google Ads Conversion Linker tag'ı + server-side Client ID mapping gerekli.
 
-## Modeling Loss'u Ölçmek: GA4 Data Quality Raporu
+### sGTM Implementasyon Adımları
 
-Google Analytics 4'te "Admin > Data Quality" altında "Consent mode impact" widget'ı var. Bu rapor üç metrik gösterir:
+1. **sGTM container kurun:** Google Cloud Run veya Cloudflare Workers'a deploy edin.
+2. **Backend'den event POST edin:** Checkout completion event'ini order ID + gclid + consent flag ile gönderin.
+3. **sGTM'de Google Ads tag kurun:** Conversion ID + Conversion Label girin, "User-Provided Data" sekmesinde `client_id` mapping yapın.
+4. **Consent enforcement ekleyin:** sGTM Custom Template ile consent check yapın — eğer `ad_user_data: denied` ise, IP maskeleme + user_id hashing zorunlu.
 
-1. **Observed conversions**: Granted kullanıcılardan gelen gerçek conversion sayısı
-2. **Modeled conversions**: Denied kullanıcılar için tahmin edilen conversion sayısı
-3. **Total (observed + modeled)**: Raporlarda gördüğün toplam
+Bu mimaride dikkat edilmesi gereken nokta: GDPR uyumu için backend'den gönderdiğiniz `client_id` SHA-256 hash olmalı. Raw email veya user ID göndermek veri transferi ihlali sayılır.
 
-Modeling quality kötüyse, "modeled conversions" sayısı toplam conversion'ın %50'sinden fazla olur — bu durumda Google uyarı gösterir: "Modeled traffic high, consider increasing consent rate."
+## Modeling Loss'u Raporlamak ve Optimize Etmek
 
-2026 Mayıs verisi (ortalama EEA e-ticaret sitesi): observed %42, modeled %58 dağılımı. Bu sınırda — bir puan daha düşerse, Google Smart Bidding'i "learning" moduna alıyor (bid adjustment durur).
+Google Ads arayüzünde "Conversions > Measurement" sekmesinde "Modeled conversions" kolonu var. Bu kolon, consent denied kullanıcılar için modellenen dönüşüm sayısını gösteriyor. Şöyle okumalısınız:
 
-### Modeling Error'ı Holdout Test ile Doğrulamak
+- **Observed conversions:** Consent granted kullanıcılardan gelen gerçek dönüşüm.
+- **Modeled conversions:** Consent denied kullanıcılar için tahmin edilen dönüşüm.
+- **Total conversions:** Observed + Modeled toplamı.
 
-Modeling accuracy'yi ölçmek için holdout test yapabilirsin: bir hafta boyunca consent granted user'lardan %10'unu rastgele "denied" gibi işaretle (consent string'i manipüle et, gerçekte consent var ama tag'e `denied` sinyal gönder). Sonra gerçek conversion sayısını Google'ın modellediği sayı ile karşılaştır.
+Modeling loss'u hesaplamak için basit formül: `(1 - (Modeled / (Toplam Traffic × Consent Denial Rate))) × 100`. Örneğin:
 
-Örnek: 1000 granted user içinden 100'ünü denied'a çevirdin. Gerçekte bu 100 user 15 conversion yaptı. Google modeli 18 conversion tahmin etti → %20 overestimation. Bu, bidding'in agresif olacağı demek (CPA hedefinden %20 yüksek bid verir).
+- Toplam trafik: 10,000 click
+- Consent denial rate: %50 (5,000 kişi consent denied)
+- Observed conversions: 150
+- Modeled conversions: 60
 
-## Consent Rate'i Artırma Taktikleri (Uyum Dahilinde)
+Beklenen dönüşüm (consent olmasaydı): `150 × 2 = 300` (çünkü %50'si consent denied). Gerçekte toplamda 210 conversion var (150 + 60). Loss: `(1 - (210 / 300)) × 100 = %30`.
 
-Consent rate'i artırmanın iki yolu var: UX optimization ve incentive (ikincisi GDPR gray area).
+### Modeling'i İyileştirme Taktikleri
 
-**UX optimization:**
-- **Progressive disclosure**: İlk ziyarette sadece "essential cookies" banner göster, ikinci ziyarette full consent modal aç. İlk ziyaret friction'ını azaltır.
-- **Granular toggles**: "Marketing" yerine "Product recommendations" + "Retargeting ads" diye ayır — kullanıcı ilkini kabul edebilir (conversion tracking için yeterli).
-- **Banner placement**: Ekranın %30'undan fazlasını kaplatma (GDPR "freely given consent" kuralı — görsel baskı yasaklıyor). Ama tamamen köşe notification'ı da düşük visibility → denge.
+Modeling performansını artırmak için şu noktaları optimize edin:
 
-2025 Cookiebot A/B test data: banner'ı ekranın altına koyup "Accept all" butonunu mavi (CTA rengi) yapmak, consent rate'i %38'den %44'e çıkardı (n=50,000 user, Almanya).
+1. **Consent granted trafik hacmini artırın:** CMP banner'ında "Kabul Et" butonunu daha görünür yapın. Ama bu dark pattern sayılabilir — sadece layout iyileştirmesi yapın, kullanıcıyı kandırmayın.
+2. **Funnel event'lerini ekleyin:** Sadece purchase değil, add-to-cart, begin_checkout gibi ara event'leri de Google Ads'e gönderin. Model daha geniş intent sinyali yakalar.
+3. **Offline conversion import:** Backend'den gerçek order data'sını Google Ads'e import edin. Bu modeling'i bypass eder ama API limit var (günlük 2,000 conversion/hesap).
+4. **Enhanced conversions:** Email/phone hash'lerini conversion event'iyle gönderin. Bu first-party match sağladığı için modeling'in doğruluğunu artırır.
 
-**Incentive (dikkatli):**
-- "Consent verirsen %10 indirim" — GDPR technically yasak (consent freely given olmalı). Ama "newsletter'a kaydol, %10 al" + newsletter'da marketing consent gerekiyor dersen, indirect consent artışı sağlar.
-- "Personalized experience için consent ver" — bu kabul edilebilir (çünkü functional açıklama, baskı yok).
+Not: Enhanced conversions GDPR açısından gri bölge. Kullanıcı consent vermişse email hash göndermek yasal, ama consent denied ise bu veriyi hash bile olsa göndermek ihlal. Bu yüzden enhanced conversions'ı sadece `ad_user_data: granted` durumunda tetiklemelisiniz.
 
-## Karşı Argüman: "Modeling Yeterince İyi, Neden Uğraşayım?"
+## Gerçek Dünya Tradeoff'ları: Compliance vs. Performance
 
-Google'ın söylemi: "Modeling loss artık sorun değil, Smart Bidding modeli hallediyor." 2024 Google Marketing Live'da sunulan veri: consent granted %35 olan bir sitede, modeling sayesinde conversion tracking accuracy %88 (granted-only setup'a göre).
+Son olarak, consent stratejisinde üç farklı yaklaşımın tradeoff'larını görelim:
 
-Ancak bu iddia iki varsayıma dayanıyor:
-1. **Granted user representative**: Eğer granted kullanıcılar daha genç/teknik/zenginse (ki genelde öyle), model bu bias'ı tüm trafiğe yayıyor.
-2. **Traffic volume yeterli**: Günlük 100+ conversion. Küçük siteler için geçerli değil.
+| Yaklaşım | Consent Denial Rate | Modeling Recovery | ROAS Impact | GDPR Risk |
+|---|---|---|---|---|
+| **Strict (pre-checked yok)** | %60-70 | %60-70 | -%25 ROAS | Düşük |
+| **Balanced (legitimate interest)** | %40-50 | %70-80 | -%15 ROAS | Orta (Türkiye'de belirsiz) |
+| **Aggressive (pre-checked)** | %20-30 | %80-90 | -%5 ROAS | Yüksek (GDPR ihlali) |
 
-Gerçek dünya counter-example: 2025 Q4'te bir SaaS şirketi (Almanya, B2B), %32 consent rate + günlük 40 trial signup görüyordu. Google modeling total signup'ı 68 tahmin etti. Gerçek rakam (CRM'den): 51. %33 overestimation → CPA hedefi %25 aşıldı. Çözüm: sGTM + email hash entegrasyonu ile granted rate'i %45'e çıkardılar (email-based match sayesinde denied user'lar bile kısmen track edildi) — CPA hedefine geri döndü.
+Roibase'in tavsiyesi: **Balanced yaklaşım + sGTM.** CMP'de legitimate interest kullanıp Purpose 2-7-9-10'u aktif tutun, ama pre-checked yapma. Server-side GTM ile backend conversion sinyalini Google'a iletin. Bu şekilde consent denial %40-50'de kalır, modeling loss %15 civarında tutulabilir ve [performans pazarlaması](https://www.roibase.com.tr/tr/ppc) kampanyalarınızın bidding gücü korunur.
 
-Yani: modeling yardımcı oluyor ama her senaryoda yeterli değil. Signal gap'i kapatmak için aktif çaba gerekiyor.
-
-## Şimdi Ne Yapmalı
-
-Consent Mode v2 + TCF 2.2 yapısı artık opsiyonel değil — EEA trafiğin varsa, doğru kurulum yasal zorunluluk. Ama yasal uyum + ölçüm accuracy'si arasında denge kurmak senin elinde. Üç adım:
-
-1. **CMP audit et**: TCF 2.2 + ACM string'lerini doğru üretiyor mu? Consent signal'ı Google tag'lerine iletiliyor mu?
-2. **GA4 Data Quality raporunu izle**: Modeled/observed dağılımı %60/%40'ı geçiyorsa, signal gap büyük demek.
-3. **Server-side GTM + Enhanced Conversions kur**: ITP/ETP kaybını minimize et, email hash ile match rate'i artır.
-
-Bu üçlü, consent loss'u %50'den %25'e düşürebilir (2026 ortalama retailer verisi). %25 kayıp hala var, ama Smart Bidding'in tolere edebildiği eşik içinde. Modeling accuracy %90'ın üzerinde kalırsa, CPA sapması %5'in altında — o noktada consent + performance dengesini kurmuş oluyorsun.
+Consent Mode implementasyonunuz varsa ama modeling çalışmıyorsa, yukarıdaki checklist'i tekrar geçin. Çoğu zaman sorun CMP'nin GTM'den önce yüklenmemesi veya `ad_user_data` parametresinin eksik olmasıdır. Bu tespit için Google Tag Assistant ve sGTM preview mode'u kullanın — consent ping'lerinin gerçek zamanlı akışını görün.
