@@ -1,139 +1,75 @@
 ---
 title: "Embedding Drift: Üretimde Vector DB'leri Nasıl Sürdürürüz"
-description: "Production vector database'lerinde embedding model değişimini yönetmek: re-indexing stratejileri, migration cost tradeoff'ları ve downtime'sız geçiş mimarisi."
-publishedAt: 2026-06-27
-modifiedAt: 2026-06-27
+description: "Re-indexing maliyetleri, model migration stratejileri ve semantic search performansını korumak için production'da izlenmesi gereken metrikler."
+publishedAt: 2026-07-16
+modifiedAt: 2026-07-16
 category: ai
-i18nKey: ai-006-2026-06
-tags: [vector-database, embedding-drift, mlops, rag, model-migration]
+i18nKey: ai-006-2026-07
+tags: [vector-database, embedding-drift, mlops, semantic-search, re-indexing]
 readingTime: 8
 author: Roibase
 ---
 
-Production'da RAG sistemi çalıştırırken embedding modeli değiştirdiğinizde vector DB'niz anlamsızlaşır. Eski embeddingler yeni query vektörleriyle karşılaştırılamaz — arama sonuçları çöker, semantic accuracy düşer. Şirketler genellikle bu sorunu model freeze ile erteliyor: "yeni model çıktı ama migration maliyeti çok yüksek, kalırız burada." Oysa embedding drift kaçınılmaz — model provider'lar her 6-9 ayda yeni versiyon yayınlıyor, doğruluk farkı %8-12 seviyelerine çıkıyor. Kalmanın bedeli teknik borç, güncelliğin bedeli re-index. Bu yazı o bedeli nasıl minimize edeceğinizi gösterir.
+Semantic search production'a geçtiğinde asıl zorluk başlar. Embedding modeli güncellenir, veri hacmi büyür, query pattern'leri kayar — vector DB'nizdeki 10 milyon satır çok hızlı eskir. Hergün yeniden index alamazsınız, ama üç ay sonra recall %15 düşer. Embedding drift — model versiyonu ile DB arasındaki alignment kaybı — pazarlama arama sistemlerinde kullanıcının yanlış içeriğe yönelmesi, RAG pipeline'da yanlış context çekilmesi, AI agent'ların kör noktalar oluşturması demek. Bu yazıda drift'i nasıl izlediğimizi, re-indexing'i nasıl planladığımızı, hangi migration pattern'leri işe yaradığını somut metriklerle gösteriyoruz.
 
-## Embedding Drift Gerçekten Ne Kadar Hızlı Oluşuyor
+## Embedding Drift'i Üretimde Görmezden Gelmek
 
-OpenAI Aralık 2024'te `text-embedding-3-small`'ın MTEB skor ortalamasını %3.7 artıran güncellemesini duyurdu. Cohere Nisan 2025'te `embed-v4`'ü yayınladı, çokdilli retrieval'da %11 kazanç. Voyage AI Haziran 2025'te domain-specific model'larını genişletti. Ortalama drift hızı: production deployment'tan 180 gün sonra mevcut modeliniz benchmark'ın %6-10 gerisinde kalıyor.
+Embedding drift iki durumda ortaya çıkar: model değişikliği ve veri distribution shift. İlk durumda OpenAI `text-embedding-3-small`'dan `text-embedding-3-large`'a geçersiniz, boyut 1536'dan 3072'ye çıkar — query embedding'leri yeni modelden gelir, DB'deki vektörler eski modelden. Cosine similarity hesabı mantıksal olarak çalışır ama semantic space farklı, recall bozulur. İkinci durumda model sabit ama corpus değişir: 6 ay önce e-ticaret ürün katalog'unu index'lediniz, şimdi blog içeriği ve PDF'ler eklendi. Query embedding modeli aynı olsa da yeni dokümanların embedding distribution'ı eski corpus'tan farklı — outlier'lar kNN search'te rank kaymalarına yol açar.
 
-Bu fark kullanıcı deneyiminde doğrudan hissedilir. E-ticaret arama: retrieval accuracy %5 düşerse conversion %2-3 düşer. Support chatbot: yanlış makale retrieval oranı %10 artarsa ticket escalation %8 artar. Drift'i ignore etmek kısa vadede stable görünür, uzun vadede sistemin competitive edge'ini yok eder.
+Drift'in etkisi recall metriğiyle ölçülür. Production'da `top-k` retrieval yapıyorsunuz, drift başladığında ground truth ile overlap %85'ten %70'e düşer. Kullanıcı "kampanya stratejisi" arıyor, alakalı makale DB'de var ama 15. sırada çıkıyor — k=10 yapılandırmasıyla görünmez. Bu durum RAG pipeline'larda LLM'in hallucination oranını artırır çünkü context eksik gelir.
 
-Daha büyük sorun: embedding dimension değişimi. Bazı model güncellemeleri dimension'ı koruyor (1536 → 1536), bazıları değiştiriyor (768 → 1024). İkinci durumda DB schema migration zorunlu — sadece re-embed değil, index reconstruction gerekiyor. Bu senaryoda downtime planlanmazsa production çöker.
+Drift izlemek için offline test set tutmak gerekiyor. Production'a geçmeden önce 500 query-document pair'i (relevance label'lı) saklayın, her hafta bu set üzerinde recall@10, MRR (mean reciprocal rank), nDCG metriklerini hesaplayın. Metrik %10 düşerse re-indexing tetikleyicisi haline getirin. Burada dikkat edilmesi gereken nokta test set'in güncel corpus'u yansıtması — eğer yeni doküman türleri eklendiyse test set'i de genişletmek gerekir.
 
-## Re-Indexing Stratejileri: Blue-Green vs Rolling vs Lazy
+## Re-indexing Stratejileri: Full vs Incremental vs Hybrid
 
-Üç temel strateji var, her birinin cost/downtime/complexity tradeoff'u farklı.
+Re-indexing'in üç deseni var: full reindex, incremental update, hybrid blue-green. Full reindex tüm corpus'u baştan embedding'leyip yeni DB index'i yaratır. Maliyet yüksek ama garantili alignment. 10 milyon doküman × 0.13$/1M token (OpenAI `text-embedding-3-large` fiyat) = ~25$ direct cost, işlem süresi 6-8 saat (paralelize ederseniz). Buna Pinecone/Weaviate/Qdrant index build maliyeti eklenir — Pinecone p1 pod'da 1M vektör 0.096$/saat, build sırasında geçici pod skalası gerekir.
 
-**Blue-Green Migration:** Yeni model için tamamen ayrı vector index oluştur, test et, DNS/routing ile switch yap.장점: sıfır downtime, rollback hızlı. Maliyet: database storage ve compute %100 duplicate. Örnek: 50M embedding × 1536 dim × 4 byte = ~300GB storage. Blue-green 2× = 600GB. Cloud provider fiyatlarında ayda $180-240 ek maliyet. Büyük corpus'larda (500M+ embedding) bu ekonomik olarak sürdürülemez.
+Incremental update sadece yeni/değişen dokümanları re-embed eder. Modeli değiştirmediyseniz ve corpus büyümesi varsa mantıklı. Ama model değişirse işe yaramaz çünkü eski embedding'lerle yeni embedding'ler semantic space'de uyumsuz. Hybrid pattern'de blue-green deployment kullanırsınız: yeni index paralel kurarsınız, traffic'i kademeli kaydırırsınız, eski index'i 2 hafta backup tutar sonra silersiniz. Downtime olmaması için en güvenli yöntem bu — ama çift kapasite maliyeti gerektirir (örn: Pinecone'da 2 pod 2 hafta = +15$ geçici maliyet).
 
-**Rolling Re-Index:** Corpus'u batch'lere böl (örn. 10M/batch), her batch'i yeni modelle re-embed et, aynı DB'ye upsert yap. Bu sırada query hem eski hem yeni vektörleri dönebilir — hybrid search uygulaması gerekir. Avantaj: storage duplicate yok. Dezavantaj: migration süresi uzun (50M embedding, batch 1M, her batch 2 saat → 100 saat süreç), bu sürede query consistency düşük.
+| Strateji | Maliyet | Downtime | Model değişikliğinde | Veri shift'inde |
+|----------|---------|----------|----------------------|-----------------|
+| Full reindex | Yüksek | Var (4-8 saat) | Gerekli | Gerekli |
+| Incremental | Düşük | Yok | Çalışmaz | Yeterli |
+| Blue-green | Orta | Yok | Uygun | Uygun |
 
-**Lazy Migration:** Sadece query edilen chunk'ları re-embed et, zamanla coverage artır. Kullanıcı bir dokümanı sorguladığında, o doküman yeni modelle re-compute edilir ve cache'lenir. Avantaj: hot data hızlı migrate olur, cold data maliyeti yok. Dezavantaj: migration asla %100 bitmez, coverage %70-80'de platolar. Ayrıca query latency spike riski: ilk erişimde embed + insert overhead.
+Bizim deneyimimizde quarterly full reindex + weekly incremental çalışıyor: her çeyrekte model değişikliği veya büyük corpus güncellemesi bekliyorsak full reindex, ara dönemde yeni dokümanlar incremental ekleniyor. Hybrid deployment'ı critical pipeline'lar için tercih ediyoruz (örn: GEO için AI citation retrieval sistemi — [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) mimarisinde search downtime müşteri referanslarının kaybolması demek).
 
-Roibase production'da hybrid yaklaşım kullanıyor: blue-green ile kritik corpus (son 90 gün, sık erişilen %20) hızlıca taşınıyor, geri kalan %80 rolling batch ile 2 haftalık pencerede tamamlanıyor. Bu yöntem maliyeti %40 düşürdü, migration süresini 10 günden 4 güne indirdi.
+## Model Migration: Version Lock ve Backward Compatibility
 
-### Migration Sırasında Query Consistency Nasıl Korunur
+Embedding model değişikliği planlamak deployment kadar kritik. OpenAI yeni model yayınladığında (`text-embedding-3-large` → hypothetical `text-embedding-4` gibi) hemen geçiş yapmak yerine 2 hafta A/B test yapın. Test ortamında eski model embedding'leriyle yeni model query'leri karşılaştırın — recall düşüyorsa migration masraflı demektir. Eğer yeni model dimension artırıyorsa (1536 → 3072), vector DB storage maliyeti ikiye katlanır.
 
-Rolling migration'da DB hem eski hem yeni embedding barındırırken query accuracy problemi yaşarsınız. Çözüm: **multi-vector querying**. Query embedding'ini HEM eski HEM yeni modelle oluştur, her iki vektörle search yap, sonuçları birleştir. Psödokod:
+Version lock için model ID + date tuple saklayın. Her embedding'in metadata'sında `{"model": "text-embedding-3-large", "version": "2025-01-15"}` gibi alan tutun. Query zamanında hangi model kullanıldığını loglayın. Migration sırasında DB'de eski/yeni model mix'i olabilir — bu durumda query router gerekir: query embedding'in model versiyonuna göre ilgili index partition'a yönlendirir.
 
-```python
-def hybrid_search(query_text, k=10):
-    old_vec = old_model.encode(query_text)
-    new_vec = new_model.encode(query_text)
-    
-    old_results = vector_db.search(old_vec, collection="docs_old", top_k=k)
-    new_results = vector_db.search(new_vec, collection="docs_new", top_k=k)
-    
-    # Reciprocal rank fusion
-    combined = reciprocal_rank_fusion([old_results, new_results], k=k)
-    return combined
-```
+Backward compatibility için fallback mekanizması kurun. Yeni modelle re-index bittikten sonra 1 hafta eski index'i tutun, traffic split yapın (%80 yeni, %20 eski). Yeni index'te recall düşerse hızla geri dönebilirsiniz. Bu pattern blue-green deployment'ın genişletilmiş hali — Kubernetes'te iki ReplicaSet çalıştırıp Istio ile traffic weight ayarlayarak yapılır.
 
-Bu pattern migration bitene kadar query edge case'lerini yakalıyor. Performans overhead: query latency 1.4×. Migration tamamlandığında dual-query kapatılır, latency normale döner.
+### Model Freeze ve Checkpoint Yönetimi
 
-## Cost Tradeoff: Compute vs Storage vs Downtime
+Production'da model versiyonu freeze edin — API provider'ın "latest" endpoint'ini kullanmayın. OpenAI `/v1/embeddings` endpoint'i model parametresini zorunlu kılar, bunu config'de sabit tutun. Model değişikliği için dedicated migration pipeline çalıştırın, canlıya geçişi manuel onaylayın. Otomatik güncelleme CI/CD'de embedding drift'i tetikler.
 
-Migration maliyeti üç bileşenden oluşur:
+Checkpoint yönetimi için quarterly snapshot alın. Her reindex sonrası DB'nin full dump'ını S3/GCS'ye yazın (Parquet formatında — Pinecone export API kullanılabilir). Snapshot'larda model version metadata'sı saklayın. Disaster recovery'de veya A/B test'te eski checkpoint'i restore edebilirsiniz. 10M vektör × 1536 dim × 4 byte (float32) = ~60GB — sıkıştırılmış halde 20GB, quarterly 4 checkpoint = 80GB storage maliyeti minimal.
 
-| Bileşen | Blue-Green | Rolling | Lazy |
-|---------|-----------|---------|------|
-| Compute (re-embed) | 1× | 1× | 0.2-0.4× |
-| Storage (duplicate) | 2× (geçici) | 1× | 1× |
-| Downtime | 0 | ~%2 consistency loss | ~%5 latency spike |
-| İnsan saati | 8-12 saat | 20-30 saat | 40+ saat |
+## Cost Tradeoff: Re-indexing vs Drift Toleransı
 
-Örnek corpus: 100M embedding, `text-embedding-3-small` ($0.02/1M token), ortalama chunk 512 token.
+Re-indexing her zaman optimal değil. Eğer semantic search'ünüz düşük precision toleransına sahipse (örn: blog içeriği öneri sistemi) hafif drift kabul edilebilir. Ama yüksek güvenilirlik gerektiren use case'lerde (legal doküman retrieval, AI agent knowledge base) drift %5 bile kritik. Tradeoff'u iş metriğiyle ölçün: drift yüzünden kullanıcı yanlış içerik bulursa (churn riski, support ticket artışı) vs re-indexing maliyeti (direct token cost + engineering time).
 
-- Compute: 100M × 512 token = 51.2B token → $1,024
-- Storage: 100M × 1536 dim × 4 byte = 614GB → Pinecone p2 pod'da ~$500/ay
+Örnek hesap: 5M doküman corpus, monthly 10% büyüme. Full reindex quarterly yapılırsa yıllık 4 kez, her seferinde 12.5$ embedding + 10$ index build = 90$. Incremental monthly update ise 500K doküman × 0.13$/1M = 0.65$ × 12 = 7.8$. Fark 82$ — ama drift yüzünden recall %15 düşerse RAG pipeline hallucination oranı %8'den %20'ye çıkabilir. Eğer bu kullanıcı şikayeti artışı demekse (örn: 100 support ticket × 5$ manual handling = 500$), 90$ yıllık re-indexing maliyeti justify olur.
 
-Blue-green 1 ay duplicate tutarsa: $1,024 + $500 = $1,524. Rolling: $1,024 + $0 = $1,024. Lazy: ~$400 + engineering overhead.
+Drift toleransı için baseline metric belirleyin: `recall@10 >= 0.85`, `MRR >= 0.7`. Bu eşiklerin altına düşünce otomatik re-indexing tetikleyici kurabilirsiniz. MLOps pipeline'ında Airflow DAG ile haftalık metric hesaplama yapın, threshold aşımında Slack alert + otomatik ticket oluşturun. Böylece reactive değil proactive re-indexing yaparsınız.
 
-Seçim şirkete göre değişir. E-ticaret downtime tolere etmez → blue-green. Research/analytics consistency kaybını tolere eder → rolling. Startup cash-constrained → lazy.
+## Üretimde İzleme: Metric Pipeline ve Alarm Eşikleri
 
-Roibase için karar matrisi: production customer-facing RAG → blue-green. Internal tooling (dokümantasyon search) → rolling. Cold archive (eski case study'ler) → lazy.
+Embedding drift'i gerçek zamanlı yakalayamassanız, recall düşüşü production'da 2-3 hafta geçtikten sonra fark edilir. Bu yüzden metric pipeline kritik. Bizim kurduğumuz yapı şöyle: her query log'unda retrieved document ID'leri + user feedback (click, bookmark, bounce) saklanır. Offline'da bu log'lar ground truth pair'e dönüştürülür (clicked doc = relevant). Haftalık batch job bu dataset üzerinde `recall@k`, `nDCG@k`, `MRR` hesaplar, time-series grafik çizer (Grafana + Prometheus).
 
-## Model Versiyonlama ve Metadata Tracking
+Alarm eşikleri:
+- `recall@10 < 0.80` → warning (1 hafta içinde investigate)
+- `recall@10 < 0.75` → critical (re-index plan başlat)
+- `nDCG@10` 2 hafta üst üste düşüyorsa → model drift suspect
+- Query latency p99 > 200ms → index fragmentation veya shard imbalance
 
-Migration'ı sürdürülebilir yapmak için **embedding metadata** tutmalısınız. Her vektör yanında:
+Latency drift de önemli: vector DB'de doküman sayısı artınca kNN search yavaşlar. Pinecone'da pod count artırarak scale edersiniz ama maliyet artar. Eğer query latency drift görüyorsanız (p99 100ms'den 250ms'e çıktıysa) re-indexing ile index optimize edilir — HNSW graph'ı yeniden build edince fragmentation düşer.
 
-- `model_name`: "text-embedding-3-small"
-- `model_version`: "2024-12-01"
-- `embedding_dim`: 1536
-- `created_at`: timestamp
+[First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) kapsamında user interaction data'yı Snowflake'e pipe ediyorsak, embedding metric'leri de aynı warehouse'a yazmak mantıklı. Böylece cross-analysis yapabilirsiniz: conversion rate düşüşü ile embedding recall düşüşü korelasyonunu görebilirsiniz. Örneğin recall %10 düşünce checkout rate %3 düştüyse, retrieval quality'nin revenue impact'i kanıtlanmış olur — re-indexing ROI'si net çıkar.
 
-Bu data sayesinde:
-1. Hangi chunk'ların eski modelde olduğunu query ile bulabilirsiniz
-2. A/B test yapabilirsiniz (aynı chunk, 2 model, hangisi daha iyi retrieval veriyor)
-3. Rollback planlayabilirsiniz (yeni model kötü çıkarsa)
+---
 
-Metadata olmadan migration blind — hangi chunk'ın ne zaman embed edildiğini bilemezsiniz. Bazı vector DB'ler (Weaviate, Qdrant) metadata filtrelemeyi native destekler. Pinecone'da custom payload field eklenir.
-
-### Embedding Versiyonunu Otomatik Detect Etmek
-
-Model provider'lar genellikle versiyon değişiminde deprecation notice veriyor (30-60 gün). Otomasyon için:
-
-```python
-import hashlib
-
-def get_model_fingerprint(model):
-    """Test embedding ile model signature oluştur"""
-    test_text = "The quick brown fox jumps over the lazy dog"
-    vec = model.encode(test_text)
-    return hashlib.md5(vec.tobytes()).hexdigest()[:8]
-
-# Production'da fingerprint değişince alert
-current_fp = get_model_fingerprint(embed_model)
-if current_fp != expected_fp:
-    alert("Embedding model changed, migration required")
-```
-
-Bu pattern model silent update'lerde hayat kurtarır. OpenAI bazen patch yapar, versiyon numarası aynı kalır ama output hafifçe değişir. Fingerprint bunu yakalar.
-
-## Attribution ve Veri Kalitesi: Migration'ın Gizli Kazancı
-
-Re-indexing sadece model değişimi için değil, **veri temizliği** için de fırsat. Production vector DB'lerde zamanla çöp birikir: duplicate chunk'lar, outdated içerik, kötü parse edilmiş PDF'ler. Migration sırasında bu data quality sorunlarını düzeltebilirsiniz.
-
-Roibase bir müşteri projesinde migration sırasında chunk deduplication yaptı: 80M embedding → 68M. %15 reduction. Aynı zamanda chunk overlap stratejisini değiştirdi (128 token → 256 token), retrieval accuracy %4 arttı. Bu iyileştirmeler model değişiminden bağımsız.
-
-Migration ayrıca [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) prensiplerini embedding pipeline'ına entegre etme fırsatı. Hangi chunk'ların sık retrieve edildiği, hangi query'lerin miss verdiği — bu metrikler olmadan embedding stratejisi körlemedir. Migration sırasında logging/monitoring katmanını kurarsanız, bir sonraki migration'ı data-driven yaparsınız.
-
-## Downtime'sız Geçiş Mimarisi
-
-Blue-green migration'ı eksiksiz uygulamak için altyapı gereksinimleri:
-
-1. **Dual write:** Yeni data hem eski hem yeni index'e yazılır (migration başladığında aktif)
-2. **Shadow traffic:** Production query'lerinin %5-10'u yeni index'e gönderilir, sonuç loglenir (A/B karşılaştırma için)
-3. **Cutover checkpoint:** Eski index'in son snapshot'ı alınır (rollback guarantee)
-4. **DNS/routing switch:** Trafik yeni index'e yönlendirilir
-5. **Dual write kapatılır:** Eski index read-only olur, 7-14 gün sonra silinir
-
-Bu pattern'in en kritik adımı shadow traffic. Yeni index'i production yükü altında test etmeden switch yapamazsınız. Shadow traffic sayesinde latency, accuracy, edge case failure'ları önceden görürsünüz.
-
-Örnek: Bir projenin shadow traffic testinde latency p99 hedefinin %18 üzerinde çıktı. Sebep: yeni model batch inference optimize edilmemişti. Production switch öncesinde batch boyutu 32 → 128 değiştirildi, p99 hedefe indi. Shadow traffic olmasaydı bu sorun production'da patlar, downtime olurdu.
-
-## Sonuç: Migration Kaçınılmaz, Strateji Seçime Bağlı
-
-Embedding model freeze kısa vadeli çözüm, uzun vadeli risk. Competitive ortamlarda model evolution hızı artıyor — 2026'da ortalama drift window 180 günden 120 güne düşecek. Migration stratejinizi şimdi kurmak, 6 ay sonra panik yapmaktan daha ucuz.
-
-Üç stratejiyi hibrit kullanın: kritik data blue-green, bulk corpus rolling, cold archive lazy. Metadata tracking kurun, fingerprint monitoring ekleyin, shadow traffic ile test edin. Migration sadece teknik zorunluluk değil, data quality ve pipeline optimization fırsatıdır — bu pencereyi iyi kullanın.
+Embedding drift'i görmezden gelmek 3 ay sonra semantic search sisteminizin sessizce bozulması demek. Re-indexing'i reactive değil proactive yapmak — quarterly checkpoint, weekly metric monitoring, model freeze — production'da güvenilir retrieval'ın temelidir. Maliyet tradeoff'u basit: drift toleransınızı iş metriğiyle ölçün, threshold'ları sıkı tutun, otomatik alarm kurun. Vector DB'niz büyüdükçe bu süreçler engineering disiplinine dönüşür — tahmin yerine metric, manuel müdahale yerine otomation.
