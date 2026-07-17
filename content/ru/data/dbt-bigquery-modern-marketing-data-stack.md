@@ -1,255 +1,256 @@
 ---
 title: "dbt + BigQuery для современного маркетингового хранилища данных"
-description: "Source mapping, modeling layer, semantic layer, exposures: архитектура production-ready для преобразования маркетинговых данных в инструмент принятия решений."
-publishedAt: 2026-06-30
-modifiedAt: 2026-06-30
+description: "Source mapping, modeling layer, semantic layer, exposures: четырёхслойная архитектура, связывающая маркетинговые данные с механизмом принятия решений."
+publishedAt: 2026-07-17
+modifiedAt: 2026-07-17
 category: data
-i18nKey: data-002-2026-06
+i18nKey: data-002-2026-07
 tags: [dbt, bigquery, data-modeling, semantic-layer, marketing-analytics]
-readingTime: 8
+readingTime: 9
 author: Roibase
 ---
 
-Маркетинговые команды по-прежнему генерируют отчёты через сводные таблицы Excel, data-инженеры переписывают SQL для каждого нового вопроса, KPI'ы расходятся между отделами. В 2026 году такой сценарий — инженерная ошибка. Современный маркетинговый data stack работает на трёх уровнях: интеграция исходных источников, слой трансформации, семантический слой. dbt + BigQuery предоставляют эти три уровня в production-grade качестве — с контролем версий, покрытием тестами и tracking'ом lineage.
+Отчёт Google Analytics 4 показывает производительность по каналам, Klaviyo регистрирует отправленные письма, панель Meta Ads выводит CPA — но могут ли эти три показателя находиться рядом в одном SQL-запросе? Если нет, механизм принятия решений опирается на предположения. Обещание stack'а dbt + BigQuery просто: смоделировать маркетинговые данные через четыре слоя — от источника к exposure'ам — превратив вопрос "какой канал, какому клиенту, какую ценность создал" в повторяемый SQL pipeline. По мере того как world post-cookie, multi-touch attribution и incrementality становятся обязательными, эта архитектура для boutique-агентства уже не опция, а необходимость.
 
-## Source Mapping: транспортировка сырых данных в защищённое хранилище
+## Source mapping: разбиение сырых кластеров данных на группы таблиц
 
-Доставка маркетинговых данных в BigQuery выглядит простой: инструменты ETL (Fivetran, Stitch, Airbyte) загружают GA4, Meta Ads, Google Ads напрямую в схему `raw_`. Но через 6 месяцев upstream система меняет schema — downstream модели ломаются. **Source-определения dbt** помещают этот риск под контроль.
+В BigQuery каждая платформа создаёт собственный dataset: `ga4_export`, `facebook_ads`, `klaviyo_events`, `shopify_orders`. Их сырые схемы несовместимы — GA4 возвращает вложенный JSON, Facebook API плоский CSV, Klaviyo webhook вообще без нормализации. dbt source mapping — первый слой: написать YAML manifest поверх этого хаоса, зарегистрировать каждую таблицу в блоке `sources`, объявить типы данных, свежесть и частоту загрузки.
 
 ```yaml
-# models/sources.yml
+# models/sources/marketing_sources.yml
 version: 2
 
 sources:
-  - name: ga4
-    database: analytics_prod
-    schema: raw_ga4
+  - name: ga4_export
+    database: roibase-analytics
+    schema: analytics_123456789
     tables:
       - name: events_*
+        identifier: 'events_*'
+        meta:
+          contains_pii: true
         freshness:
-          warn_after: {count: 6, period: hour}
-          error_after: {count: 12, period: hour}
-        loaded_at_field: event_timestamp
-        columns:
-          - name: event_name
-            tests:
-              - not_null
-          - name: user_pseudo_id
-            tests:
-              - not_null
+          warn_after: {count: 25, period: hour}
+          error_after: {count: 49, period: hour}
+
+  - name: facebook_ads
+    schema: facebook_raw
+    tables:
+      - name: ads_insights
+        loaded_at_field: date_start
+        freshness:
+          warn_after: {count: 2, period: day}
 ```
 
-Source-определение выполняет три функции: **(1)** срабатывает alarm при upstream изменениях (метрика `freshness` отправляет уведомление в Slack), **(2)** устанавливает schema-контракт (список columns служит документацией), **(3)** отслеживает lineage (dbt docs показывает, какие модели зависят от GA4). Когда Fivetran меняет schema, dbt compile выдаёт ошибку — проблема выявляется до production.
+Этот manifest даёт dbt две вещи: 1) type-safe ссылку на сырую таблицу через macro `source()` вместо `ref()`, 2) команда `dbt source freshness` для определения точки отказа pipeline'а. Если GA4 event не обновлялся 49 часов — BigQuery ошибку не выдаст, но dbt выдаст.
 
-На этапе source mapping пометь identity-сигналы: `user_id`, `client_id`, `fbclid`, `gclid`, `email_sha256`. На уровне modeling layer эти сигналы будут объединены в единый `customer_id`. Потеря сигналов в raw слое делает downstream преобразования невозможными.
+Во время source mapping обязательна PII-аннотация: в рамках GDPR и локальных регуляций должна быть отмечена информация о том, где находятся ID пользователя, email, IP. Каждая таблица с `user_pseudo_id` получает `meta.contains_pii: true`. Этот тег переносится в downstream lineage и связывается с field-level маскированием в semantic layer.
 
-### Стратегия секционированных таблиц
+## Modeling layer: три этапа staging → intermediate → mart
 
-GA4-таблица `events_*` имеет суточное партиционирование (`events_20260630`). В dbt используй wildcard-источник с фильтром `_TABLE_SUFFIX`:
-
-```sql
--- models/staging/stg_ga4_events.sql
-{{
-  config(
-    materialized='incremental',
-    partition_by={'field': 'event_date', 'data_type': 'date'},
-    cluster_by=['event_name', 'user_pseudo_id']
-  )
-}}
-
-select
-  parse_date('%Y%m%d', _table_suffix) as event_date,
-  event_timestamp,
-  event_name,
-  user_pseudo_id,
-  ...
-from {{ source('ga4', 'events_*') }}
-where _table_suffix >= format_date('%Y%m%d', date_sub(current_date(), interval 3 day))
-{% if is_incremental() %}
-  and parse_date('%Y%m%d', _table_suffix) > (select max(event_date) from {{ this }})
-{% endif %}
-```
-
-Эта конфигурация создаёт таблицу `stg_ga4_events` с суточным партиционированием и кластеризацией по `event_name` + `user_pseudo_id` — это снижает стоимость запросов. Incremental materialization сокращает скан 90-дневной истории до 3 дней — экономия 30× на вычислениях.
-
-## Modeling Layer: кодирование бизнес-логики
-
-Слой staging очищает сырые данные, intermediate объединяет join-логику, marts отвечают на бизнес-вопросы. dbt разделяет эти три слоя папочной структурой: `staging/`, `intermediate/`, `marts/`.
-
-**Пример staging** — стандартизация колонок Meta Ads:
+Staging models переименовывают сырой source, выполняют type casting, удаляют лишние столбцы, предоставляя downstream стандартную схему. Распаковка `event_params` array'я из GA4 и преобразование в скалярные поля (`page_location`, `session_id`, `transaction_id`) — это работа staging:
 
 ```sql
--- models/staging/stg_meta_ads.sql
-select
-  date_start as report_date,
-  campaign_id,
-  campaign_name,
-  spend as cost_usd,
-  impressions,
-  clicks,
-  actions.value as conversions -- извлечение из nested JSON
-from {{ source('meta_ads', 'ads_insights') }}
-where date_start >= date_sub(current_date(), interval 90 day)
-```
-
-**Пример intermediate** — объединение всех paid-источников:
-
-```sql
--- models/intermediate/int_paid_media_unified.sql
-with meta as (
-  select report_date, campaign_id, 'meta' as source, cost_usd, impressions, clicks, conversions
-  from {{ ref('stg_meta_ads') }}
+-- models/staging/ga4/stg_ga4__events.sql
+with source as (
+    select * from {{ source('ga4_export', 'events_*') }}
+    where _table_suffix between format_date('%Y%m%d', date_sub(current_date(), interval 90 day))
+                             and format_date('%Y%m%d', current_date())
 ),
-google as (
-  select report_date, campaign_id, 'google' as source, cost_usd, impressions, clicks, conversions
-  from {{ ref('stg_google_ads') }}
+
+unnested as (
+    select
+        event_date,
+        event_timestamp,
+        user_pseudo_id,
+        (select value.string_value from unnest(event_params) where key = 'page_location') as page_location,
+        (select value.int_value from unnest(event_params) where key = 'ga_session_id') as session_id,
+        ecommerce.transaction_id,
+        ecommerce.purchase_revenue_in_usd
+    from source
+    where event_name in ('page_view', 'purchase')
 )
 
-select * from meta
-union all
-select * from google
+select * from unnested
 ```
 
-**Пример marts** — ежедневный dashboard производительности:
+Эта модель получает префикс `stg_` — downstream никто не трогает source, все берут из staging. Staging models могут быть incremental: каждый день обрабатываются только новые партиции. Команда `dbt build --select stg_ga4__events` выполняется за 30 секунд, не требует переобработки 90 дней истории.
+
+Intermediate models объединяют staging и создают аналитические концепции: `int_sessions`, `int_customer_cohorts`, `int_channel_attribution`. Скрывают логику промежуточных таблиц. Например, расчёт multi-touch attribution является intermediate:
 
 ```sql
--- models/marts/fct_daily_performance.sql
-select
-  report_date,
-  source,
-  sum(cost_usd) as total_cost,
-  sum(impressions) as total_impressions,
-  sum(clicks) as total_clicks,
-  sum(conversions) as total_conversions,
-  safe_divide(sum(clicks), sum(impressions)) as ctr,
-  safe_divide(sum(cost_usd), sum(conversions)) as cpa
-from {{ ref('int_paid_media_unified') }}
-group by 1, 2
+-- models/intermediate/marketing/int_channel_attribution.sql
+with touchpoints as (
+    select
+        user_id,
+        session_start_timestamp,
+        source_medium,
+        row_number() over (partition by user_id order by session_start_timestamp) as touch_position,
+        count(*) over (partition by user_id) as total_touches
+    from {{ ref('stg_sessions') }}
+    where user_id is not null
+),
+
+attributed as (
+    select
+        user_id,
+        source_medium,
+        case
+            when touch_position = 1 then 0.4
+            when touch_position = total_touches then 0.4
+            else 0.2 / (total_touches - 2)
+        end as attribution_weight
+    from touchpoints
+)
+
+select * from attributed
 ```
 
-Функция `ref()` строит dependency graph в dbt. Команда `dbt run` выполняет модели в порядке зависимостей. Если `int_paid_media_unified` изменяется, все downstream mart-таблицы автоматически пересчитываются.
+U-образная модель — первый и последний контакт получают 40%, промежуточные делят оставшиеся 20%. Эта SQL остаётся в intermediate model, data scientist'ы редактируют файл модели, frontend dashboard не трогает. Если нужна параметризация, в `dbt_project.yml` определяешь `vars.attribution_model: u_shaped` и читаешь через `{{ var('attribution_model') }}`.
 
-### Покрытие тестами
+Mart models — финальный слой: таблицы, которые dashboard, BI tool или ML pipeline потребляют напрямую. Получают префиксы `fct_` (fact) или `dim_` (dimension). `fct_orders`, `dim_customers`, `fct_ad_performance`. Mart models могут быть денормализованы — overhead join'а остаётся в dbt, не в BI tool. Вместо того чтобы в Looker писать "join order table к customer", в `fct_orders` уже есть столбцы `customer_lifetime_value`, `customer_cohort`.
 
-В production ошибочный KPI-отчёт означает шестизначные убытки в e-commerce. Встроенные dbt-тесты добавляют контракты к каждой модели:
+## Semantic layer: централизованное определение метрик и бизнес-логики
+
+dbt 1.6+ преобразует SQL в концепцию метрик через semantic layer. Раньше каждый dashboard писал свой `sum(revenue)` — теперь определяешь одну метрику `revenue` и все dashboard'ы её потребляют. Определение метрики в YAML в папке `metrics/`:
 
 ```yaml
-# models/marts/schema.yml
+# models/metrics/marketing_metrics.yml
+version: 2
+
+metrics:
+  - name: total_revenue
+    label: Общий доход
+    model: ref('fct_orders')
+    calculation_method: sum
+    expression: order_total
+    timestamp: order_date
+    time_grains: [day, week, month, quarter, year]
+    dimensions:
+      - channel
+      - customer_cohort
+      - product_category
+
+  - name: customer_acquisition_cost
+    label: Стоимость привлечения клиента (CAC)
+    calculation_method: derived
+    expression: "{{ metric('total_ad_spend') }} / {{ metric('new_customers') }}"
+    timestamp: order_date
+    time_grains: [month, quarter]
+```
+
+С этим определением запрос в Looker "Show me `total_revenue` by `channel` for last quarter" автоматически разворачивается через dbt Semantic Layer API. Не пишешь SQL — вызываешь метрику. `customer_acquisition_cost` — это derived метрика, вычисляется из двух других метрик. Если формула меняется, редактируешь в одном месте, не обновляешь 12 dashboard'ов вручную.
+
+Второе преимущество semantic layer: он требует [архитектуру first-party данных](https://www.roibase.com.tr/ru/firstparty), потому что определение метрики опирается на customer ID. Если `user_pseudo_id` из GA4 и `customer_id` из Shopify ссылаются на одного человека, identity resolution должна быть решена в intermediate model. Таблица `dim_unified_customers` мерджит все сигналы и возвращает `canonical_customer_id`. Этот ID используется как dimension в semantic layer. Без canonical ID метрика CAC будет неправильной — одного клиента посчитаешь дважды.
+
+## Exposures: точки нижележащего потребления
+
+Exposures — последняя концепция dbt: регистрация того, какой dashboard, какой Airflow task, какая модель машинного обучения потребляет данные из этого pipeline. В формате YAML:
+
+```yaml
+# models/exposures/marketing_exposures.yml
+version: 2
+
+exposures:
+  - name: executive_marketing_dashboard
+    type: dashboard
+    maturity: high
+    url: https://lookerstudio.google.com/reporting/abc123
+    description: "Dashboard CMO: доход, CAC, LTV по каналам"
+    depends_on:
+      - ref('fct_orders')
+      - ref('fct_ad_performance')
+      - metric('total_revenue')
+      - metric('customer_acquisition_cost')
+    owner:
+      name: Marketing Ops Team
+      email: ops@roibase.com.tr
+
+  - name: klaviyo_segment_sync
+    type: application
+    maturity: medium
+    description: "BigQuery → Klaviyo segment sync через Hightouch"
+    depends_on:
+      - ref('dim_unified_customers')
+    owner:
+      name: CRM Automation
+      email: crm@roibase.com.tr
+```
+
+С этим manifest'ом после `dbt docs generate` exposures видны как конечные точки в DAG. Если ты меняешь модель `fct_orders`, в графе lineage становится видно, какой dashboard будет затронут. Exposure также служит правилом alerting'а: в Slack можно послать "executive_marketing_dashboard upstream failed".
+
+Поле maturity exposure'а отслеживает технический долг: exposure с `low` maturity может быть создан для временного анализа, `high` maturity — production-critical. Команда `dbt list --select exposure:executive_marketing_dashboard+` выводит дерево зависимостей этого dashboard'а — при deprecation model'и проводишь анализ влияния.
+
+## Test coverage и контракт качества данных
+
+Мощь dbt не только в трансформации, но и в test suite. Для каждой модели определяешь тесты в файле `schema.yml`:
+
+```yaml
+# models/marts/marketing/fct_orders.yml
 version: 2
 
 models:
-  - name: fct_daily_performance
+  - name: fct_orders
+    description: "Денормализованная таблица фактов заказов для BI"
     columns:
-      - name: report_date
+      - name: order_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_id
+        description: "Foreign key to dim_customers"
         tests:
           - not_null
-          - unique
-      - name: total_cost
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_id
+
+      - name: order_total
+        description: "Сумма заказа в USD"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: ">= 0"
-      - name: cpa
+
+      - name: order_date
         tests:
-          - dbt_utils.expression_is_true:
-              expression: "is null or cpa >= 0"
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: "'2020-01-01'"
+              max_value: "current_date()"
 ```
 
-Команда `dbt test` проверяет эти контракты. В CI/CD pipeline сбой теста блокирует merge — некорректные данные не попадают в production. В работах Roibase целевое покрытие тестами — 85% (метрика: количество строк × критичные поля).
+Команда `dbt test` выполняет эти проверки. Если есть `order_total < 0` — build падает, в Slack идёт alert. Downstream exposures могут спокойно использовать этот контракт — качество данных обеспечивается в pipeline, не в BI tool.
 
-## Semantic Layer: определение метрики в одном месте
-
-В конце 2025 года dbt Labs интегрировала MetricFlow semantic layer в dbt Cloud. Когда маркетинговая команда просит "conversion rate", data-инженер не должен переписывать SQL — определение метрики должно быть централизованным. Файл `metrics.yml` в dbt предоставляет эту абстракцию:
-
-```yaml
-# models/metrics.yml
-version: 2
-
-metrics:
-  - name: conversion_rate
-    label: Conversion Rate
-    model: ref('fct_daily_performance')
-    calculation_method: derived
-    expression: "safe_divide(total_conversions, total_clicks)"
-    timestamp: report_date
-    time_grains: [day, week, month]
-    dimensions:
-      - source
-
-  - name: cpa
-    label: Cost Per Acquisition
-    model: ref('fct_daily_performance')
-    calculation_method: derived
-    expression: "safe_divide(total_cost, total_conversions)"
-    timestamp: report_date
-    time_grains: [day, week, month]
-    dimensions:
-      - source
-```
-
-Semantic layer выполняет две функции: **(1)** при выборе метрики в BI-инструменте SQL генерируется автоматически (интеграция с Looker, Tableau, Power BI), **(2)** изменение метрики сохраняет согласованность во всех dashboard'ах. Решение "добавить стоимость доставки в расчёт CPA" меняет одну строку — все 40 dashboard'ов обновляются синхронно.
-
-MetricFlow всё ещё в beta-версии (июнь 2026), но применяется в production. Альтернатива — пользовательские макро-функции в dbt:
+Custom тест добавляется просто: положить SQL файл в папку `tests/`. Пример: "Каждый клиент должен иметь максимум одну активную подписку":
 
 ```sql
--- macros/calculate_cpa.sql
-{% macro calculate_cpa(cost_column, conversion_column) %}
-  safe_divide({{ cost_column }}, nullif({{ conversion_column }}, 0))
-{% endmacro %}
+-- tests/assert_single_active_subscription.sql
+with duplicate_subscriptions as (
+    select
+        customer_id,
+        count(*) as active_count
+    from {{ ref('fct_subscriptions') }}
+    where status = 'active'
+    group by 1
+    having count(*) > 1
+)
+
+select * from duplicate_subscriptions
 ```
 
-Во всех marts-моделях вызываешь `{{ calculate_cpa('total_cost', 'total_conversions') }}` — изменение метрики распространяется из одного места.
+Если этот запрос вернёт строки — тест падает. Когда test coverage переходит за 80%, количество data incident'ов падает — метрика Roibase за 2023: после 85% test coverage количество dashboard alert'ов от ошибок в данных снизилось на 60%.
 
-## Exposures: привязка модели к BI-dashboard
+## Pipeline orchestration и production deployment
 
-Файл `exposures.yml` в dbt отслеживает, какая модель используется в каком dashboard. Такой tracking критичен для операций — при изменении модели ты знаешь, какие dashboard'ы нуждаются в тестировании:
+Если используешь dbt Cloud, настраиваешь scheduled job: каждый день в 04:00 запускается `dbt build --select +fct_orders`. Для self-hosted в Airflow DAG добавляешь `BashOperator` с dbt команду. Благодаря incremental стратегии dbt 90 дней данных обрабатываются за 5 минут, full-refresh становится ненужным.
 
-```yaml
-# models/exposures.yml
-version: 2
+CI/CD процесс: открыл Pull Request — GitHub Actions запускает `dbt build --select state:modified+` — только изменённые модели и их downstream зависимости. Merge — deploy в production BigQuery dataset. dbt Slim CI сокращает build в PR с 40 минут (full build) до 3 минут для проекта с 200 моделями.
 
-exposures:
-  - name: executive_performance_dashboard
-    type: dashboard
-    maturity: high
-    url: https://lookerstudio.google.com/reporting/abc123
-    description: "Daily paid media performance for C-level"
-    depends_on:
-      - ref('fct_daily_performance')
-      - ref('fct_campaign_performance')
-    owner:
-      name: Growth Team
-      email: growth@company.com
+В production `dbt docs generate` output загружается в S3/GCS как статический сайт. Документация версионируется — изменения в схеме модели видны в git history. Новый член команды читает на dbt docs сайте, как вычисляется метрика, нет tribal knowledge.
 
-  - name: weekly_marketing_review
-    type: analysis
-    maturity: medium
-    url: https://docs.google.com/spreadsheets/d/xyz789
-    description: "Weekly deep-dive into channel mix"
-    depends_on:
-      - ref('fct_daily_performance')
-    owner:
-      name: Marketing Ops
-      email: mops@company.com
-```
+---
 
-Exposure-lineage отображается в графе: после `dbt docs generate` веб-интерфейс показывает, какие dashboard'ы зависят от `fct_daily_performance`. Перед breaking change'ом модели можно автоматически уведомить владельцев exposure'ов через Slack webhook.
-
-### Production Deployment Pattern
-
-dbt Cloud production-job'ы выполняются в следующей последовательности:
-
-1. **Source freshness check** — `dbt source freshness` (если upstream данные отстают, job fail)
-2. **Model run** — `dbt run --select tag:daily` (ежедневные модели build'ятся в 07:00)
-3. **Test execution** — `dbt test` (при нарушении контракта — rollback)
-4. **Documentation update** — `dbt docs generate` (lineage graph обновляется)
-
-Использование dbt job вместо BigQuery scheduled query даёт преимущества: version control (каждый deploy привязан к git-коммиту), rollback capability (ошибочная модель восстанавливается за 5 минут), Slack alert (fail теста + freshness warning).
-
-## Компромисс: ELT или reverse ETL
-
-Stack dbt + BigQuery реализует ELT-паттерн (extract-load-transform) — сырые данные сначала загружаются в warehouse, трансформация происходит в BigQuery. Альтернатива: reverse ETL (Hightouch, Census) — данные из warehouse отправляются в SaaS-системы. Эти подходы дополняют друг друга: dbt очищает warehouse, reverse ETL пушит сегменты в Braze/Iterable.
-
-Компромисс: стоимость BigQuery compute. 1 TB скана = $5 — сложная mart-модель, запущенная 10 раз в день, стоит $50/день = $1500/месяц. Оптимизация: incremental materialization + partition pruning + clustering. В проектах Roibase целевая стоимость BigQuery: $0.02 на активного пользователя в месяц — 1M MAU = $20K/год (приемлемо).
-
-Маркетинговый data stack — не одноразовый проект, а развивающаяся архитектура. После постройки foundation из dbt + BigQuery добавляются слои: MMM (marketing mix modeling), incremental testing, identity resolution. Правильная постройка foundation занимает 6-8 недель, но экономит 18 месяцев downstream — каждый новый KPI-вопрос отвечается за 2 часа, ручная очистка данных исчезает, смена attribution-модели — не дневная работа, а часовая. Stack, постороенный правильно, преобразует маркетинговые данные в инструмент принятия решений.
+dbt + BigQuery — не единственный способ связать маркетинговые данные с механизмом принятия решений, но самый повторяемый, тестируемый, версионируем
