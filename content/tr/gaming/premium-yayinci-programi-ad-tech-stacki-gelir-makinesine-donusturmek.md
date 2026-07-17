@@ -1,90 +1,113 @@
 ---
 title: "Premium Yayıncı Programı: Ad Tech Stack'i Gelir Makinesine Dönüştürmek"
-description: "Header bidding, direct sales, subscription ve first-party data monetization ile oyun yayıncılarının reklam gelirini sistematik olarak artıran mühendislik yaklaşımı."
-publishedAt: 2026-07-03
-modifiedAt: 2026-07-03
+description: "Header bidding, direct sales ve first-party veri entegrasyonuyla reklam gelirini %40+ artıran premium yayıncı stratejisi. Gaming publisher'lar için SSP, ad server, data layer mimarisi."
+publishedAt: 2026-07-17
+modifiedAt: 2026-07-17
 category: gaming
 i18nKey: gaming-006-2026-07
-tags: [premium-yayinci, header-bidding, ad-monetization, first-party-data, gaming-revenue]
+tags: [premium-publisher, header-bidding, ad-tech, monetization, first-party-data]
 readingTime: 8
 author: Roibase
 ---
 
-Mobile gaming yayıncılarının reklam geliri senelerce waterfall mantığında kaldı: tek bir ad network'e sırayla çağrı, ikinci ağ sadece ilk dolmazsa devreye girer, CPM sabitleri manuel güncellenir. 2026'da bu model rekabet gücünü kaybetti. Header bidding artık sadece web publisher'ların değil, mobile gaming yayıncılarının da standart alt yapısı. Fakat header bidding entegrasyonu tek başına yeterli değil — direct sales, subscription hybrid modelleri ve first-party data monetization ile birleştirilmezse yield optimization yarım kalır. Bu yazı, ad tech stack'ini gelir makinesine dönüştüren mühendislik yaklaşımını inceliyor.
+Gaming publisher'lar 2026'da iki gerçekle karşı karşıya: kullanıcı başına reklam yükü arttıkça retention düşüyor, standart waterfall monetizasyonu ise gerçek değerin %30-40 altında gelir üretiyor. Premium yayıncı programları bu denklemi tersine çeviriyor — header bidding ile gerçek zamanlı açık artırma, direct sales ile premium brand anlaşmaları ve first-party veri katmanıyla targeting optimizasyonu. Bu üç ayak, ad tech stack'ini pasif reklam alanından aktif gelir makinesine dönüştürüyor.
 
-## Header Bidding: Waterfall'ın Sonlandırılması
+## Waterfall Monetizasyon Neden Sınıra Dayandı
 
-Waterfall modelinde ilk sıradaki ağ CPM tahminine göre kazanır, gerçek piyasa değeri test edilmez. Header bidding tüm talep kaynaklarını eş zamanlı açık artırmaya sokar: AdMob, ironSource, AppLovin, Unity Ads aynı impression'a gerçek fiyat veriyor, en yüksek CPM kazanıyor. Ortalama %18-27 gelir artışı sektör standardı — fakat implementasyon karmaşık.
+Klasik waterfall'da SSP'ler sırayla çağrılır: bidder A yanıt vermezse B'ye geçilir, o da dolmazsa C. Bu model 2018'de işliyordu çünkü DSP'ler arası fiyat farkı %10-15 seviyesindeydi. 2026'da fark %60'a çıktı — özellikle Tier-1 kullanıcı segmentlerinde Amazon DSP, Google DV360 ve The Trade Desk arasında aynı impression için $8 ile $22 arası teklif farkı oluyor. Waterfall'da ilk SSP $8 teklifi kabul eder, geriye kalan $14 masada kalır.
 
-İki temel mimari var: client-side ve server-side header bidding. Client-side (SDK tabanlı) entegrasyon ilk bakışta kolay — her demand partner'ın SDK'sını oyun build'ine ekliyorsun, mediation layer içinde parallel auction başlatıyorsun. Ancak her SDK APK boyutuna 2-5 MB ekliyor, session start süresini 300-800 ms artırıyor, battery drain risk var. Mobile oyunlarda kullanıcı ilk 10 saniyede karar verdiği için session start latency kritik. Bir RPG oyunu client-side header bidding ile 6 demand partner entegre ettiğinde APK boyutu 18 MB büyüdü, D1 retention %4.2 düştü — yüksek CPM artışı bile bu churn'ü kapatamadı.
+İkinci sorun latency: waterfall zinciri 3-4 SSP ile 800ms'ye ulaşıyor. Mobile gaming'de 800ms gecikme session başına 2.1 ek exit anlamına geliyor (ironSource 2025 benchmark). Kullanıcı reklam yüklenmeyi beklerken oyun dışına çıkıyor, gelir hiç realize olmuyor.
 
-Server-side header bidding auction mantığını bulut tarafına taşır. Oyun client'ı sadece placement request gönderir, server tüm demand partner'lara bid request iletir, kazanan creative'i döner. APK boyutu artmaz, latency kontrol altında kalır (50-150 ms overhead), battery impact yoktur. Tradeoff: server-side'da SDK'lar impression tracking, viewability, fraud detection kabiliyetlerini kaybeder — bu metrikleri post-bid doğrulamak için ek sistem kurman gerekir (IAS, MOAT entegrasyonu). Orta-büyük scale'de (MAU >500K) server-side header bidding ROI pozitif, küçük indie stüdyolar için altyapı maliyeti yüksek.
+Üçüncü yapısal kusur transparency eksikliği. Waterfall'da hangi DSP'nin hangi fiyata teklif verdiğini göremezsin — sadece "fill rate %87" gibi aggregate metrik gelir. Bu da SSP komission stack'ini görünmez kılar: bazı waterfall partner'ları %30 rev-share alırken bunu disclosure etmiyor. Publisher net gelirin %70'ini görüyor, %30'u kayboluyor.
 
-### Bid Floor Dinamizasyonu
+## Header Bidding: Gerçek Zamanlı Açık Artırma Mimarisi
 
-Static floor price tüm impression'lara aynı minimum CPM koyar. Fakat Tier-1 kullanıcının 10:00'da açtığı rewarded video ile Tier-3 kullanıcının 03:00'te açtığı interstitial aynı değerde değil. Dinamik bid floor user segment, coğrafya, daypart, placement type'a göre CPM minimumunu ayarlar. Machine learning modeli son 14 günün bid history'sini alır, her segment için optimal floor'u tahmin eder — çok düşük floor düşük CPM kabul ettirir, çok yüksek floor fill rate düşürür.
+Header bidding tüm SSP'leri paralel çağırır, en yüksek teklifi kazanan alır. Bu "unified auction" modeli waterfall'ın üç sorununu da çözer: tüm DSP'ler eşit şartlarda yarışır, latency 200-300ms'ye düşer, her bid şeffaf log'lanır.
 
-Bir casual game yayıncısı dinamik bid floor'u şöyle kurdu: Segment A (US, iOS 16+, paying user, 18:00-22:00 session) için floor $8.50, Segment B (LATAM, Android 11, non-payer, 02:00-06:00) için floor $1.20. Sonuç: toplam impression fill rate %89 → %87 düştü (yüksek floor bazı düşük CPM bid'leri reddetti), ama eCPM $4.30 → $5.80 yükseldi. Net gelir artışı %28. Dinamik floor mantığı header bidding'in gerçek gücünü açığa çıkarır.
+Teknik kurulum iki katmanlı: client-side header bidding (CSHB) ve server-side header bidding (SSHB). CSHB'de SDK düzeyinde birden fazla SSP paralel çağrılır — Prebid.js benzeri bir wrapper tüm partner'ları orkestre eder. Avantajı latency düşük kalır çünkü network hop'u yok. Dezavantajı SDK weight artar: her SSP +200KB binary demek. 5 SSP entegre edersen app size +1MB şişer, bu da ASO'da binary size ranking penalty'sine yol açar.
 
-## Direct Sales + Programmatic Hibrit Yapı
+SSHB'de tüm SSP çağrısı sunucu tarafında gerçekleşir. Client sadece 1 request gönderir (kendi sunucuna), sunucu 8-10 SSP'yi çağırıp en yüksek bidi döner. SDK weight sorunu çözülür ama latency 50-80ms artar (ek server hop). Gaming publisher'lar için optimal hybrid model: yüksek-trafikli placement'larda CSHB (interstitial, rewarded), low-frequency placement'larda SSHB (banner).
 
-Header bidding açık artırma, fakat premium brand advertiser'lar garantili impression istiyorlar — Ford yeni oyun lansmanında 5M rewarded video CPM $12 sabit fiyattan satın alır, açık artırmaya girmez. Direct sales ile premium demand'i programmatic'ten ayırman gerekir. Hybrid setup: premium brand kampanyaları priority layer'da rezerve ediliyor, kalan envanter header bidding'e düşüyor.
+```javascript
+// Hybrid header bidding config örneği (Prebid wrapper)
+const hbConfig = {
+  clientSide: {
+    bidders: ['appnexus', 'pubmatic', 'rubicon'],
+    timeout: 800, // ms — interstitial için kabul edilebilir
+    placements: ['interstitial_main', 'rewarded_daily']
+  },
+  serverSide: {
+    bidders: ['magnite', 'indexExchange', 'openx', 'sovrn'],
+    timeout: 1200,
+    placements: ['banner_top', 'native_feed']
+  },
+  priceGranularity: 'dense', // $0.01 step — precision için
+  enableAnalytics: true
+};
+```
 
-Ad server mantığı şöyle işler: impression request gelir, önce direct sales kampanyalarına bakar (frequency cap, targeting rule, delivery schedule kontrolü), doğru kampanya varsa serve eder, yoksa header bidding açık artırmasına gönderir. Premium brand kampanyaları %10-15 daha yüksek CPM verir (header bidding eCPM $5.80 ise direct sales avg. CPM $6.70), ama fill guarantee nedeniyle impression rezervasyonu gerekir — yani diğer demand kaynaklarından potansiyel geliri kısıtlar.
+Yukarıdaki config'de critical placement'lar (rewarded, interstitial) client-side kalıyor çünkü 800ms timeout ile kullanıcı experience korunuyor. Banner gibi daha az kritik yerler server-side'a alınıyor, böylece SDK bloat önleniyor.
 
-Bir strateji oyunu yayıncısı Q4'te premium brand kampanyalarını %30 inventory cap ile sınırladı (toplam impression'ın max. %30'u direct sales'e ayrılabilir), geri kalan %70 header bidding'e açık kaldı. Sonuç: premium brand geliri $340K (15M impression × $6.70 avg. CPM × 0.30), programmatic geliri $580K (35M impression × $5.80 avg. eCPM × 0.70), toplam $920K. Eğer tüm envanteri programmatic'e açsaydı: 50M × $5.80 = $870K — yani hybrid yapı +$50K net getirdi. Ancak bu denge dynamic — Q1'de premium demand düşerse cap'i %15'e çekmek gerekir.
+### Price Floor Stratejisi
 
-Direct sales operasyonu teknik karmaşıklık ekler: ad server'da kampanya setup, creative asset management, pacing optimization, delivery tracking. AdMob, ironSource mediation SDK'ları direct sales katmanını native desteklemez — Google Ad Manager (GAM 360) veya kendi custom ad server'ın gerekir. GAM 360 lisans maliyeti yıllık $150K+ (tier'e göre), indie stüdyolar için ulaşılamaz — bu durumda direct sales yerine [Premium Yayıncı Programı](https://www.roibase.com.tr/tr/premiumyayinci) gibi managed servisler daha mantıklı.
+Header bidding'i enable etmek yetmez — dynamic price floor çalıştırmazsan bidder'lar hala düşük teklif verir. Floor fiyat minimum kabul edilebilir CPM. Floor çok düşükse ($0.50) düşük bid'ler geçer, çok yüksekse ($15) fill rate %40'a düşer. Optimal floor data-driven bulunur: son 7 günün 95th percentile bid'ini baz al, segment bazlı (geo, device tier) farklılaştır.
 
-## Subscription + Ad Hybrid: IAP Gelir Katmanı
+| Segment | 95th Percentile Bid | Optimal Floor | Fill Rate Impact |
+|---|---|---|---|
+| US / iPhone 15 Pro | $18.20 | $16.50 | -%3 fill, +%41 eCPM |
+| EU / Mid-tier Android | $6.80 | $6.00 | -%5 fill, +%28 eCPM |
+| LATAM / Low-tier | $1.90 | $1.60 | -%8 fill, +%19 eCPM |
 
-Mobile gaming gelir modeli artık sadece IAP veya sadece ad-supported değil — hybrid: kullanıcı "ad-free pass" satın alır ($4.99/ay), reklamları kapatır, oyun gelir kaybını subscription'dan karşılar. Ancak çoğu yayıncı ad removal fiyatını yanlış hesaplıyor: kullanıcı ayda ortalama 120 ad impression üretiyor, eCPM $5.80 ise user value $0.696/ay — fakat subscription $4.99 koyuyorsun, ad-supported user'dan 7.2x gelir bekliyorsun. Eğer conversion rate %2.5 ise toplam gelir düşer.
+Bu tabloda görülen: floor'u agresif tutup fill rate'i biraz feda ederek net gelir artıyor. Örneğin US high-tier segment'te fill %92'den %89'a düşse bile eCPM %41 yükselince net gelir +%37 oluyor.
 
-Doğru fiyatlama şöyle yapılır: ad-supported user segment analizi — paying user'lar ayda ortalama 80 ad impression (oyun içi para kazandıkları için rewarded video seyretmiyorlar), non-payer'lar 180 impression. Paying user'ın ad removal subscription'ı: 80 × $5.80 / 1000 = $0.464/ay, fiyat $1.99 olabilir (4.3x multiplier — makul). Non-payer'ın subscription'ı: 180 × $5.80 / 1000 = $1.044/ay, fiyat $2.99-3.99 arası mantıklı. Tek fiyat yerine segment-based pricing sunman gerekir.
+## Direct Sales: Premium Brand Anlaşmalarıyla Programmatic'i Bypass Etmek
 
-Bir idle game yayıncısı subscription tier'ları şöyle kurdu: Tier 1 (Light): $1.99/ay, banner + interstitial kapalı, rewarded video açık (kullanıcı hâlâ in-game reward için video izleyebiliyor). Tier 2 (Premium): $3.99/ay, tüm ad format kapalı. Sonuç: Tier 1 conversion %5.2 (non-payer segment), Tier 2 conversion %1.8 (paying segment). Toplam subscription ARR $87K, ad geliri düşüşü -$52K, net +$35K. Önemli nokta: Tier 1'de rewarded video açık kaldığı için kullanıcı oyunu terk etmedi — full ad removal yapılsaydı churn risk vardı.
+Header bidding programmatic demand'i optimize eder ama tavan $20-25 CPM civarında. Premium brand'ler (Samsung, Nike, McDonald's) direct anlaşmada $40-60 CPM ödeyebilir çünkü intermediary yok, targeting quality yüksek ve brand safety kontrolü publisher'da. Direct sales için gereken unsurlar: first-party data segment'leri (demographic, behavioral), custom creative format'ları, guaranteed impression delivery SLA'sı.
 
-### Paywalled Content ile Hibrit Model
+İlk adım audience taxonomy: kullanıcılarını 15-20 segment'e ayır — sadece "18-24 yaş erkek" değil, "mid-core RPG oyuncusu, 30 gün retention, IAP geçmişi var, competitive gameplay tercih ediyor" gibi davranışsal katmanlar. Bu segment'ler brand'e pitch edilirken value proposition net olmalı: "Bu segment'in 30 günlük LTV'si $12, oyun içi satın alma oranı %18, session frequency 4.2/gün — premium snack brand için ideal hedef kitle."
 
-Bazı oyunlar subscription'ı sadece ad removal olarak değil, premium content access olarak konumlandırıyor: subscription alan kullanıcı exclusive level, karakter, item açıyor. Bu durumda subscription fiyatı content value'ya göre belirlenir, ad removal sadece bonus olur. Örnek: battle pass benzeri sistem — $9.99/ay, 10 exclusive skin + ad-free. Conversion rate düşer (%1.2-1.8), ama ARPPU yükselir. Ad-supported user'ı monetize etmeye devam ediyorsun, subscription premium segment'e yönelir.
+İkinci unsur custom creative: brand'in standart banner'ı değil, oyun içi entegre edilmiş özel format. Örnek: racing game'de trackside billboard olarak gösterilecek Red Bull reklam creative'i, puzzle game'de power-up öncesi 3 saniyelik video. Bu format'ları satarken "custom placement fee" üstüne %40 premium ekleyebilirsin çünkü viewability %95+, engagement rate %12+.
 
-## First-Party Data Monetization: UID2 + Contextual Targeting
+Üçüncü kritik nokta attribution: brand'e göstermen gereken metrik sadece impression değil, exposed kullanıcı vs control grubu karşılaştırması. A/B test yap: kullanıcıların %10'unu campaign'e expose et, %10'unu kontrol tut, 14 gün sonra iki grup arasında brand recall, purchase intent, actual conversion farkını raporla. Bu metrik olmadan direct sales pitch weak kalır — brand "programmatic'ten ne farkı var" der.
 
-iOS 14.5 sonrası IDFA opt-in rate %25-30 kaldı, Android'de Privacy Sandbox GAID'i kısıtlıyor. Cookie-less çağda first-party data yayıncının en değerli varlığı. Oyun içi user behavior, progression data, IAP history, session pattern — bunları identity graph'e bağlayıp demand partner'lara contextual targeting olarak sunabilirsin.
+## First-Party Veri Katmanı: Targeting Optimizasyonunun Temeli
 
-UID2 (Unified ID 2.0) email/phone hash tabanlı açık kaynak kimlik çözümü — kullanıcı email ile giriş yaparsa UID2 token üretir, bu token SSP/DSP tarafında tanınır, cross-site targeting mümkün olur. Mobile gaming'de UID2 adoption hâlâ düşük (%8-12 login rate), çünkü casual oyunlar email login zorunlu tutmuyor. Ancak mid-core/hardcore segment (RPG, strategy, MOBA) login rate %40-60, burada UID2 entegrasyonu CPM'i %12-18 artırır.
+Premium yayıncı gelirinin asıl kaldıracı first-party data. 2026'da third-party cookie yok, IDFA zorunlu consent gerektiriyor, ATT opt-in rate %32 civarında. Kalan %68'lik kullanıcı havuzu için tek targeting sinyali first-party data — oyun içi event'ler, progression log'ları, IAP transaction history.
 
-Bir RPG oyunu UID2'yi şöyle kullandı: user email login yaptı → UID2 token üretildi → bu token bid request'e eklendi → DSP kullanıcının diğer sitelerdeki davranışını gördü (örneğin finans sitesinde kredi kartı araması yaptı) → oyun içinde fintech advertiser yüksek CPM verdi ($9.20 vs. baseline $5.80). UID2 olmadan bu targeting yapılamaz, generic ad serve edilir.
+Bu veriyi hem header bidding hem direct sales'te kullanabilmek için Data Management Platform (DMP) veya Customer Data Platform (CDP) entegrasyonu şart. CDP oyun event'lerini gerçek zamanlı consume eder, kullanıcı profile'larına zenginleştirir ve SSP'lere bid request'te audience segment olarak gönderir. Örnek flow:
 
-UID2 entegrasyonu için:
-1. User login flow'una email/phone toplama ekle (KVKK/GDPR compliance zorunlu)
-2. UID2 SDK entegre et (iOS/Android/web)
-3. SSP/exchange partner'larına UID2 token'ı bid request'e dahil et (prebid.js, GAM 360 destekler)
+```
+1. Kullanıcı level 10'a ulaşıyor (oyun event'i)
+2. CDP event'i işliyor → profile'a "mid-core_engaged" tag ekliyor
+3. Sonraki ad request'te SSP'ye `audience_segments: ['mid-core_engaged']` gönderiliyor
+4. DSP bu segment'e $8 yerine $14 bid veriyor (segment premium)
+5. Publisher'a net +%75 eCPM
+```
 
-Alternatif: contextual targeting — IDFA/GAID olmadan oyun içi davranışa göre segment oluştur. Örnek: kullanıcı son 7 günde 3 savaş oyunu indirdi → "action game enthusiast" segmenti → bu segment demand partner'a "contextual signal" olarak gönderilir. DSP bu sinyali third-party cookie olmadan da işleyebilir, CPM artar.
+CDP entegrasyonu için Roibase'in [Premium Yayıncı Programı](https://www.roibase.com.tr/tr/premiumyayinci) hem ad tech stack kurulumunu hem first-party data pipeline'ını kapsıyor — oyun analytics'inden DMP'ye data flow, SSP entegrasyonu ve real-time bidding optimizasyonu dahil.
 
-## Ad Quality + Brand Safety: Gelir Koruma Katmanı
+### Consent Management ve GDPR Compliance
 
-Premium ad monetization yüksek CPM talep eder, ama bu talep ancak brand safe envanter üzerinde gerçekleşir. Bir oyun içinde fraud impression, invalid traffic (IVT), inappropriate content varsa premium advertiser kampanyayı durdurur, blacklist'e alır. Ad quality mühendisliği gelir koruma katmanıdır.
+First-party data kullanırken consent management kritik. GDPR/CCPA/KVKK kapsamında kullanıcıdan explicit consent almadan behavioral segment'leri SSP'ye gönderemezsin. Consent Management Platform (CMP) entegre et, oyun ilk açılışta consent prompt'u göster. Consent opt-in rate'i %60+ tutmak için prompt timing'i optimize et: oyunun tutorial sonrasında, ilk rewarded video öncesi göster — app launch anında gösterirsen opt-in %35'e düşer.
 
-Üç ana risk: (1) Ad fraud — bot traffic, click injection, SDK spoofing. (2) Invalid traffic — accidental click, incentivized impression. (3) Brand safety violation — oyun içeriği violence/hate speech içeriyorsa premium brand serve etmez.
+## Hybrid Monetization: Subscription + Ad-Supported Tier'lar
 
-Ad fraud detection için: SDK düzeyinde device fingerprinting (Adjust, AppsFlyer anti-fraud modülleri), server-side anomaly detection (anormal CTR spike, geographic mismatch), post-bid IVT filtering (IAS, DoubleVerify entegrasyonu). Bir hyper-casual oyun yayıncısı IAS entegre etti, toplam impression'ın %6.2'si invalid olarak işaretlendi, bu impression'lar demand partner'a gönderilmedi — sonuç: fill rate %89 → %83.5 düştü, ama eCPM $4.10 → $5.20 yükseldi (premium advertiser güven arttı), net gelir +%11.
+Premium publisher gelir modelinde tek reklam yetmez — subscription + ad-supported hybrid tier'lar oluştur. Kullanıcıya seçenek sun: ayda $4.99 ödeyip ad-free oyna ya da ücretsiz oyna ama rewarded video + interstitial gör. 2026 mobile gaming datası gösteriyor ki %8-12 kullanıcı subscription'a geçiyor, kalan %88-92 ad-supported'da kalıyor. Net etkisi: subscription'dan gelen $4.99 × %10 user base + ad geliri %90 user base = toplam gelir %35+ artıyor.
 
-Brand safety: oyun ESRB/PEGI rating'ine göre ad content filter kur. Mature (17+) oyunda alkol/kumar reklamı serve edilebilir, ama E (Everyone) oyunda edilemez. GAM 360'da content category blocking kuralları var, programmatic tarafta IAB content taxonomy kullanılır. Premium brand advertiser kampanyalarında brand safety failure tolerance %0.5'in altında olmalı — yoksa kampanya pause olur.
+Subscription tier'ını pazarlarken bundling stratejisi kullan: sadece "reklam yok" değil, "+%20 bonus currency, exclusive skins, priority support" gibi value ekle. Bu şekilde subscription ARPU $4.99'dan $7.99'a çıkabiliyor.
 
-## Stack Entegrasyonu: Single Source of Truth
+## Tech Stack: SSP, Ad Server, Analytics Entegrasyonu
 
-Header bidding, direct sales, subscription, first-party data — bunların hepsi ayrı sistemlerde yönetilirse veri tutarsızlığı, attribution hatası, revenue leakage kaçınılmaz. Tüm ad monetization stack'i tek data warehouse'a bağlanmalı: BigQuery, Snowflake, Redshift.
+Premium publisher operasyonunun backbone'u doğru tech stack. Minimum gerekli bileşenler:
 
-Pipeline şöyle işler:
-1. Ad server log (impression, click, conversion) → Pub/Sub/Kinesis → data lake
-2. Subscription event (purchase, renewal, churn) → backend DB → CDC → data lake
-3. UID2 identity graph → SSP partner feed → data lake
-4. Game analytics (session, progression, IAP) → SDK event → data lake
+| Bileşen | Araç Örnekleri | Fonksiyon |
+|---|---|---|
+| SSP (Supply-Side Platform) | Google Ad Manager, Magnite, PubMatic | Demand agregasyonu, header bidding orkestrasyon |
+| Ad Server | Google Ad Manager 360, Smart AdServer | Direct campaign serve, frequency capping, creative rotation |
+| CDP | Segment, mParticle, Treasure Data | First-party data toplama, segment oluşturma, SSP entegrasyonu |
+| CMP | OneTrust, Cookiebot, TrustArc | GDPR/CCPA consent yönetimi |
+| Analytics | Amplitude, Mixpanel + custom BI | Monetization funnel analizi, cohort LTV modelleme |
 
-Bu katmanların birleştiği nokta: unified user profile. Her kullanıcı için tek kayıt: ad impression count, subscription status, UID2 token, LTV, cohort, churn probability. Bu profile dayalı ML modeli şu kararı verir: kullanıcıya ad mi göster, subscription teklifi mi sun, yoksa IAP kampanyası mı çalıştır. Real-time decision engine olmadan yield optimization yarım kalır.
+Bu stack'i kurarken kritik nokta data flow seamless olmalı: oyun event'i → CDP → SSP bid request 150ms altında tamamlanmalı. 150ms üstü latency bid loss rate'ini %8+ artırıyor.
 
-Bir strateji oyunu yayıncısı unified profile tablosunu şöyle kullandı: `user_id | ad_impression_30d | subscription_active | ltv_predicted | churn_risk_score | preferred_ad_format`. Model her session başında bu tabloyu okur: eğer `churn_risk_score > 0.7` ve `subscription_active = false` ise kullanıcıya $1.99 subscription discount teklifi göster, ad serve etme (potansiyel subscriber'ı kaybetme riskini düşür). Sonuç: churn --%9, subscription conversion +%14.
-
-Premium yayıncı programı ad tech stack'ini gelir makinesine dönüştürür: header bidding ile CPM %18-27 yükselir, direct sales ile premium brand demand eklenir, subscription ile ad removal fiyatlaması segment-based optimize edilir, first-party data ile UID2/contextual targeting CPM'i +%12-18 artırır, ad quality ile brand safe envanter premium advertiser güvenini korur. Ancak bu sistemlerin entegrasyonu mühendislik disiplini gerektirir — waterfall'dan header bidding'e geçiş tek başına yeterli değil, tüm stack unified data warehouse'a bağlanmalı, ML-driven decision engine kurulmalı. Başlangıç: mevcut ad stack'inin audit'i, eCPM baseline'ı belirle, header bidding pilot (server-side, 3 demand partner, 30 gün), sonuç ölçümü, scale. Premium yayıncı operasyonu sürekli test-ölçüm döngüsüdür, bir kez kurup unutulan sistem değil.
+Premium yayıncı programları bu tech stack'i pasif reklam yüklemekten aktif gelir mühendisliğine dönüştürüyor. Header bidding gerçek zamanlı fiyat rekabetini enable ediyor, direct sales premium brand demand'ini unlock ediyor, first-party data targeting precision'ını artırıyor. Bu üç unsurun entegrasyonu ad tech stack'ini gaming publisher'ın en büyük growth lever'ına çeviriyor — şartı doğru kurulmuş mimari, data-driven floor stratejisi ve consent-compliant first-party veri pipeline'ı.
