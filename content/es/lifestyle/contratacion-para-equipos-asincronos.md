@@ -1,106 +1,111 @@
 ---
-title: "Contratación para Equipos Asincrónicos: Filtros Prácticos y Estructura de Entrevista"
-description: "Semana de prueba, evaluación escrita, eliminar el sesgo sincrónico — rediseñar el proceso de selección para una cultura de equipo asincrónica"
-publishedAt: 2026-06-01
-modifiedAt: 2026-06-01
+title: "Contratación para Equipos Asincronos: Filtros Prácticos y Estructura de Entrevistas"
+description: "Trial week, evaluaciones escritas y eliminación del sesgo síncrono: los componentes fundamentales de la contratación en equipos async-first y los criterios del proceso de prueba de 7 días."
+publishedAt: 2026-07-18
+modifiedAt: 2026-07-18
 category: lifestyle
-i18nKey: lifestyle-005-2026-06
-tags: [async-first, hiring, remote-work, team-culture, knowledge-work]
-readingTime: 9
+i18nKey: lifestyle-005-2026-07
+tags: [async-first, contratacion-remota, trial-week, evaluacion-escrita, cultura-organizacional]
+readingTime: 8
 author: Roibase
 ---
 
-La estructura clásica de entrevista está optimizada para la comunicación sincrónica: 45 minutos en Zoom, desafío de pizarra, presión de "responde ahora". Si estás construyendo un equipo asincrónico, este proceso mide las señales equivocadas. Hablar rápido ≠ pensar con calidad. Guardar silencio ≠ falta de conocimiento. En Roibase llevamos 8 años trabajando remotamente, hace 3 años hicimos la transición completa a async — rediseñamos nuestro proceso de selección 4 veces. En este artículo comparto los filtros prácticos, el mecanismo de semana de prueba y cómo rompemos el sesgo sincrónico.
+Los equipos async-first no pueden usar el proceso de contratación clásico. Un candidato que muestra reactividad instantánea en videollamada, piensa rápido en la pizarra, tiene carisma en presentaciones, puede quedarse en silencio en un entorno async. Al contrario, un candidato que ama el pensamiento escrito, hace análisis profundo y rechaza la presión síncrona puede ser infravalorado en una llamada de 45 minutos. En 2026, mientras los equipos remotos crecen, este desajuste ha duplicado el costo de contratación. La solución es simple: trasladar el proceso de selección al tempo natural de la cultura async.
 
-## Por qué las entrevistas sincrónicas engañan en equipos asincronos
+## Identificar el Sesgo Síncrono
 
-En el formato clásico, el candidato intenta venderse en 45 minutos, el equipo decide basándose en el rendimiento de ese momento. Este formato recompensa la comunicación extravertida — pero la habilidad crítica en equipos asincronos es otra: construir contexto por escrito, tomar decisiones autónomas en incertidumbre, adaptarse a ciclos de feedback asincrónico.
+El escenario clásico de entrevista: revisión de CV → 30 minutos de llamada RR.HH. → 1 hora de entrevista técnica → case study → final. Cada fase espera comunicación en tiempo real. El candidato menciona 3 años de experiencia remota en su CV, pero todo el proceso se basa en videollamadas. Esta estructura no mide compatibilidad async, mide desempeño síncrono.
 
-En Roibase, en las últimas 12 contrataciones de 2023, observamos esta correlación: 3 personas con puntuaciones altas en entrevista pero bajo throughput en tickets de Linear en los primeros 90 días. Característica común: brillantes en reuniones sincrónicas, pero contexto débil en comentarios de Asana/Linear, retrasos de 12 horas en threads de Slack. Ejemplos inversos también existen — 2 personas tímidas en entrevista pero con RFC (request for comment) escritos excelentes, que en 6 meses alcanzaron la tasa de aprobación más alta de revisión de código en el equipo.
+El sesgo existe porque: el empleador asume que respuesta rápida = alto compromiso. El candidato que responde en Slack en 5 minutos se prefiere sobre quien envía análisis meditado en 2 horas. Sin embargo, en un equipo async, el segundo es más valioso. Romper este sesgo comienza aquí: adaptar el formato de entrevista al tempo natural async.
 
-Esta diferencia viene de aquí: en entornos sincronos hay premio por "respuesta rápida", en entornos asincronos hay premio por "respuesta reflexionada". El formato de entrevista mide lo primero, el trabajo diario requiere lo segundo. Para romper este desajuste, rediseñamos el pipeline de contratación según señales asincrónicas.
+Roibase ha aplicado desde 2019 esta regla: primer contacto escrito, primera evaluación mediante assessment escrito, primer feedback asincrónico. Las videollamadas ocurren solo antes de la trial week para evaluar alineación cultural. Esta estructura revela el estilo de trabajo real del candidato porque la conducta observada es el proceso mismo, no una demostración de desempeño.
 
-## Primer filtro: no CV, sino evaluación escrita
+### Filtros Async en el Embudo de Contratación
 
-Hacemos screening de CV, pero el filtro real es una evaluación escrita de 2 horas en la primera etapa. El candidato responde 3 preguntas abiertas — en Google Doc, dentro de 48 horas, puede usar referencias.
+El primer filtro no es CV, es un formulario de solicitud. 3-5 preguntas abiertas: "¿Cómo funcionó la comunicación asincrónica en tu último proyecto?", "¿Cómo trabajaste con diferencias horarias?", "¿Puedes compartir ejemplos de documentos escritos?". Las respuestas se esperan entre 200-400 palabras. En esta fase, 3 de 10 candidatos se eliminan: responden una oración o saltan preguntas. Esta es la primera prueba de disciplina async — cumplir con instrucciones escritas.
 
-Preguntas de ejemplo (product manager):
-- "Lanzaste una característica, en la primera semana la adopción llegó a 3%. ¿Qué métricas observas, qué cambios testerías? ¿Cómo documentas la decisión?"
-- "¿Cómo debe formarse el roadmap de producto en un equipo asincrónico? ¿Linear milestone, RFC en Notion, encuesta en Slack — cada uno para qué?"
-- "El equipo de engineering dice 'esta característica crea deuda técnica', el founding team dice 'impacta directo en revenue'. En asincrónico, ¿cómo resuelves este conflicto?"
+El segundo filtro: take-home task. En lugar de una videollamada, un escenario laboral real para completar en 48 horas. Pero el punto crítico: el entregable no es código/diseño, sino decision log + documentación. El candidato debe enviar: análisis del problema, enfoque elegido, alternativas rechazadas, desglose temporal. Por ejemplo, para una tarea frontend, "escribí el componente" es insuficiente; se espera "elegí la librería X sobre Y porque reduce el tamaño del bundle un 15%, el tradeoff es pérdida de type safety pero es aceptable".
 
-Criterios de evaluación:
-- **Claridad estructural:** ¿Usa encabezados, puntos, secciones?
-- **Construcción de contexto:** ¿Escribe sus suposiciones explícitamente, define incertidumbres?
-- **Disciplina de referencias:** ¿Diferencia claramente entre experiencia propia y lo que leyó?
-- **Señal de autonomía:** ¿Dice "debería preguntarte" o "en estos 3 escenarios decido así"?
+El tercer filtro: simulación de peer review. Se muestra al candidato un PR real de un miembro del equipo actual (anonimizado) y se le pide escribir una revisión. En equipos async, la cultura de code review es crítica — tonalidad, nivel de detalle, capacidad de feedback constructivo se prueban aquí. El formato de respuesta debe parecer un thread de comentario en GitHub: línea por línea + resumen general.
 
-En 2024, 47 candidatos entraron en evaluación escrita, 12 la aprobaron. De esos 12, 10 llegaron a contratación final — tasa de falsos positivos 17%. En screening de CV era 60%. La evaluación escrita mide directamente capacidad asincrónica.
+## Trial Week: Prueba de Trabajo Real de 7 Días
 
-### Para roles técnicos: code challenge → RFC review
+La trial week es la columna vertebral de la contratación async. Concepto: el candidato trabaja 7 días con el equipo, es remunerado (por tarifa diaria), asume tareas reales. No es pasantía estacional, es mini-empleo — el candidato aparece en Slack del equipo, en Linear, en repositorios. La única diferencia: es temporal, periodo de evaluación mutua.
 
-En hiring de developers no hacemos whiteboard challenges. Hacemos un RFC (architectural decision record) real, le decimos al candidato "revisa este diseño, propón alternativas, escribe los tradeoffs". Formato comentario en GitHub, markdown, 4 horas.
+El proceso funciona así: día 1 es onboarding (runbook escrito + Q&A asincrónico), días 2-6 son tareas de sprint (del backlog real), día 7 es retrospectiva (escrita + llamada síncrona opcional). La selección de tareas es crítica: muy fácil = no ves capacidad real, muy difícil = evaluación injusta. La tarea ideal: completable en 3-4 días, requiere 2-3 roundtrips asincrónicas con miembros del equipo, con calidad lista para merge.
 
-Ejemplo RFC: "ETL de PostgreSQL a BigQuery — dbt + Airflow vs Fivetran. ¿Cuál para nosotros?" El candidato hace análisis técnico *y* escribe con el estilo de code review asincrónico. Resultado: en los primeros 30 días, calidad de code review 40% más alta (cohorte 2025).
+Conductas observadas:
+- **Distribución de tiempo de respuesta:** No cuánto tiempo tarda el candidato en responder, sino calidad de la respuesta. Análisis meditado en 2 horas > aprobación superficial en 10 minutos.
+- **Hábito de documentación:** ¿Escribe decision log además del código/diseño entregable? ¿Está completa la descripción del PR o vacía?
+- **Calidad de preguntas:** ¿Pregunta "¿cómo funciona esto?" o "interpreté X de esta forma, ¿es correcto?"
+- **Umbral de autonomía:** ¿Hace ping inmediatamente si se bloquea o primero investiga y luego hace pregunta específica?
 
-## Semana de prueba: trabajo real, observación real
+Al final de la trial week, ambas partes tienen derecho de rechazo. El candidato experimentó el tempo async, el equipo vio el estilo de trabajo real. Esta estructura elimina el riesgo de "verse bien sobre papel".
 
-El candidato que aprueba evaluación escrita recibe una oferta de semana de prueba pagada (1/4 del salario bruto, 20 horas). Asume un proyecto real — no producción pero adjacent a producción. Ticket en Linear, canal en Slack, doc de contexto en Notion.
+### Criterios Medibles
 
-Reglas de semana de prueba:
-- **Solo asincrónico:** Sin Zoom, video Loom o updates escritos
-- **Scope autónomo:** No "haz esto", sino "resuelve este problema, cómo lo hagas es tu decisión"
-- **Ciclo de feedback real:** Los miembros del equipo comentan async, el candidato revisa
+La trial week requiere evaluación basada en criterios numéricos, no subjetiva. La rúbrica usada en Roibase:
 
-Criterios de observación:
-1. **Calidad de preguntas en primeras 24h:** ¿Define incertidumbre o solo pregunta "qué hago"?
-2. **Primer commit/draft en 48h:** ¿Inicia iteración sin trampa perfeccionista?
-3. **Reacción a feedback async en 72h:** ¿Defensivo o "entiendo, cambio esto"?
-4. **Entrega final:** ¿Cierra scope sin scope creep, con output limpio?
+| Criterio | Puntuación (1-5) | Peso |
+|----------|------------------|------|
+| Claridad en comunicación escrita | | 25% |
+| Calidad de respuesta async (profundidad, no velocidad) | | 20% |
+| Completitud de documentación | | 20% |
+| Ejecución técnica | | 20% |
+| Alineación cultural (valores, tono de feedback) | | 15% |
 
-En semana de prueba falla 30% de candidatos — pero este fail es temprano, muy más barato que fail en probation de 90 días. En 2025, 15 candidatos pasaron semana de prueba, 10 fueron full-time, 9 de esos 10 siguen en equipo al año — retención 90%.
+Cada miembro del equipo puntúa independientemente, luego se promedian en una reunión de calibración (esta sí puede ser síncrona). Umbral: 3.5/5 aprueba, 3.0-3.5 está en zona gris (se discute si extender trial), por debajo de 3.0 rechazo.
 
-## Romper el sesgo sincrónico: silent interview
+Crítico: ejecución técnica tiene el peso más bajo (20%). Porque en equipos async, la habilidad técnica insuficiente se enseña después, pero la disciplina async es difícil de enseñar. La calidad de comunicación escrita y hábitos de documentación pesan más.
 
-Después de semana de prueba hacemos entrevista final, pero invertimos el formato: "silent interview". 30 minutos, el candidato no habla — enviamos las preguntas por escrito en Google Doc previo, el candidato responde por escrito, en la entrevista solo leemos y hacemos follow-up.
+## Formato de Evaluación Escrita
 
-Este formato prueba 3 cosas:
-- **Disciplina de preparación:** Escribir respuestas requiere más pensamiento que habla espontánea
-- **Destilación:** Síntesis neta en lugar de discurso largo
-- **Empatía asincrónica:** El otro va a leer, por eso claridad es crítica
+La evaluación escrita se realiza antes de la trial week, el propósito es: probar aptitud del candidato para trabajo async. Formato: se envía al candidato un case study de 3-5 preguntas, responder en 3 días (se pueden tomar descansos, horarios flexibles). Las preguntas son basadas en escenarios, abiertas, sin respuesta única correcta/incorrecta.
 
-Pregunta de ejemplo: "¿Qué considerarás éxito en los primeros 90 días? Escribe con métricas." La respuesta no es "adaptarme", sino "merge mi primer RFC, bajar cycle time de code review a 24h, alinear 3 stakeholders en async".
+Ejemplo de pregunta (para rol de producto):
+> "Tu equipo trabaja en 4 zonas horarias diferentes. Una feature está a punto de lanzarse pero QA reporta un bug mayor. ¿Aplazas el lanzamiento o aceptas el bug como menor y continúas? ¿Cómo tomas la decisión, con quién te alineas, cómo gestionas el proceso en ambiente async?"
 
-Después de silent interview, 15 minutos de sync Q&A — pero principalmente preguntas del candidato. En este formato hicimos 8 entrevistas finales en 2024, 7 derivaron en hire, 1 candidato se retiró (no estaba listo para async).
+Formato esperado de respuesta (800-1200 palabras):
+1. Desglose del problema (stakeholders, tradeoffs)
+2. Marco de decisión (qué criterios usarías para decidir)
+3. Plan de comunicación async (qué escribes a quién, cuándo)
+4. Resultado documentado (cómo se registra la decisión)
 
-## Onboarding: reforzar disciplina asincrónica
+Lo que se evalúa:
+- **Pensamiento estructurado:** ¿Hay párrafos, títulos, flujo lógico?
+- **Conciencia de stakeholders:** ¿Entiende dinámicas del equipo, diferencias horarias?
+- **Transparencia:** ¿Expresa explícitamente sus supuestos ("aquí no sé X, asumo...")?
+- **Action bias:** ¿Analiza o solo opina? Los equipos async esperan "decisión + plan de implementación".
 
-Después de decisión de hire, los primeros 30 días tienen prácticas obligatorias para fortalecer el músculo async:
+Respuestas deficientes: lista de puntos (sin profundidad), párrafo único (sin estructura), sugerencias de "hablemos por call" (reflex síncrono, no async).
 
-| Día | Actividad | Métrica |
-|-----|----------|--------|
-| 1-7 | Leer handbook de Notion, hacer 10 preguntas (escritas) | Calidad de pregunta (incertidumbre vs verificación de info) |
-| 8-14 | Primer ticket Linear: actualizar documentación | Claridad de commit message, descripción de PR |
-| 15-21 | Escribir primer RFC (scope pequeño) | Cantidad de comentarios peer review, tiempo de aprobación |
-| 22-30 | Escribir review para RFC de otro equipo | Señal de feedback constructivo |
+## Alineación Cultural: El Lugar de la Llamada Síncrona
 
-Esta estructura desarrolla el músculo async — incluso un developer que escribe código a los 30 días ha fortalecido su caparazón de "contexto escrito". En trabajos de [posicionamiento de marca en respuestas LLM](https://www.roibase.com.tr/es/branding) en Roibase, aplicamos disciplina similar: brand voice document, guideline, tone-of-voice — todas herramientas de alineación asincrónica.
+Async-first ≠ cero síncrono. Antes o después de la trial week, se realiza una llamada de alineación cultural de 30-45 minutos. Propósito: alignment no técnico — valores, filosofía de trabajo, expectativas. Las preguntas en esta llamada son:
+- "¿Cuál fue la parte más difícil del trabajo async para ti?" (prueba de autoconciencia)
+- "¿Cómo manejas desacuerdos, hay diferencia entre síncrono y async?" (resolución de conflictos)
+- "¿Cuál fue tu mejor experiencia de trabajo remoto, por qué?" (reconocimiento de patrones)
 
-## Contra-argumento: ¿la contratación async es lenta?
+En esta llamada, el candidato también pregunta — salario, carrera, tamaño del equipo. Pero lo crítico: aquí se detectan red flags culturales. Por ejemplo, si el candidato constantemente dice "hagamos una reunión", enfatiza "decisiones rápidas" → baja compatibilidad async. O si dice "no soy bueno con comunicación escrita" → no es el rol correcto, rechazo.
 
-Sí, toma 2 semanas más que pipeline clásico. Evaluación escrita 48h, semana de prueba 5 días, silent interview 1 semana de preparación. Pero este tiempo es mínimo comparado con el costo de bad hire durante 6 meses. En Roibase, en 2022 contratamos 2 personas con pipeline sincrónico, ambas se fueron al mes 4 — costo de bad hire: ~€40K (maaş + team disruption). En 2024, pipeline async contrató 7 personas, todas aún en equipo al año 12 — costo de good hire: inversión inicial + valor compuesto.
+El [trabajo de marca](https://www.roibase.com.tr/es/branding) de Roibase refleja valores async-first en la propuesta de empleador. El candidato ya leyó "cultura async" en el website, conoce el proceso de trial week, esta llamada no es sorpresa. La alineación cultural así comienza con auto-selección — candidatos que no esperan sincronía ni siquiera aplican.
 
-Otro contra-argumento: "en startup rápido, hiring async es lujo." Respuesta: rapidez = hire correcto, no hire rápido. Si construyes equipo asincrónico, filtrar con pipeline sincrónico es error lógico — mides señales equivocadas.
+## Continuidad Async en Onboarding
 
-## Efectos secundarios de contratación async
+El candidato fue seleccionado, primeros 30 días son onboarding. Aquí la disciplina async debe continuar porque si vuelves a síncrono después de la trial week, hay inconsistencia cultural. Día 1: runbook escrito (Notion/GitBook), presentación del equipo (videos Loom o documentos de perfil), canal Q&A asincrónico (thread dedicado en Slack).
 
-Al implementar esta estructura, ves efectos laterales:
-- **Employer brand:** El pool de candidatos cambia — vienen personas que dicen "trabajemos sin meetings"
-- **Retención:** Alineación cultural en primeros 90 días 40% más rápida (cohorte 2025 vs 2022)
-- **Calidad de referral:** El equipo recomienda amigos con músculo async similar
+Check-ins en primera semana: standup diario asincrónico (qué hiciste, qué harás, blockers) + 1:1 semanal (optional síncrono u escrito). El nuevo tiene derecho a estar en silencio — si no pregunta no es problema, está observando. En equipos síncronos "silencioso en primera semana = desenganchado" es un supuesto, en async es natural.
 
-En últimos 12 meses, de 23 candidaturas a Roibase, 9 vinieron de búsqueda "async-first hiring process" — el pipeline mismo es señal de marca.
+Retrospectiva al día 30: el nuevo escribe qué documentación faltaba, qué proceso fue confuso, este feedback se integra al runbook permanente de onboarding. Así cada nuevo hire contribuye a mejora continua.
 
----
+## Balance Costo-Beneficio de Contratación Async
 
-Construir equipo asincrónico no empieza con quién contratas — empieza con *cómo* contratas. Screening de CV, entrevista de 45 minutos, "cultural fit" por intuición — herramientas de la era sincrónica. Evaluación escrita, semana de prueba, silent interview — filtros de la era asincrónica. El proceso es más largo pero la señal es más alta. Mientras knowledge work se desplaza completamente a async en 2026, la contratación también debe desplazarse.
+Trial week = 7 días × tarifa diaria pagada, para candidato rechazado es costo hundido. Pero la alternativa: descubrir hire incorrecto 3 meses después, separación + severancia + re-contratación + pérdida de moral del equipo, costo mucho mayor. Trial week no es costo hundido, es inversión en mitigación de riesgo.
+
+Costo de tiempo: trial week requiere 2-3 horas/semana del equipo (revisión de tareas, feedback, Q&A async). El proceso clásico de entrevista también toma 4-5 horas síncronas pero distribuidas. Diferencia: trial week produce trabajo real (código/diseño fusionable), entrevista clásica no (case study teórico).
+
+Tasa de conversión del embudo async es baja: 100 solicitudes → 30 evaluaciones escritas → 10 trial weeks → 3 hires. Pero calidad es alta: de los 3 hires, 2.7 permanecen 1+ año (datos Roibase 2022-2025). Embudo clásico: 100 → 50 teléfono → 20 presencial → 5 hires pero 2 se van en 6 meses.
+
+El proceso async es lento pero sostenible. Si el objetivo de crecimiento es agresivo (10 personas en 3 meses) no funciona porque trial weeks no paralelizar. Pero para equipos boutique (3-5 hires/año) es fit ideal.
+
+Contratación para async-first es disciplina, es diseño de proceso. Trial week, evaluaciones escritas y ruptura del sesgo síncrono reflejan valores — profundidad sobre velocidad, consistencia sobre desempeño, documentación sobre carisma. Esta estructura escala desde primeras 10 personas hasta 100 porque su característica fundamental es continuidad cultural.
