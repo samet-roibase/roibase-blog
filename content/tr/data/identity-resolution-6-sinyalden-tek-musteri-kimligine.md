@@ -1,144 +1,186 @@
 ---
 title: "Identity Resolution: 6 Sinyalden Tek Müşteri Kimliğine"
-description: "Hash matching, probabilistic linking ve household clustering ile dağınık touchpoint'leri tek müşteri kimliğine nasıl birleştirirsiniz? Production identity graph mimarisinin inceliği."
-publishedAt: 2026-07-03
-modifiedAt: 2026-07-03
+description: "Hash matching, probabilistic linking ve household identity ile dağınık touchpoint'leri tek müşteri kimliğine nasıl birleştirirsiniz? Server-side pipeline ve pratik şema."
+publishedAt: 2026-07-19
+modifiedAt: 2026-07-19
 category: data
 i18nKey: data-003-2026-07
-tags: [identity-resolution, data-engineering, cdp, first-party-data, customer-identity]
+tags: [identity-resolution, hash-matching, probabilistic-linking, cdp, first-party-data]
 readingTime: 8
 author: Roibase
 ---
 
-Cookie'ler gitti, giriş oranları %8'de, her cihazda farklı ID, her kanalda başka sinyal. Ortalama bir e-ticaret müşterisi satın alma yolculuğunda 6 farklı touchpoint bırakıyor ama platformlar bunları 6 farklı kişi gibi kaydediyor. Pazarlama datasının en büyük sorunu bu: aynı insanın 6 parçaya bölünmüş dijital kimliği. Identity resolution bu parçaları mühendislikle birleştirme disiplini — hash matching, probabilistic linking, household clustering aracılığıyla. Production'da çalışan bir identity graph kurmak sadece teknik değil, privacy + performans + doğruluk dengesini kurmak demek.
+Bir kullanıcı cep telefonundan kampanyaya tıklıyor, masaüstünde ürünü sepete ekliyor, mağazadan satın alıyor. Bu üç sinyal üç farklı kimlik: `device_id`, `cookie_hash`, `email_hash`. Identity resolution bu parçaları tek müşteri profili haline getiren data pipeline'ı. Cookie sonrası dönemde — Consent Mode v2, iOS ATT, CCPA — server-side first-party veriye dayanan kimlik çözümleme mimarisi artık öneri değil zorunluluk.
 
-## Identity Resolution Nedir ve Neden Şimdi Kritik
+## Neden 6 farklı sinyal var
 
-Identity resolution, farklı kaynaklardan gelen sinyal parçalarını (email hash, device ID, browser fingerprint, IP, session cookie) tek bir müşteri profili altında birleştirme sürecidir. 2026'da Google Chrome'un third-party cookie'leri tamamen kaldırması, Safari'nin ITP 2.3'le storage limitini 7 güne düşürmesi, iOS 14.5 sonrası IDFA opt-in oranının %15 civarında kalması nedeniyle cross-device tracking artık platforma bağlı teknolojilerle çözülemez hale geldi.
+Modern pazarlama stack'i kimlik sinyallerini altı katmanda toplar: **browser cookie**, **cihaz ID** (IDFA/GAID), **authenticated hash** (email SHA-256), **customer ID** (CRM/CDP internal), **IP+user-agent fingerprint**, **household graph**. Her biri farklı lifecycle'da devreye girer.
 
-Roibase'in Shopify Plus müşterilerinde yaptığı 2025 Q4 analizi gösterdi ki: aynı kullanıcının mobile web, desktop, app üçgeninde ortalama 3.2 farklı anonymous ID üretiyor. Bu müşteri checkout'a geldiğinde email giriyor ve ancak o an "birleşme" gerçekleşiyor. Ama checkout öncesi 4-5 touchpoint'i de aynı kişiye bağlayamazsanız attribution modeliniz çöker — son tıklama kazanır, gerçek yolculuk görünmez. Identity resolution bu nedenle modern pazarlama ölçümünün altyapı katmanı. Deterministic (kesin eşleşme: email, telefon) + probabilistic (olasılıksal: IP+user-agent+timezone kombinasyonu) yöntemleri birleştirerek %85+ match accuracy hedeflenir.
+Browser cookie ilk touchpoint'te; cihaz ID mobil uygulamada; authenticated hash email veya telefon numarası toplanınca; customer ID checkout sonrası; fingerprint consent olmadan probabilistic eşleme için; household graph aynı routerdan bağlanan cihazları gruplamak için kullanılır. Sorun: bu altı sinyal farklı tablolarda, farklı TTL'lerde (cookie 90 gün, IDFA sonsuz, email hash müşteri silene kadar) tutuluyor. Eğer resolution yapılmazsa her kanal ayrı kullanıcı sayıyor — marketing mix model'de çift sayım, incrementality test'lerinde overestimation, retention cohort'larında düşük retention illüzyonu.
 
-Bu disiplini production'a taşımak 3 katmanlı mimari gerektirir: sinyal toplama (raw event stream), identity stitching (graph engine), profile unification (CDP layer). Her katmanda privacy compliance (TCF 2.2, KVKK consent) ve performans (real-time vs batch resolution tradeoff'u) dengelenir.
+Resolution logic'i iki yöntemle kurulur: **deterministik (hash matching)** ve **probabilistic (graph linking)**. Deterministik: email SHA-256 hash'i browser event'i ile backend transaction'ı eşleştiriyor — %100 kesinlik. Probabilistic: aynı IP+user-agent 24 saat içinde iki farklı event'te görülürse aynı kullanıcı olasılığı %73 (örnek threshold). Hiç resolution yapmazsanız unique user sayısı %40-80 şişiyor (kategori ve cihaz mix'ine göre).
 
-## Hash Matching: Deterministic Identity'nin Çekirdeği
+## Hash matching: email ve telefonu identity key'e çevirmek
 
-Hash matching, en güvenilir identity resolution yöntemidir: kullanıcıdan gelecek email veya telefon numarasını SHA256 ile hashleyip farklı sistemlerdeki hash'lerle eşleştirirsiniz. Accuracy %100'e yakındır çünkü collision riski desprezabl, aynı hash = aynı email. Fakat 3 kritik şartı var: (1) kullanıcının PII'sını toplamış olmalısınız (form doldurma, giriş yapma), (2) consent alınmalı (GDPR 6(1)(a) veya meşru menfaat), (3) hash standardı sistemler arası tutarlı olmalı (lowercase + trim + UTF-8 encoding).
+Hash matching server-side identity resolution'ın omurgası. Kullanıcı email veya telefon verdiği anda client-side ya da sGTM SHA-256 hash üretir, bu hash `identity_map` tablosuna yazılır. Sonraki tüm anonim event'lerde cookie veya device ID lookup yaparak hash'e ulaşırsınız.
 
-Roibase'in [CDP & retention engineering](https://www.roibase.com.tr/tr/retention-engineering-cdp) projelerinde şu pipeline'ı kullanıyoruz:
+Basit `identity_map` şeması:
 
 ```sql
--- BigQuery'de email hash standardizasyonu
-CREATE OR REPLACE FUNCTION `project.dataset.hash_email`(email STRING)
-RETURNS STRING AS (
-  TO_HEX(SHA256(LOWER(TRIM(email))))
+CREATE TABLE identity_map (
+  canonical_id STRING NOT NULL,      -- UUID, internal ID
+  signal_type STRING NOT NULL,       -- 'email_sha256', 'phone_sha256', 'device_id', 'cookie'
+  signal_value STRING NOT NULL,      -- hash veya ID
+  first_seen TIMESTAMP,
+  last_seen TIMESTAMP,
+  PRIMARY KEY (signal_type, signal_value)
 );
-
--- Event tablosunda email hash enrichment
-SELECT
-  event_timestamp,
-  user_pseudo_id,
-  `project.dataset.hash_email`(user_properties.email) AS email_hash,
-  device.category,
-  traffic_source.medium
-FROM `analytics_123456789.events_*`
-WHERE _TABLE_SUFFIX BETWEEN '20260601' AND '20260630'
-  AND user_properties.email IS NOT NULL;
 ```
 
-Bu hash'i Segment/mParticle gibi CDP'ye yazarsanız farklı cihazlardan gelen eventleri aynı `email_hash` altında birleştirir. Örnek senaryo: kullanıcı pazartesi desktop'ta newsletter'a abone oluyor (email topluyorsunuz), çarşamba mobilde anonim geziyor, perşembe tekrar desktop'ta giriş yapıp satın alıyor. Email hash'i olmasaydı 3 farklı user_id görecektiniz; hash matching ile 1 profil, 3 session, net journey.
+Bir kullanıcı kayıt formunda `user@example.com` girdiğinde sGTM bu email'i SHA-256 ile hash'leyip `INSERT` yapıyor: `('uuid-123', 'email_sha256', 'abc123...', NOW(), NOW())`. Aynı oturumda cookie `_ga=GA1.1.xyz` varsa ikinci satır: `('uuid-123', 'cookie', 'GA1.1.xyz', NOW(), NOW())`. Böylece `canonical_id = uuid-123` altında iki sinyal birleşti.
 
-**Tradeoff:** Hash matching yalnızca authenticated user'larda çalışır. E-ticaret sitelerinde giriş oranı %8-12, yani trafiğin %88-92'si anonymous kalıyor. Bu segmentte probabilistic yöntemler devreye giriyor.
-
-## Probabilistic Linking: Sinyalleri İstatistiksel Olarak Eşleştirmek
-
-Probabilistic identity resolution, farklı sinyallerin kombinasyonunu kullanarak "muhtemelen aynı kişi" skorunu hesaplar. IP adresi + user-agent + timezone + session behavior pattern'lerini birleştirip %80+ confidence threshold'unda match kabul edersiniz. Accuracy deterministic kadar yüksek değil (false positive %5-10 aralığında) ama anonymous trafiği de kapsama alır.
-
-Algoritma mantığı: her sinyal bir "weight" taşır. IP adresi ev/ofis ağında stable ise +0.3, user-agent+timezone kombinasyonu nadir ise +0.25, session içinde davranış pattern'i (sayfa sırası, scroll depth, timing) önceki bir profille %90 örtüşüyorsa +0.4. Toplam skor >0.8 ise iki session'ı aynı identity node'a bağlarsınız. Bu işlem real-time yapılmaz — batch job ile günde 1-2 kez graph yeniden hesaplanır.
-
-Roibase'in gaming vertical'ında kullandığı probabilistic pipeline şöyle:
+Sonraki session'da kullanıcı email girmeden sadece `_ga=GA1.1.xyz` ile geliyor. BigQuery'de lookup:
 
 ```sql
--- Fingerprint oluşturma (simplified)
-WITH fingerprints AS (
+SELECT canonical_id
+FROM identity_map
+WHERE signal_type = 'cookie' AND signal_value = 'GA1.1.xyz'
+LIMIT 1;
+```
+
+Dönüş: `uuid-123`. Event'i bu ID'ye bağlıyorsunuz — email hash kullanılmadan da aynı kullanıcı tanınıyor. Hash matching'in kesinliği %100 çünkü hash collision kriptografik olarak imkansız. Ancak kapsama sorunu var: kullanıcı email vermemişse hash yok, o zaman probabilistic'e geçiyorsunuz.
+
+### Collision riski ve salt
+
+SHA-256 collision riski teorik: 2^128 denemede 1. Ama production'da asıl sorun **aynı email farklı canonical_id'lere bağlanmış olabilir** (manuel hata, eski migration artığı). Bu yüzden `UNIQUE INDEX (signal_type, signal_value)` koyuyorsunuz. Salt kullanımı (email + gizli string sonra hash) collision riskini artırmıyor ama [first-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) tasarımında privacy layer ekliyor — salt rotate edince eski hash'ler geçersiz kalıyor, GDPR "right to be forgotten" için kullanışlı.
+
+## Probabilistic linking: IP, user-agent ve device graph
+
+Kullanıcı anonim modda geziniyorsa deterministik sinyal yok. Bu durumda **probabilistic graph** kullanıyorsunuz: IP + user-agent + timestamp proximity ile "muhtemelen aynı kişi" skor üretiyorsunuz. Örnek: aynı IP'den aynı user-agent ile 15 dakika ara ile iki event — %85 olasılıkla aynı kullanıcı.
+
+Basit probabilistic merge logic:
+
+```sql
+WITH anon_events AS (
   SELECT
-    user_pseudo_id,
-    event_date,
-    NET.IP_TO_STRING(NET.SAFE_IP_FROM_STRING(user_first_touch_timestamp)) AS ip_prefix,
-    device.operating_system,
-    device.browser,
-    geo.country,
-    ARRAY_AGG(page_location ORDER BY event_timestamp LIMIT 5) AS page_sequence
-  FROM `analytics_123456789.events_*`
-  WHERE _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', CURRENT_DATE())
-  GROUP BY 1,2,3,4,5,6
+    event_id,
+    ip_address,
+    user_agent,
+    event_timestamp,
+    FARM_FINGERPRINT(CONCAT(ip_address, user_agent)) AS fingerprint
+  FROM events
+  WHERE canonical_id IS NULL
+),
+clusters AS (
+  SELECT
+    fingerprint,
+    MIN(event_timestamp) AS first_event,
+    MAX(event_timestamp) AS last_event,
+    COUNT(*) AS event_count
+  FROM anon_events
+  GROUP BY fingerprint
+  HAVING TIMESTAMP_DIFF(MAX(event_timestamp), MIN(event_timestamp), HOUR) < 24
 )
 SELECT
-  a.user_pseudo_id AS user_a,
-  b.user_pseudo_id AS user_b,
-  -- Jaccard similarity on page sequence
-  (SELECT COUNT(*) FROM UNNEST(a.page_sequence) AS p WHERE p IN UNNEST(b.page_sequence)) 
-    / (ARRAY_LENGTH(a.page_sequence) + ARRAY_LENGTH(b.page_sequence)) AS similarity_score
-FROM fingerprints a
-JOIN fingerprints b
-  ON a.ip_prefix = b.ip_prefix
-  AND a.operating_system = b.operating_system
-  AND a.user_pseudo_id != b.user_pseudo_id
-WHERE similarity_score > 0.75;
+  a.event_id,
+  c.fingerprint AS probable_cluster_id
+FROM anon_events a
+JOIN clusters c ON a.fingerprint = c.fingerprint;
 ```
 
-Bu sorgu aynı IP + OS kombinasyonunda, sayfa sırasının %75+ benzer olduğu kullanıcıları eşleştirir. Production'da bu score'u graph database'e (Neo4j veya BigQuery graph table) yazıp edge weight olarak tutarsınız.
+Bu sorgu IP+UA hash'ine göre 24 saat içinde event'leri grupluyor. Cluster ID'yi geçici `canonical_id` gibi kullanabilirsiniz ama confidence score ekleyin: `event_count > 3 AND time_span < 1 HOUR → confidence=0.9`.
 
-**Risk:** Shared IP (kahvehane, ofis) veya genel user-agent (iPhone 15 + Safari) kombinasyonları yüksek false positive yaratabilir. Bu nedenle household-level resolution ayrı katmanda ele alınır.
+**Household graph:** Aynı IP'den farklı user-agent'lar (laptop, tablet, telefon) geliyorsa muhtemelen aynı ev. Burada `household_id` oluşturup individual `canonical_id` altına koyuyorsunuz. Örneğin Amazon Prime household: 1 abonelik, 6 profil — identity resolution household seviyesinde aggregate ediyor.
 
-## Household Identity: Aynı Ağdaki Farklı Kişileri Ayırt Etmek
+### False positive oranı
 
-Household clustering, aynı IP/cihaz ağını paylaşan ancak farklı bireyler olan kullanıcıları ayırt etme problemidir. Ev ağında anne, baba, çocuk aynı Wi-Fi'yi kullanıyor; probabilistic matching hepsini tek profile birleştirebilir. Bunu engellemek için behavioral divergence sinyallerine bakılır: product category preference, session timing (sabah 10 vs gece 23), scroll speed, klavye typing pattern (biometric ama GDPR açısından hassas).
+Probabilistic linking'de false positive riski var. Aynı IP + user-agent iki farklı kullanıcıdan gelebilir (ofis WiFi, kütüphane). Threshold çok gevşekse (%50 confidence) %15-25 false positive görürsünüz. Industry best practice: %75+ confidence threshold, 1 saat time window, en az 2 event match. LiveRamp gibi vendor'lar graph database kullanıyor (Neo4j) ve 30+ sinyal kombine ederek %95+ accuracy iddia ediyor — ama kendi first-party pipeline'ınızda 2-3 sinyal ile %80 accuracy yeterli.
 
-Roibase'in telekom sektöründe geliştirdiği model şöyle çalışıyor:
+## Server-side pipeline: sGTM + BigQuery + dbt
 
-1. **IP-level clustering:** Aynı IP'den gelen tüm session'ları tek "household node" altında topla.
-2. **Behavioral segmentation:** Her session'ı feature vector'e dönüştür (product_category, avg_session_duration, bounce_rate, hour_of_day).
-3. **K-means clustering:** Household içinde 2-3 küme oluştur — her küme bir "sub-identity".
-4. **Validation:** Email hash geldiğinde sub-identity'yi confirm et veya yeniden dağıt.
+Identity resolution production ortamında şu data flow'da çalışır:
 
-Örnek tablo yapısı:
+1. **sGTM event ingestion:** Client-side GTM event'i sGTM'e gönderiyor, sGTM email varsa SHA-256 hash ekliyor, BigQuery'e raw event yazıyor (`events_raw`).
+2. **dbt staging model:** `stg_events` tablosu `events_raw`'dan temizlenmiş event'leri üretiyor, `signal_type` ve `signal_value` kolonları parse ediliyor.
+3. **dbt identity_map merge:** Yeni hash görüldüğünde `identity_map`'e `MERGE` yapılıyor (upsert logic).
+4. **dbt canonical_id enrichment:** Her event `identity_map` ile join ediliyor, `canonical_id` lookup yapılıyor.
+5. **dbt aggregation:** User-level metrikler (`user_ltv`, `session_count`) `canonical_id` bazında aggregate ediliyor.
 
-| household_id | sub_identity | feature_vector | last_seen | email_hash |
-|--------------|--------------|----------------|-----------|------------|
-| hh_abc123 | sub_1 | [fashion, 18min, 0900-1200] | 2026-07-02 | hash_x |
-| hh_abc123 | sub_2 | [gaming, 45min, 2100-2400] | 2026-07-02 | NULL |
+Örnek dbt model snippet (`models/staging/stg_events.sql`):
 
-Bu yapı sayesinde aynı hanedeki 2 kişiyi ayrı profile tutarsınız. Email hash geldiğinde (örneğin çocuk giriş yaptı) `sub_2` kesinleşir, ama `sub_1` hala probabilistic kalır.
+```sql
+{{ config(materialized='incremental') }}
 
-**Tradeoff:** Clustering algoritması hesaplama maliyeti yüksektir (her gün tüm household'ları yeniden işlemek gerekir). Batch job'ı 4-6 saatte çalıştırıyoruz — real-time değil, T+1 günde profiller güncellenir.
+WITH events_with_signals AS (
+  SELECT
+    event_id,
+    event_timestamp,
+    COALESCE(user_properties.email_sha256, NULL) AS email_hash,
+    COALESCE(user_properties.ga_client_id, NULL) AS cookie_id,
+    event_params
+  FROM {{ source('bigquery', 'events_raw') }}
+  {% if is_incremental() %}
+  WHERE event_timestamp > (SELECT MAX(event_timestamp) FROM {{ this }})
+  {% endif %}
+)
+SELECT * FROM events_with_signals;
+```
 
-## Production Identity Graph Mimarisi
+Incremental model her saat çalışıyor, son batch'i işliyor. Identity merge logic ayrı bir model (`models/core/fct_identity_resolved.sql`):
 
-Yukarıdaki 3 yöntemi birleştiren production mimarisi şu katmanlardan oluşur:
+```sql
+SELECT
+  e.event_id,
+  COALESCE(im_email.canonical_id, im_cookie.canonical_id) AS canonical_id,
+  e.event_timestamp
+FROM {{ ref('stg_events') }} e
+LEFT JOIN {{ ref('identity_map') }} im_email
+  ON e.email_hash IS NOT NULL
+  AND im_email.signal_type = 'email_sha256'
+  AND im_email.signal_value = e.email_hash
+LEFT JOIN {{ ref('identity_map') }} im_cookie
+  ON e.cookie_id IS NOT NULL
+  AND im_cookie.signal_type = 'cookie'
+  AND im_cookie.signal_value = e.cookie_id;
+```
 
-**1. Event ingestion layer (sGTM):** Server-side Google Tag Manager üzerinden raw event stream toplanır — GA4, Segment, Klaviyo, server-side Conversion API. Her event `user_pseudo_id` + `session_id` + `client_id` taşır. Email/telefon varsa hash eklenir.
+Bu join logic deterministik hash matching'i yapıyor. Probabilistic için ayrı bir `fct_probabilistic_clusters` model eklersiniz.
 
-**2. Identity stitching engine (BigQuery + dbt):** Günlük batch job ile:
-- Deterministic matching (email_hash eşleşmeleri)
-- Probabilistic scoring (IP+UA+behavior similarity)
-- Household clustering (K-means veya DBSCAN)
+## Consent ve privacy: GDPR, CCPA uyumu
 
-Çıktı: `identity_graph` tablosu (node = unique identity, edge = confidence score).
+Identity resolution GDPR Article 6 (lawful basis) ve CCPA "do not sell" kurallarına tabi. Email hash'i **personal data** olarak kabul ediliyor (CJEU 2019 kararı), dolayısıyla consent veya legitimate interest gerekiyor.
 
-**3. Profile unification (CDP):** Graph'taki her node için unified profile oluşturulur — tüm touchpoint'ler, attributelar, segmentler birleşir. Bu profil Klaviyo/Braze gibi aktivasyon platformlarına senkronize edilir.
+Consent Mode v2 altında kullanıcı analytics_storage=denied verirse email hash toplanamazsınız. Bu durumda sadece IP+UA fingerprint kullanabilirsiniz (legitimate interest kapsamında — ama CJEU yorumu tartışmalı). Best practice: `consent_status` kolonu `identity_map`'e ekleyip hash'i sadece `analytics_storage=granted` event'lerden yazın.
 
-**4. Real-time lookup:** Yeni event geldiğinde graph'ta arama yapılır — eğer eşleşme varsa mevcut profile eklenir, yoksa yeni node açılır (ertesi gün batch job'da birleştirilecek).
+CCPA "right to delete" için `canonical_id` bazında tüm satırları silme logic gerekiyor:
 
-Roibase'in Shopify Plus stack'inde bu mimarinin GCP maliyeti ayda ~$800 (BigQuery + Cloud Functions + sGTM container). 50M event/ay için 4-5 saat batch runtime. ROI: attribution accuracy %18 artıyor, CAC hesaplaması %22 daha stabil oluyor (aynı kullanıcının 3 farklı session'ını ayırt ettiğiniz için).
+```sql
+DELETE FROM identity_map WHERE canonical_id = 'uuid-123';
+DELETE FROM events WHERE canonical_id = 'uuid-123';
+```
 
-## Privacy, Consent ve KVKK Uyumu
+Cascade silme için foreign key constraint kullanın (BigQuery desteklemiyor ama Postgres/Snowflake'te mümkün). Alternatif: soft delete (`deleted_at TIMESTAMP`) ve sonra batch purge.
 
-Identity resolution GDPR 6(1)(f) "meşru menfaat" veya 6(1)(a) "açık rıza" ile hukuki zemine oturur. Türkiye'de KVKK açık rıza zorunluluğu getiriyor — yani kullanıcıdan "kişisel verilerinizi farklı cihazlardaki davranışlarınızla eşleştireceğiz" beyanı almalısınız. Bu Consent Management Platform (CMP) ile yönetilir: TCF 2.2 standardında purpose 2 (device identification) ve purpose 7 (cross-device linking) checkbox'ları.
+### TCF 2.2 vendor mapping
 
-Hash'leme GDPR açısından "pseudonymization"dur, tam anonimleştirme değil — GDPR 4(5) tanımına göre hala kişisel veri kategorisindedir. Bu nedenle hash'li tablolar da encryption at rest + access control gerektirir. Roibase projelerinde BigQuery dataset'leri customer-managed encryption key (CMEK) ile şifreliyoruz, erişim IAM policy + VPC Service Controls ile kısıtlanıyor.
+IAB TCF 2.2 altında identity resolution "Purpose 1 — Store and/or access information on a device" kapsamında. Eğer kullanıcı vendor list'inizi onaylamadıysa cross-device linking yapamazsınız. Roibase projelerinde TCF string'i BigQuery'de parse edip `vendor_consent` kolonuna yazıyoruz, sonra identity merge'de consent filter uyguluyoruz:
 
-**Retention policy:** Identity graph'ı KVKK 7. madde uyarınca işlenme amacı sona erdiğinde silmelisiniz. E-ticarette tipik retention 2 yıl — son satın almadan 24 ay sonra profile inaktif flag'i konuyor, 30 gün içinde kullanıcı dönmezse profile silinir (right to erasure).
+```sql
+WHERE vendor_consent LIKE '%vendor_id=123%'
+```
 
-## Şimdi Ne Yapmalı
+Bu logic consent olmadan identity graph kurmanızı engelliyor — compliance + data quality dengesi.
 
-Identity resolution sıfırdan kurmak 8-12 haftalık bir data engineering projesi. Eğer CDP'niz yoksa önce [first-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) kurulmalı — server-side event collection, BigQuery data warehouse, dbt transformation pipeline. Bu altyapı üzerine identity stitching motoru eklenir. Mevcut stack'iniz varsa probabilistic matching modülünü pilot olarak 1-2 segment üzerinde test edin (örneğin yüksek-değer müşteriler), accuracy ve false positive oranını ölçün, confidence threshold'u kalibre edin. Production'a açmadan önce consent flow'u ve retention policy'yi hukuk ekibiyle onayla. Identity resolution pazarlama datasının diğer katmanlarına (attribution, segmentation, LTV modeling) temel oluşturur — burası sağlam değilse üstteki tüm metrikler yanlış zemine kurulur.
+## CDP entegrasyonu: Segment, mParticle, Rudderstack
+
+Modern CDP'ler kendi identity graph'lerini sunuyor ama genellikle kara kutu. Kendi pipeline'ınızı kurarak graph logic'i kontrol ediyorsunuz — özellikle [CDP & Retention Engineering](https://www.roibase.com.tr/tr/retention-engineering-cdp) projesinde kritik. Segment'in `identify()` çağrısı `userId` ve `anonymousId`'yi merge ediyor ama hangi sinyal öncelikli? Kendi resolution logic'inizde öncelik sırası açık:
+
+1. `customer_id` (CRM) → en güvenilir
+2. `email_sha256` → deterministik
+3. `device_id` → cross-session ama cross-device değil
+4. `cookie` → en kısa TTL
+5. `fingerprint` → probabilistic fallback
+
+Bu priority sırasını dbt'de `COALESCE()` chain'i ile kodluyorsunuz. CDP'ye sadece nihai `canonical_id` ve `confidence_score` gönderiyorsunuz, merge logic sizde kalıyor.
+
+Identity resolution modern pazarlama data stack'inin temel katmanı. Hash matching deterministik kesinlik, probabilistic linking coverage sağlıyor, household graph aile bazlı segmentasyon açıyor. Server-side pipeline consent + privacy kurallarına uygun şekilde bu altı sinyali birleştirdiğinizde unique user accuracy %40 artıyor, retention cohort yanılgısı düşüyor, incrementality test'leri güvenilir hale geliyor. BigQuery + dbt + sGTM ile kendi resolution logic'inizi kurduğunuzda vendor kara kutusuna bağımlı kalmadan graph'i istediğiniz şekilde yönetiyorsunuz.
