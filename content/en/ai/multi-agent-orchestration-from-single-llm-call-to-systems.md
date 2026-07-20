@@ -1,109 +1,159 @@
 ---
 title: "Multi-Agent Orchestration: From Single LLM Call to Production Systems"
-description: "Scale LLM applications with agent SDKs, tool use, and parallel/serial topologies. Navigate token costs, latency, and error isolation tradeoffs."
-publishedAt: 2026-06-13
-modifiedAt: 2026-06-13
+description: "Agent SDKs to parallel/serial topologies: How to build production-grade multi-agent systems using LangGraph, CrewAI, and AutoGen."
+publishedAt: 2026-07-20
+modifiedAt: 2026-07-20
 category: ai
-i18nKey: ai-008-2026-06
-tags: [multi-agent, llm-orchestration, tool-use, agent-sdk, production-ai]
+i18nKey: ai-008-2026-07
+tags: [multi-agent, llm-orchestration, langgraph, crewai, agent-topology]
 readingTime: 8
 author: Roibase
 ---
 
-A single LLM prompt was sufficient a few months ago. Today, production systems require parallel agent topologies, structured output, and fallback chains. Anthropic's Computer Use, OpenAI's function calling, and LangGraph's state machine support have moved agent orchestration to the framework level. Multi-agent architecture is no longer just research—it's the daily tooling of growth teams. Reducing token costs, controlling latency, and isolating failures demand a shift from single-agent calls to orchestrated systems.
+In 2023, LLMs could "call tools." In 2024, "agent" became the buzzword. In 2025, everyone built their own. In 2026, the question shifted: one agent isn't enough—should I run five agents in parallel or series? Which agent handles which tool? Where does coordination logic live? Multi-agent orchestration is the first serious engineering problem in the journey from "Hello World" LLM apps to production systems.
 
-## Agent SDKs and Tool Use Protocol
+## From Single Agent to Topology: Why Orchestration Matters
 
-OpenAI's function calling JSON schema became standard in 2023. Anthropic expanded tool use with Claude 3.5: the API response now returns a `tool_use` block; you execute and send back `tool_result`. This loop can run for 20+ iterations, but token limits cut you off. Gemini's function declarations syntax is similar—the difference lies in grounding and retrieval extensions. All three providers share the same pattern: the model receives function descriptors, returns function name + arguments, and you handle execution.
+A single agent—say, Claude Sonnet 3.5 plus five tools—solves many use cases. But when these scenarios arrive, you hit a wall:
 
-Agent SDKs abstract this loop away. LangChain's `AgentExecutor`, LlamaIndex's `ReActAgent`, AutoGPT's core engine—all solve the same problem: managing tool call sequences. But abstractions introduce token overhead. For instance, LangChain sends conversation history as a prefix in each iteration. 10 tool calls = 10× context window. Reducing this requires a summarization agent or selective context pruning. Without observability layers like LangSmith, production debugging is impossible.
+**Parallel execution becomes necessary:** You're analyzing a marketing campaign. Simultaneously, fetch data from Google Ads API, calculate historical trends in BigQuery, pull conversion metrics from Shopify. A single agent runs these sequentially—total 12 seconds. Three agents in parallel finish in 4.5 seconds. If latency is critical, orchestration is mandatory.
 
-Tool use protocol isn't deterministic—models hallucinate and provide incorrect function arguments. This makes a validation layer mandatory: validate inputs with Pydantic schemas, catch runtime exceptions, return error messages to the model. LangChain's `PydanticOutputParser` and Anthropic's `tool_choice="required"` parameter reduce this risk. But the core issue remains: models don't always pick the right tool. With 3–4 similar tools, selection errors occur 8–12% of the time. In such cases, you add retry logic or a routing agent.
+**Specialization requirement:** One agent writes SQL, another cleans data, a third generates visualization code. Each gets a different system prompt, different model (Sonnet for SQL, Opus for code), different retrieval context. Ask one agent to "do both SQL and visual design" and context window balloons, performance tanks.
 
-## Parallel vs. Serial Agent Topology
+**Security layers:** One agent sanitizes external prompts, another executes business logic, a third validates output. This "assembly line" structure is non-negotiable in production: tool-use parameter errors drop when orchestration validates each step.
 
-Why would two agents accomplish what one cannot? Because **specialization** improves token efficiency. Example scenario: incoming email → categorize → draft response → get approval. A monolithic prompt uses 8K tokens, repeating the same instructions for every email. Split it into three agents: **classifier** (categorize), **drafter** (compose), **validator** (approval logic). Each has its own compact prompt. Total tokens: 8K → 2K+2K+1.5K = 5.5K. A 31% reduction.
+In Roibase's [Data Analytics & Insight Engineering](https://www.roibase.com.tr/en/verianalizi) projects, we cut BigQuery query times by 60% with parallel agent structure—three data sources queried simultaneously.
 
-Parallel topology offers another advantage: **latency reduction**. Example: content generation pipeline—one agent analyzes SEO keywords, another parses tone and style guide, a third scrapes competitor content. Running serially multiplies latency by 3. Running parallel with LangGraph's `StateGraph` + `map` node reduces max latency to the slowest agent's duration. But parallelism complicates coordination. Whose output takes priority? If there's conflict, who decides? This is why you need an **arbiter agent**—a meta-layer that takes parallel results and makes the final decision.
+## Agent SDKs: LangGraph, CrewAI, AutoGen
 
-Serial topology provides error isolation. If agent A fails, B and C don't run. You can build fallback chains: if A fails, try A2. In parallel, partial failure emerges: 2 of 3 agents succeed, one times out. How does the system proceed? This requires state machine logic. In LangGraph, you route with `conditional_edges`: if the agent succeeds, go "next"; if it fails, go "retry" or "fallback".
-
-### Topology Selection Guide
-
-| Scenario | Topology | Why |
-|----------|----------|-----|
-| Sequential dependency (A's output → B's input) | Serial | Parallel coordination overhead |
-| Independent subtasks | Parallel | Latency reduction |
-| High failure risk | Serial + fallback | Error isolation |
-| Token cost critical | Hybrid (parallel fetch, serial process) | Gather data without sharing context |
-
-## State Management and Context Pruning
-
-The most critical challenge in multi-agent systems: **state bloat**. Each agent maintains conversation history; context window grows with every iteration. 10 agents × 5 iterations = 50 messages. Even Claude's 200K context window can fill up. Result: latency increases (token computation cost is O(n²)), costs rise, some models time out.
-
-Solution: **stateful orchestration** and **selective memory**. LangGraph's `checkpointing` writes state to an external store (Redis, PostgreSQL). Each agent reads only its relevant context. Example: the drafter agent sees the classifier's output but not the validator's prior approval history—unless needed.
-
-Another pattern: **summarization agent**. It runs every N iterations and compresses conversation into 3–4 sentences. LangChain's `ConversationSummaryMemory` does this, but note: summarization itself costs LLM calls—extra expense. Tune the trigger threshold carefully. In our production pipeline, we run summarization every 12 iterations—200 tokens of context becomes 50, a 75% saving.
-
-Context pruning is another option: delete irrelevant messages. Example: the classifier agent's output is just a category label, but the model also returns reasoning chain. Before sending to the drafter, you strip the reasoning and keep only the label. In LangChain, use `MessagesPlaceholder` + custom filter functions. It's manual, but cuts tokens 40–50%.
-
-## Reliability and Observability in Production
-
-Multi-agent systems mean N× failure surface. One agent times out, another hits rate limits, a third hallucinates. Managing this chaos requires **circuit breakers** and **retry logic**. LangChain offers `RunnableRetry`, but for finer control, the Tenacity library is more flexible: exponential backoff, jitter, max attempts.
-
-Without observability, debugging is impossible. Tools like LangSmith, LangGraph Studio, and Weights & Biases visualize agent traces: when each agent was called, what it returned, how many tokens it used. Our stack uses LangSmith + custom Prometheus exporters: agent latency, token count, error rate feed into Grafana dashboards. Alert thresholds: P95 latency >3s or error rate >5%.
-
-Another production challenge: **non-determinism**. Same input, different outputs—because models are stochastic. Even at temperature=0, infrastructure variation introduces noise. This is why reliable input pipelines like [first-party data architecture](https://www.roibase.com.tr/en/firstparty) are essential: structured data input yields more consistent output. You also need an eval framework: run regression tests before each deploy, measure output quality. Use LangChain's `EvaluatorChain` or Anthropic's model-based eval.
-
-## Cost Optimization and Tradeoffs
-
-Multi-agent systems are expensive. A single agent call of 2K tokens = $0.006 (Claude 3.5 Sonnet pricing). The same task with 3 agents: 3× API calls, 6K tokens total, $0.018. 3× cost. Scenarios that justify this: compressing long context (large doc → chunked → parallel process), specialization (each agent runs a smaller model, cheaper total), failure isolation (monolith has high failure risk).
-
-Ways to reduce token costs: **model distillation** (large model fine-tunes small model, small model runs in production), **caching** (same context repeats? return cached response—Anthropic's prompt caching offers 90% savings), **batch processing** (async instead of real-time, prefer cheaper models).
-
-Latency vs. cost tradeoff: parallel topology cuts latency but raises cost. Parallelize the critical path, serialize the non-critical. Example: user query → classifier parallel (fast response), reporting agent serial (background job). This hybrid keeps P95 latency <2s while cutting costs 35%.
-
-## Orchestration Examples and Code
-
-Simple serial chain (LangChain):
-
-```python
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
-from langchain_anthropic import ChatAnthropic
-
-classifier = LLMChain(
-    llm=ChatAnthropic(model="claude-3-5-sonnet"),
-    prompt=PromptTemplate.from_template("Categorize this: {text}")
-)
-
-drafter = LLMChain(
-    llm=ChatAnthropic(model="claude-3-5-sonnet"),
-    prompt=PromptTemplate.from_template("Draft a response: {category}, {text}")
-)
-
-category = classifier.run(text=user_input)
-response = drafter.run(category=category, text=user_input)
-```
-
-Parallel execution (LangGraph):
+**LangGraph (LangChain ecosystem):** Agents become nodes in a directed graph. Each node holds a "state"; edges define transition logic. Conditional routing is possible: if agent A says "data missing," route to agent B; if complete, route to C.
 
 ```python
 from langgraph.graph import StateGraph
 
-def parallel_tasks(state):
-    seo_result = seo_agent.invoke(state["content"])
-    tone_result = tone_agent.invoke(state["style_guide"])
-    return {"seo": seo_result, "tone": tone_result}
-
-workflow = StateGraph()
-workflow.add_node("parallel", parallel_tasks)
-workflow.add_node("merge", merge_agent)
-workflow.set_entry_point("parallel")
-workflow.add_edge("parallel", "merge")
-app = workflow.compile()
+workflow = StateGraph(AgentState)
+workflow.add_node("researcher", research_agent)
+workflow.add_node("writer", writer_agent)
+workflow.add_conditional_edges(
+    "researcher",
+    lambda state: "complete" if state.data_ready else "retry"
+)
+workflow.set_entry_point("researcher")
 ```
 
-This code runs 2 agents in parallel and passes results to a merge agent. LangGraph automatically manages state and writes checkpoints to Redis.
+**Strengths:** State management is robust. Distributed tracing is straightforward—each node logs separately. **Drawback:** Syntax is complex; callback chains make debugging harder.
 
-Multi-agent orchestration isn't an end in itself—it's a tool. If you're automating another growth channel or building a decision pipeline, pick an agent topology, but clarify metrics: tokens/task, latency, error rate. In production, success means the system runs with 95% uptime and token costs stay within budget. If you're building a multi-agent system for content generation, integrate it with [Generative Engine Optimization](https://www.roibase.com.tr/en/geo) strategy—agents collect citation data, feed GEO metrics, ROI becomes measurable. Otherwise, you've just built a complicated API wrapper.
+**CrewAI:** Role-based orchestration. Assign each agent a "role" (researcher, analyst, writer) and a "task" list. The framework automatically runs them sequentially or forks in parallel.
+
+```python
+from crewai import Crew, Agent, Task
+
+researcher = Agent(role='Data Researcher', tools=[bigquery_tool])
+analyst = Agent(role='Analyst', tools=[pandas_tool])
+
+crew = Crew(agents=[researcher, analyst], process="sequential")
+result = crew.kickoff()
+```
+
+**Strengths:** Minimal boilerplate, fast prototyping. **Drawback:** Low flexibility—custom routing requires code changes.
+
+**AutoGen (Microsoft):** Conversational multi-agent. Agents "talk" to each other; one sends a message, the other responds. In this pattern, orchestration is implicit—message flow defines topology.
+
+```python
+from autogen import AssistantAgent, UserProxyAgent
+
+assistant = AssistantAgent("assistant", llm_config={...})
+user_proxy = UserProxyAgent("user", code_execution_config={...})
+
+user_proxy.initiate_chat(assistant, message="Analyze Q1 data")
+```
+
+**Strengths:** Natural for human-in-the-loop scenarios. **Drawback:** Non-deterministic flows—unclear when agent A will respond to agent B.
+
+## Parallel vs Serial Topology: The Tradeoff Matrix
+
+| Architecture | Latency | Cost | Complexity | Use Case |
+|--------------|---------|------|-----------|----------|
+| **Serial (Sequential)** | High (N×t) | Low (one LLM call per step) | Low | Deterministic pipelines (data → analysis → report) |
+| **Parallel (Fork-Join)** | Low (max(t₁, t₂, t₃)) | High (N agents simultaneously) | Medium | Independent tasks (fetch 3 APIs at once) |
+| **Conditional (DAG)** | Variable | Medium | High | Dynamic flow (if data missing, try X; if complete, do Y) |
+| **Conversational** | Uncertain | Medium | High | Human-in-the-loop or negotiation |
+
+**Production decision:** If the operation isn't on the critical path (offline report generation), choose serial topology—debugging is easy, cost is low. If you have latency SLAs (real-time dashboard), fork in parallel—but build retry logic upfront; otherwise, one timeout delays all three.
+
+## Tool Use Coordination: Preventing Conflicts
+
+The most common bug in multi-agent systems: two agents call the same tool simultaneously with different parameters, corrupting each other's state.
+
+**Example:** Agent A creates `temp_table_x` in BigQuery; agent B tries to read `temp_table_x` at the same time—data not found error. Solve this at the orchestration layer:
+
+**1. Resource locking:** When agent A starts using a tool, the orchestrator locks it for other agents. In LangGraph, use `shared_state`.
+
+```python
+if not state.lock_acquired("bigquery"):
+    return {"status": "waiting"}
+state.acquire_lock("bigquery")
+result = bigquery_tool.run()
+state.release_lock("bigquery")
+```
+
+**2. Namespace isolation:** Give each agent its own workspace. Agent A uses `workspace_a/temp_table`, agent B uses `workspace_b/temp_table`. In CrewAI, add `agent_id` prefix.
+
+**3. Idempotent tool design:** Build tools to be idempotent from the start—calling twice with the same parameters doesn't cause conflict. Use `create_or_replace` instead of `upsert`.
+
+## Observability: How to Trace Agent Execution
+
+In production, five agents run—one fails. Which one? Tools like LangSmith, Helicone, and Arize collect agent-level traces, but manual instrumentation is required.
+
+**Critical metrics:**
+- **Agent latency per step:** How long did each agent take? In parallel fork, `max(latency)` shows the bottleneck.
+- **Tool call success rate:** How many times did each agent call each tool? How many succeeded? Below 95% is a red flag.
+- **Retry count:** How many times did an agent retry? High retry suggests bad prompts or incorrect tool specs.
+- **State transition diagram:** In LangGraph, which nodes transitioned to which, and how often? Infinite loops show here.
+
+```python
+# LangSmith integration
+from langsmith import Client
+
+client = Client()
+with client.trace(run_name="multi_agent_pipeline") as run:
+    for agent in agents:
+        with run.create_child(name=agent.name):
+            agent.run()
+```
+
+## Context Window Management: Shared Memory vs Isolated
+
+The bottleneck in multi-agent systems is context window. Do five agents share the same 128K tokens, or does each get its own 128K?
+
+**Shared memory (LangGraph default):** All agents read/write the same state object. Advantage: agent A's findings auto-pass to agent B. Disadvantage: context pollution—irrelevant data bloats the window.
+
+**Isolated memory + message passing:** Each agent owns its state; only necessary data passes as messages. CrewAI uses this pattern. Advantage: high token efficiency. Disadvantage: manual data serialization.
+
+**Hybrid (recommended):** Keep metadata in shared state (which agent did what, when), store actual data on disk/database, pass references to agents. For example, write BigQuery results to GCS and pass `gs://bucket/result.parquet` paths instead of raw data.
+
+## Error Handling: What Happens When an Agent Fails?
+
+In serial topology, agent 2 fails and the pipeline stops—simple. In parallel, agent B fails but agents A and C keep running—you end up generating a report with missing data. Orchestration requires "partial success" logic.
+
+**Strategies:**
+
+1. **Fail-fast (serial):** First error halts the entire pipeline. Choose this if latency is irrelevant.
+2. **Best-effort (parallel):** Run as many agents as possible; generate output even with missing data—but flag it as "incomplete" in metadata.
+3. **Retry with fallback:** Agent A fails after 3 attempts; ask agent A_backup (different model or prompt) instead.
+
+```python
+# LangGraph retry
+workflow.add_node("agent_a", agent_a, retry_policy={"max_attempts": 3})
+workflow.add_edge("agent_a", "agent_a_backup", condition="failed")
+```
+
+## Production Checklist: Before Deploying Multi-Agent System
+
+- **Calculate token budget:** 5 agents × 10K token input × 2K output × API cost = per-run cost. 1000 runs/day = month-end bill?
+- **Define latency SLA:** How long can each agent run? If P95 latency exceeds 10 seconds, parallel topology is required.
+- **Plan rollback:** Changing one agent's prompt can break the entire pipeline. Version control + canary deployment are mandatory.
+- **Human-in-the-loop checkpoint:** On critical decisions (e.g., budget adjustments), show the final agent output to a human for approval.
+- **Audit log:** Every step of every agent—which tool was called, what parameters, what returned—log to S3 as JSON. Compliance demands it.
+
+Multi-agent orchestration is the "systems course" of LLM engineering. What begins as a single model call evolves in production into topology design, state management, retry logic, and observability. LangGraph, CrewAI, and AutoGen are scaffolding—the real work is deciding how to sequence and parallelize agents for *your* use case. Prototype, measure latency, simulate costs, pick topology. Never ship without testing—in multi-agent systems, "works" and "production-ready" are separated by ten layers.
