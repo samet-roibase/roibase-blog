@@ -1,105 +1,156 @@
 ---
 title: "Reverse ETL: Data Warehouse'tan Operational Tool'lara"
-description: "Hightouch, Census, Segment Reverse ETL — production use case'leri, mimari tradeoff'lar ve CDP entegrasyonu karşılaştırması."
-publishedAt: 2026-06-19
-modifiedAt: 2026-06-19
+description: "Hightouch, Census, Segment Reverse ETL araçlarıyla BigQuery/Snowflake'teki customer dataları CRM, reklam platformu ve e-posta servislerine nasıl aktarılır? Use case karşılaştırması ve mimari trade-off'lar."
+publishedAt: 2026-07-21
+modifiedAt: 2026-07-21
 category: data
-i18nKey: data-004-2026-06
-tags: [reverse-etl, data-activation, cdp, warehouse-native, data-pipeline]
+i18nKey: data-004-2026-07
+tags: [reverse-etl, data-warehouse, cdp, customer-data, operational-analytics]
 readingTime: 8
 author: Roibase
 ---
 
-Data warehouse'unuzda müşteri segmentleri, churn skorları, LTV tahminleri var — ama bunlar Salesforce'ta, Braze'de veya Meta Ads'te yok. Klasik ETL data'yı warehouse'a taşır, Reverse ETL ters yöne çalışır: warehouse'taki transformation output'unu operational tool'lara sync eder. 2026'da bu pattern data activation stack'inin omurgası. Hightouch, Census, Segment Reverse ETL üç farklı mimari felsefe sunar — hangisi production'da hangi senaryoya uyar, bu yazı o farkları net eder.
+Data warehouse'ınızda müşteri davranışlarını modellediniz, LTV segmentleri oluşturdunuz, churn skorları hesapladınız — ama CRM'deki satış ekibi hâlâ manuel Excel listesiyle çalışıyor. Reklam platformlarına manuel CSV yüklüyorsunuz. E-posta aracınız son 30 gündeki sepet terk datasına erişemiyor. Reverse ETL bu kopukluğu çözer: analitik katmanındaki zenginleştirilmiş dataları, operational araçların anlayacağı formatta geri gönderir. 2026'da Hightouch, Census ve Segment Reverse ETL üç farklı mimari yaklaşımla bu probleme çözüm sunuyor. Bu yazıda hangi use case için hangi araç, nasıl bir tradeoff getiriyor — bunu karşılaştırıyoruz.
 
-## Reverse ETL'in Doğuş Nedeni: Modern Data Stack'te Activation Eksikliği
+## Reverse ETL'in Temel Mantığı: Analitikten Aktivasyona
 
-2018-2020 arası "modern data stack" dalgası şunu kurdu: event pipeline (Segment/RudderStack), warehouse (BigQuery/Snowflake), transformation layer (dbt). Pazarlama ve analiz ekipleri customer_lifetime_value, propensity_to_convert, segment_high_intent gibi tablolar üretiyor — SQL ile, Python ile, ML pipeline'ıyla. Sorun: bu tablolar warehouse'ta duruyor, kampanya execution'ı için Klaviyo'ya, Iterable'a, Google Ads'e manuel CSV export gerekiyor.
+Klasik ETL data pipeline'ı operasyonel sistemlerden (CRM, e-ticaret platformu, reklam pikselleri) dataları warehouse'a çeker. Reverse ETL bu akışı tersine çevirir: warehouse'taki modellenen, zenginleştirilmiş müşteri datasını operational araçlara gönderir. Örnek: BigQuery'de hesaplanan "yüksek LTV ancak son 14 günde inactive" segmenti, otomatik olarak Meta Ads'e custom audience olarak senkronize edilir. Bu sayede analiz sonuçları sadece dashboard'da kalmaz, doğrudan kampanyaya dönüşür.
 
-Reverse ETL bu boşluğu doldurdu. Warehouse'tan downstream tool'a programatik sync yapar: her gün 04:00'te `high_intent_users` tablosundan Braze'e segment gönder, her saat LTV > $500 olan kullanıcıları Meta Custom Audience'a push et. Bu sayede transformation logic warehouse'ta kalır (dbt ile version-controlled, testable), activation operational tool'da gerçekleşir (pazarlamacı kendi arayüzünde segment görebilir).
+Peki neden SQL query'leri manuel çalıştırıp CSV export etmiyoruz? İki sebep: birincisi hız. Segment güncellenmesi dakikalar değil saniyeler içinde gerçekleşir. İkincisi hata payı. Manuel export'ta şema uyumsuzlukları, duplikasyonlar, eksik satırlar sık. Reverse ETL araçları mapping logic'i kodlar, hata yönetimi sağlar, dependency'leri yönetir. Census'un 2025 benchmarklarına göre manuel export kullanan ekipler haftada ortalama 6 saat data sync sorunlarıyla boğuşuyor. Otomasyon bu yükü sıfırlıyor.
 
-2023 Gartner raporuna göre Fortune 500'ün %42'si bir Reverse ETL aracı kullanıyor. Neden? Çünkü CDP'ler transformation layer sunamıyor — warehouse'ta zaten yapılmış segmentasyonu CDP'ye taşımak double work. Reverse ETL, "warehouse = single source of truth" prensibini bozmuyor, aksine güçlendiriyor.
+Üçüncü kritik nokta: identity resolution. Reverse ETL araçları warehouse'taki müşteri ID'sini (örneğin `user_id`) hedef sistemin beklediği identifier'a (Salesforce Contact ID, Klaviyo email, Meta MADID) eşler. Bu eşleştirme [first-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) içinde identity graph tablosuna dayanır. Hightouch, Census ve Segment bu graph'ı farklı şekilde yönetiyor — bunu sıradaki bölümlerde açıyoruz.
 
-## Hightouch: Warehouse-Native, No-Code Öncelikli
+## Hightouch: Warehouse-Native Yaklaşım
 
-Hightouch 2020'de "data activation platform" olarak başladı. Çekirdek felsefesi: warehouse'taki her tablo bir sync source'u olabilir, kullanıcı SQL yazmadan UI'dan mapping yapar. Örnek akış: BigQuery'de `SELECT user_id, email, ltv_score FROM analytics.user_segments WHERE ltv_score > 0.7` diye bir view oluşturursun, Hightouch UI'ında bu view'ı Salesforce Lead object'ine map edersin, ltv_score → Lead.Custom_Field__c. Sync frequency: hourly, daily, real-time (change data capture ile).
+Hightouch'un mimari felsefesi "single source of truth warehouse'ta". Tool hiçbir datayı kendi sunucusuna taşımaz. Sync logic'i SQL sorgusuna indirgenmiş: siz BigQuery veya Snowflake'te bir model (tablo, view, dbt model) tanımlarsınız, Hightouch bu modeli hedef sisteme push eder. Her sync tetiklendiğinde query warehouse'ta çalışır, sadece delta (değişen satırlar) API'ye gönderilir. Bu yaklaşım özellikle compliance açısından avantajlı: PII datası hiçbir intermediate layer'a düşmez.
 
-**Güçlü yönleri:**
-- **No-code mapping:** Pazarlama operasyonları ekibi SQL bilmeden sync kurabilir. dbt modeli analiz yapar, Hightouch onu Iterable'a taşır.
-- **Geniş destination kütüphanesi:** 200+ integration — Salesforce, HubSpot, Braze, Klaviyo, Google Ads, Meta, TikTok, Attentive, Zendesk. Her biri için pre-built field mapping template'leri var.
-- **Audience builder:** SQL yazmadan UI'da segment oluştur — "ltv > 500 AND last_purchase_date < 30 days ago", Hightouch bunu SQL'e çevirir.
-- **Identity resolution:** Warehouse'taki user_id, email, phone gibi kolonları downstream tool'un ID sistemiyle match eder. Örneğin BigQuery'deki `anonymous_id` Braze'deki `external_id` ile eşleşir.
+Güçlü olduğu use case: karmaşık segment logic'i. Örneğin "son 90 gün içinde 3+ sipariş vermiş, ancak son 30 günde sepet terk etmiş, LTV üst %20'de, third-party reklam platformlarından gelmemiş" gibi SQL ile ifade edilebilecek her segment. Hightouch dashboard'unda segment tanımı yok — doğrudan SQL yazan data ekipleri için ideal. dbt Cloud ile native entegrasyon var: dbt model değişikliği otomatik sync tetikliyor.
 
-**Tradeoff'lar:**
-- **SQL escape hatch sınırlı:** Karmaşık join'ler veya window function'lar için pre-computed view gerekir. Hightouch runtime'da SQL transformation yapmaz, sadece okur.
-- **Fiyatlandırma:** Row-based pricing — aylık sync edilen toplam satır sayısı. 100K row ücretsiz, sonrası tier'lara göre artar. Production'da milyonlarca row sync'te maliyet hızla büyür.
-- **Real-time sınırı:** Change data capture (CDC) Snowflake/BigQuery için beta — her tool için stable değil. Gerçek zamanlı sync HubSpot/Salesforce gibi CRM'lerde çalışır, ad platform'larda hourly batch'e düşer.
+Trade-off: SQL yetkinliği olmayan pazarlama ekipleri bu tool'u kör. Hightouch'un UI'ında segment builder yok — segment logic'ini SQL ile data engineer yazıyor. Pazarlama ekibi sadece "hangi segment hangi platforma gitsin" kararını veriyor. Ayrıca warehouse query maliyeti yüksek olabilir: her sync full table scan'e sebep olabilir (incremental logic iyi tasarlanmazsa). BigQuery'de partitioned tablo ve clustering doğru yapılmazsa aylık fatura artıyor.
 
-**Production use case:** E-ticaret firması dbt ile `high_propensity_churners` tablosu üretiyor (son 14 günde sepet terk eden + LTV > $300). Bu tablo her gün 06:00'da Hightouch ile Klaviyo'ya sync ediliyor, pazarlama ekibi otomatik retention kampanyası tetikliyor. SQL analiz ekibinde, execution pazarlamada — net sorumluluk ayrımı.
+İdeal profil: data mühendisliği ekibi var, warehouse zaten dbt ile modellenmiş, her şey SQL olarak version-control'de. Compliance katı (örneğin finans, sağlık). Hightouch bu kurguya native oturur.
 
-## Census: Developer-First, Transformation İçinde
+## Census: Self-Serve + Governance Hibridi
 
-Census Hightouch'la aynı döneme çıktı ama mimari felsefeyi ters kurdu: warehouse'taki data model'i transformation layer ile birleştir. Census'ın "Segmentation Studio" özelliği SQL + no-code hibrit — analiz ekibi dbt'de base model yazar, pazarlama ekibi Census UI'ında filter ekler, Census runtime'da SQL compose eder. Örnek: dbt'de `SELECT * FROM fct_customers` view'ı, Census'ta `WHERE lifetime_orders > 5 AND last_order_date > CURRENT_DATE - 30` filtresi, Census bunu tek sorguda birleştirir.
+Census, Hightouch'a benzer warehouse-native mimaride ama kullanıcı deneyimi pazarlama tarafına kaydırılmış. UI'da no-code segment builder var: pazarlamacı "Revenue > 1000 AND Last_Purchase_Date < 30 days ago" gibi koşulları sürükle-bırak ile kuruyor. Arka planda Census bunu SQL'e çeviriyor, warehouse'ta çalıştırıyor. Data engineer segment logic'i SQL olarak görebiliyor, audit edebiliyor, gerekirse override edebiliyor.
 
-**Güçlü yönleri:**
-- **Dynamic segmentation:** Downstream sync anında segment kriterleri değişebilir — warehouse'a geri dönüp yeni view yazmaya gerek yok. Pazarlamacı "son 7 gün yerine son 14 gün" diyebilir, Census SQL'i yeniden derler.
-- **Observability:** Sync job'ların detaylı log'ları — hangi row sync oldu, hangisi reject edildi, neden. Slack/email alert: "Salesforce sync 12 row reject etti, email format hatası".
-- **API-first:** Census API ile programmatic sync kurabilirsin — Airflow DAG'ından Census job tetikle, dbt run tamamlandıktan 10 dakika sonra sync başlat.
-- **Reverse ETL + Operational Analytics:** Sadece sync değil, warehouse'taki data'yı embeddable dashboard olarak sunabilirsin — iç tooling için kullanışlı.
+Census'un öne çıktığı özellik: governance workflow'leri. Segment approval mekanizması var. Örneğin pazarlamacı yeni segment oluşturursa, data lead'in onayına gidiyor. Onaylanınca otomatik deploy. Bu özellik özellikle 50+ kişilik marketing ops ekiplerinde önemli: kontrol kaybı riski azalıyor. Census'un 2025 vaka çalışmasında bir e-ticaret şirketi "data request ticket'larını %60 azalttık" diyor — çünkü pazarlamacılar kendileri segment kurmuş, veri ekibi sadece validate etmiş.
 
-**Tradeoff'lar:**
-- **Kurulum karmaşıklığı:** Dynamic SQL composition güçlü ama debug zor. Segment UI'da 5 filter var, Census runtime'da 200 satır SQL üretiyor — hata aldığında neyin yanlış gittiğini anlamak zaman alır.
-- **Destination sayısı:** Hightouch'tan az (150 civarı) — TikTok Ads, Pinterest Ads gibi long-tail platformlar yok. Ama core CRM/marketing automation hepsi var.
-- **Fiyatlandırma:** Row + compute hybrid — hem sync edilen row, hem Census'ın warehouse'ta çalıştırdığı query maliyeti. Snowflake cluster'ında Census'ın sorguları diğer workload'larla karışır, resource contention olabilir.
+Trade-off: Census metadata store'u kendi tarafında tutuyor. Segment tanımları, mapping rule'ları Census'un database'inde — warehouse'ta değil. Git-based version control daha zor. Ayrıca no-code builder sınırlı: çok karmaşık SQL logic (örneğin window functions, CTEs) Census UI'dan yapılmıyor. Bu durumda yine SQL mode'a düşmek gerekiyor, bu da Hightouch'tan farkı azaltıyor.
 
-**Production use case:** SaaS firması churn prediction model BigQuery'de çalıştırıyor (Python + BigQuery ML), output `churn_risk_score` tablosu. Census bu tabloya daily sync yapıyor ama pazarlama ekibi "sadece score > 0.8 olanlar" diye filter ekliyor — Census runtime'da `WHERE churn_risk_score > 0.8` ekliyor. Pazarlama risk threshold'unu UI'dan değiştiriyor, dbt model'e dokunmuyor.
+İdeal profil: pazarlama ve data arasında denge. Pazarlama ekibi basit segmentleri kendisi kurmalı ama kritik logic'te approval gerekmeli. Orta-büyük ölçekli (50-500 kişi) şirketler.
 
-## Segment Reverse ETL: CDP ile Entegre Activation
+## Segment Reverse ETL: CDP Entegrasyonu
 
-Segment'in 2022'de eklediği Reverse ETL, Twilio'nun (Segment'i 2020'de satın aldı) CDP stratejisine oturur. Klasik Segment event collection + warehouse destination yanına "Profiles" (identity resolution) + "Reverse ETL" eklendi. Mantık: event data warehouse'a gider, dbt ile transform olur, Reverse ETL ile Segment'e geri döner, Segment downstream tool'lara dağıtır. Yani Segment hem upstream (event toplayıcı), hem downstream (activation hub).
+Segment'in reverse ETL modülü aslında CDP ürününün tersi. Klasik Segment: tarayıcı ve mobil app'ten event toplar, warehouse'a ve diğer araçlara dağıtır. Reverse ETL: warehouse'taki aggregated data (örneğin user traits: `total_revenue`, `churn_score`) Segment'in Personas API'si üzerinden operational tool'lara gönderilir. Yani Segment hem event stream'i hem de batch enrichment'i tek platformda birleştiriyor.
 
-**Güçlü yönleri:**
-- **Single vendor:** Event pipeline, identity resolution, destination management tek yerde. Engineering ekibi tek contract, tek billing, tek support.
-- **Privacy + compliance:** Segment Privacy Portal Reverse ETL'e entegre — GDPR deletion request warehouse'taki data'yı siler, Reverse ETL downstream sync'i de siler.
-- **Identity stitching:** Segment Profiles warehouse'taki `user_id`, `anonymous_id`, `email` kolonlarını otomatik match eder — cross-device, cross-platform kimlik birleştirme built-in.
-- **Event + trait sync:** Sadece bulk segment değil, user-level trait update — "user_123'ün LTV'si $450 oldu" event'i Braze'e trait olarak gider.
+Güçlü yanı: Segment zaten 300+ destination entegrasyonuna sahip. Reverse ETL ile gönderilen trait otomatik olarak tüm aktif destination'lara yayılır. Örneğin `churn_score` field'ı hem Braze'e, hem Salesforce'a, hem Intercom'a aynı anda düşer — her biri için ayrı sync tanımlamaya gerek yok. Bu "write once, distribute everywhere" yaklaşımı özellikle çok kanallı müşteri deneyimi (omnichannel) senaryolarında güçlü.
 
-**Tradeoff'lar:**
-- **Vendor lock-in:** Segment dışında data activation yapamıyorsun — Hightouch/Census gibi tool'lar warehouse'tan herhangi bir tool'a direkt gider, Segment zorunlu hop.
-- **Transformation capability:** Segment Reverse ETL SQL view okur ama transformation yapmaz — Census gibi dynamic segmentation yok. dbt model warehouse'ta hazır olmalı.
-- **Maliyet:** Segment MTU (monthly tracked users) pricing + Reverse ETL row pricing ayrı — double billing. Büyük ölçekte Hightouch/Census'tan pahalı olabilir.
-- **Destination sınırı:** Segment'in normal destination'ları (300+) Reverse ETL'de desteklenmez — sadece 50 civarı. Örneğin Google Ads Customer Match Reverse ETL ile sync edilemez, normal Segment event flow kullanmalısın.
+Trade-off: maliyet. Segment pricing MTU (Monthly Tracked Users) bazlı. Reverse ETL ile warehouse'tan gönderilen her user bir MTU sayılır. 10 milyon user'lı bir segmenti her gün sync ediyorsanız 10M MTU üzerinden ücretlendirilirsiniz. Hightouch ve Census row-based pricing yapıyor (gönderilen satır sayısı), genelde daha predictable. Ayrıca Segment'in reverse ETL özelliği sadece Business Tier'da var — küçük ekipler için maliyetli.
 
-**Production use case:** Fintech firması Segment'le event toplayıp BigQuery'e yazıyor. dbt ile `high_value_customers` (son 90 günde 10+ işlem + toplam hacim > $5K) tablosu üretiyor. Segment Reverse ETL bu tabloyu Segment Profiles'a çekiyor, oradan Braze + Salesforce'a sync ediyor. Aynı pipeline GDPR deletion request'i de işliyor — warehouse'tan silince downstream'e otomatik yayılıyor.
+İdeal profil: Segment CDP zaten kullanılıyor, event stream mevcut, sadece batch enrichment eklemek gerekiyor. Marketing stack büyük (10+ tool), her birine manuel entegrasyon yazmak verimsiz. Bütçe yüksek (Series B+).
 
-## Hangi Tool Hangi Senaryo İçin
+## Mimari Karşılaştırma: Hangi Use Case Hangi Tool
 
-**Hightouch seç eğer:**
-- Pazarlama ekibi SQL bilmiyor, no-code UI'dan mapping yapacak
-- 200+ destination'a sync gerekiyor (long-tail ad platform'lar dahil)
-- dbt model'ler hazır, sadece activation mekanizması lazım
-- Real-time sync kritik değil, hourly/daily batch yeterli
+Şu matrisi kullanabilirsiniz:
 
-**Census seç eğer:**
-- Developer ekibi güçlü, API-first orchestration yapacak
-- Dynamic segmentation gerekiyor — pazarlama filter'ları sık değişiyor
-- Observability + debugging öncelikli — sync reject'leri detaylı loglayacaksın
-- Warehouse compute maliyeti kontrol altında (Census query overhead'ini karşılayabiliyorsun)
+| Kriter | Hightouch | Census | Segment Reverse ETL |
+|--------|-----------|--------|---------------------|
+| SQL yetkinliği | Zorunlu | Opsiyonel | Opsiyonel |
+| No-code UI | Yok | Var | Var |
+| Governance | Git-based | Approval workflow | Role-based access |
+| Pricing | Row-based | Row-based | MTU-based |
+| Identity resolution | Warehouse'ta | Warehouse'ta | Segment Personas |
+| Compliance (PII) | Yüksek (no intermediate storage) | Orta | Orta (Segment sunucusundan geçer) |
 
-**Segment Reverse ETL seç eğer:**
-- Segment'i zaten event pipeline olarak kullanıyorsun
-- Single vendor, unified identity management istiyorsun
-- Privacy compliance (GDPR/CCPA) otomasyonu kritik
-- Destination sayısı sınırlı ama CRM/email marketing yeterli
+Örnek senaryo 1: fintech startup, 5 kişilik data ekibi, sıkı compliance. BigQuery'de tüm PII encrypted, segment logic dbt ile SQL. → **Hightouch**. Governance Git'te, PII warehouse'tan çıkmıyor.
 
-## Mimari Entegrasyon: CDP ile Birlikte mi, Yerine mi
+Örnek senaryo 2: e-ticaret, 200 kişilik pazarlama ekibi, 12 farklı tool (CRM, ESP, ads, chatbot). Data ekibi 3 kişi, pazarlama self-serve istiyor ama kontrolsüz segment yaratılmasın. → **Census**. Approval workflow ile pazarlama güçlendirilmiş, data ekibi darboğaz olmaktan çıkmış.
 
-Reverse ETL "CDP killer" değil — farklı katmanda durur. CDP (Segment, mParticle, Treasure Data) event collection + identity resolution + real-time orchestration yapar. Reverse ETL batch sync yapar, transformation warehouse'ta olur. İdeal stack: Segment event'leri toplar → BigQuery'e yazar → dbt transform eder → Reverse ETL downstream'e sync eder. Bu pattern [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty)'nin omurgası — raw event warehouse'ta, transformation dbt'de, activation Reverse ETL + CDP kombinasyonuyla.
+Örnek senaryo 3: SaaS, Segment CDP 2 yıldır kullanılıyor, event stream zaten mevcut. Warehouse'ta hesaplanan `expansion_likelihood` skorunu tüm touchpoint'lere yaymak lazım. → **Segment Reverse ETL**. Mevcut entegrasyon zincirine ekstra field eklemek, yeni tool kurmaktan daha hızlı.
 
-Alternatif: CDP'siz, pure Reverse ETL. Örnek: server-side event tracking (Snowplow) → BigQuery → dbt → Hightouch → Braze. Bu senaryoda identity resolution dbt'de yapılıyor (SQL join'lerle), CDP overhead'i yok. Tradeoff: real-time personalization kayıp — CDP event anında karar verir (web'de iken popup göster), Reverse ETL batch sync yapar (ertesi gün email gönder).
+## Implementation Örneği: BigQuery'den Meta Ads'e High-Value Segment
 
-Production'da genelde hybrid: real-time use case'ler (cart abandonment 5 dakika içinde) CDP ile, batch ML skorları (churn prediction weekly) Reverse ETL ile. İki sistem aynı warehouse'tan okur, farklı downstream kanal'lara yazar.
+Somut bir use case üzerinden gösterelim. BigQuery'de şu SQL modeli var:
+
+```sql
+CREATE OR REPLACE TABLE `analytics.high_value_churned` AS
+SELECT
+  user_id,
+  email,
+  phone_hashed,  -- Meta MADID için
+  total_revenue,
+  last_order_date,
+  DATE_DIFF(CURRENT_DATE(), last_order_date, DAY) AS days_since_order
+FROM `analytics.user_ltv`
+WHERE total_revenue > 500
+  AND days_since_order BETWEEN 30 AND 90;
+```
+
+Bu tablo günlük dbt run ile yenileniyor. Şimdi bu segmenti Meta Ads'e custom audience olarak göndermek istiyoruz.
+
+**Hightouch ile:**
+1. Hightouch'ta "New Sync" → Source: BigQuery model `analytics.high_value_churned`
+2. Destination: Meta Ads → Custom Audience
+3. Mapping: `email` → Meta `EMAIL`, `phone_hashed` → `PHONE`
+4. Sync schedule: Daily, 06:00 UTC (dbt run'dan sonra)
+5. Incremental logic: `WHERE last_order_date > {{last_sync_timestamp}}` — sadece yeni churn'ler gönderiliyor
+
+**Census ile:**
+1. Census UI'da "New Entity" → BigQuery table seç
+2. "Sync to Meta Ads" → Custom Audience
+3. UI'da field mapping: sürükle-bırak
+4. "Submit for Approval" → data lead onayına gidiyor
+5. Onaylandıktan sonra deploy, schedule aynı
+
+**Segment Reverse ETL ile:**
+1. Segment Warehouse Sources → BigQuery bağla
+2. "Computed Trait" tanımla: `is_high_value_churned = true` (SQL query ile)
+3. Destination'larda Meta Ads zaten aktif ise otomatik yayılır
+4. Schedule: Daily
+
+Üç tool'da da sonuç aynı: Meta Ads Custom Audience günlük güncellenecek. Fark implementation complexity'de: Hightouch SQL depth istiyor, Census UI abstraction sunuyor, Segment mevcut CDP altyapısına plug-in oluyor.
+
+## Operasyonel Tradeoff'lar: Hız, Maliyet, Kompleksite
+
+Reverse ETL kullanmadan önce sorulması gereken sorular:
+
+**1. Veri tazeliği gereksinimi nedir?**
+Real-time (< 5 dakika) gerekiyorsa Segment event stream daha uygun. Günlük batch yeterliyse üçü de çalışır. Saatlik sync'te Census ve Hightouch row-based pricing'i öngörülebilir, Segment MTU'su artar.
+
+**2. Kaç destination var?**
+3-5 tool varsa Hightouch veya Census yeterli. 10+ tool varsa Segment'in "single integration, many outputs" mantığı iş yükünü azaltır.
+
+**3. Data ekibinin bandwidth'i nedir?**
+Data ekibi pazarlamayı self-serve yapmak istiyorsa Census. Data ekibi her segment logic'i review etmek istiyorsa Hightouch (Git PR workflow). Data ekibi yoksa (küçük startup) Segment'in managed servis yaklaşımı riskleri azaltır.
+
+**4. Warehouse query maliyeti nasıl yönetiliyor?**
+BigQuery'de partitioning ve clustering yoksa, her sync full scan çekiyor. Hightouch ve Census incremental logic sağlasa da, iyi tablo tasarımı şart. Segment warehouse query'leri Segment tarafından optimize ediliyor (caching var).
+
+Bir e-ticaret case study'si: Census kullandılar, 12 segment tanımladılar, her segment günlük sync. İlk ay BigQuery faturası $800 arttı (partitioning yoktu). Sonra tablolar partitioned oldu, maliyet $150'ye düştü. Yani reverse ETL warehouse tasarımını test ediyor — kötü tasarım faturayı patlatır.
+
+## Pazarlama Otomasyonu ve CDP İlişkisi
+
+Reverse ETL CDP'nin yerini alıyor mu? Hayır, tamamlayıcı. CDP (Segment Personas, mParticle, Lytics) real-time event stream'i yönetir, cross-device identity resolution yapar, audience builder sağlar. Reverse ETL ise warehouse'taki *historical aggregate* dataları operasyonelleştirir. Örnek: Segment CDP son 24 saatteki "add to cart" eventlerini yakalayıp anında retargeting tetikliyor. Reverse ETL ise BigQuery'deki 90 günlük purchase pattern analizi sonucu oluşan "expansion candidate" segmentini Salesforce'a gönderiyor.
+
+İki sistem birlikte şöyle çalışır: CDP eventleri warehouse'a aktarır, warehouse dataları modeller, reverse ETL modellenen dataları tekrar CDP'ye (veya başka araçlara) gönderir. Yani cycle: Event → Warehouse → Model → Reverse ETL → Action. Bu cycle'ı [retention engineering CDP](https://www.roibase.com.tr/tr/retention-engineering-cdp) yaklaşımıyla yönetmek, lifecycle pazarlamasında kritik.
+
+Peki CDP olmadan da reverse ETL kullanılabilir mi? Evet. Küçük şirketler doğrudan GA4 + BigQuery Export veya Snowplow kullanıyor, CDP maliyetinden kaçınıyor. Bu durumda identity resolution warehouse'ta SQL ile yapılıyor (örneğin `user_id` ve `device_id` mapping tablosu). Reverse ETL bu mapping'i okuyup doğru identifier'ı hedef araca gönderiyor.
+
+## Seçim Kılavuzu: Ekibiniz İçin Hangisi?
+
+Önce şu soruyu cevaplayın: **"Veri kararlarımızı kim veriyor?"**
+
+Eğer data mühendisleri SQL ile segment tanımlayıp version-control yapıyor, pazarlama sadece çıktıyı kullanıyorsa → **Hightouch**. Governance Git'te, compliance yüksek, maliyet öngörülebilir.
+
+Eğer pazarlama ekibi segment logic'i anlamak ve bazen kendisi yapmak istiyor, ama kritik logic'te approval şart ise → **Census**. UI pazarlamacıya açık, data ekibi darboğaz olmaktan çıkıyor, governance workflow var.
+
+Eğer Segment CDP zaten kuruluysa ve sadece batch enrichment eksikse → **Segment Reverse ETL**. Mevcut entegrasyon zincirine ekstra trait eklemek, yeni tool kurmaktan hızlı ve az mühendislik gerektirir. Ancak MTU-based pricing'e dikkat.
+
+Bütçe darsa ve data ekibi küçükse: önce Census free tier'ını test edin (5K row/ay bedava). Eğer SQL yetkinliği yüksekse Hightouch (self-hosted opsiyonuyla maliyet düşer). Eğer budget yüksek ve marketing stack büyükse Segment pazarlamacının hayatını kolaylaştırır.
+
+Son kontrol: hedef tool'larınızın entegrasyon listesini kontrol edin. Her üç tool da 100+ connector sağlıyor ama niche tool (örneğin Türkiye'deki bir SMS gateway) Census'ta varsa Hightouch'ta yoksa, bu karar belirleyici olabilir.
 
 ---
 
-Reverse ETL data activation'ın yeni standardı — warehouse'taki transformation logic'i operational tool'lara taşıyan köprü. Hightouch no-code mapping + geniş destination sunar, Census developer-first dynamic segmentation sağlar, Segment CDP entegrasyonu + compliance otomasyonu getirir. Hangisi? Ekibinin SQL yetkinliğine, destination ihtiyacına ve mevcut stack'e bağlı. Kritik nokta: warehouse = single source of truth prensibi — transformation dbt'de, activation downstream'de, iki katman birbirini bozmuyor.
+Reverse ETL warehouse'ınızı pasif rapor deposundan aktif karar motoruna dönüştürür. Hightouch mühendislik disiplini ve compliance gereksinimi yüksek ekipler için, Census pazarlama-data dengesi arayan orta ölçekli şirketler için, Segment zaten CDP kullanılan çok kanallı büyük organizasyonlar için uygun. Araç seçimi ekip yapınıza, warehouse maturity'nize ve bütçenize bağlı. Hangi tool olursa olsun, başarı kriteri aynı: analitik sonuçlarınız dashboard'ta kalmayıp doğrudan operational sisteme, oradan da müşteri deneyimine dönmelidir.
