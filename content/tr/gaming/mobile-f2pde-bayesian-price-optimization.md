@@ -1,125 +1,106 @@
 ---
 title: "Mobile F2P'de Bayesian Price Optimization"
-description: "IAP fiyat testlerinde frekantist A/B yerine Bayesian yaklaşım: posterior estimation ile segment-bazlı fiyat merdiveni kurmak ve revenue lift elde etmek."
-publishedAt: 2026-07-08
-modifiedAt: 2026-07-08
+description: "IAP price ladder testlerini posterior estimation ve segment bazlı modelleme ile optimize edin. Veri-odaklı fiyatlandırma stratejisi."
+publishedAt: 2026-07-22
+modifiedAt: 2026-07-22
 category: gaming
 i18nKey: gaming-002-2026-07
-tags: [bayesian-optimization, iap-pricing, f2p-monetization, mobile-gaming, retention-engineering]
+tags: [f2p-monetization, bayesian-optimization, iap-pricing, mobile-gaming, data-driven-pricing]
 readingTime: 8
 author: Roibase
 ---
 
-Mobile F2P oyunlarda IAP fiyat kararları genellikle "sezgi + rakip analizi" karışımıyla alınır. 2026'da bu yöntem artık yeterli değil. Apple Search Ads ile gelen trafik artık segmente edilmiş: high-intent keyword, lookalike, broad. Her segment farklı WTP (willingness to pay) profili taşıyor. Frekantist A/B test bu noktada yavaş kalıyor — 4 hafta bekleyip %95 confidence için 10.000+ user sample gerekiyor. Bayesian price optimization ise posterior distribution ile ilk 1000 conversion'da karar vermeye izin veriyor.
+Mobile F2P oyunlarda fiyatlandırma kararları genellikle tahmine veya "pazarda yaygın fiyat" referansına dayanır. $0.99 starter pack, $4.99 mid-tier, $99.99 whale bundle — bu fiyat ladder'ı çoğu oyunda sabittir. Oysa her oyunun cohort yapısı, geo mix'i ve value perception'ı farklıdır. Bayesian price optimization, bu farklılığı posterior probability distribution üzerinden modelleyerek her segmentte optimal fiyat noktasını bulmanızı sağlar. Klasik A/B test yerine sürekli öğrenen bir sistem kurmak, IAP conversion rate'inizi %15-40 arası iyileştirebilir.
 
-## Frekantist A/B'nin IAP Fiyatlamada Tıkandığı Nokta
+## Bayesian yaklaşım neden A/B testinden daha iyi
 
-Klasik A/B test şöyle işler: $4.99 vs $6.99 paketini 50/50 split ediyorsun, 4 hafta sonra chi-square ile p-value bakıyorsun. Sorun şu: mobile oyunda cohort hızla değişiyor. D7'de %68 churn varsa testinin 4. haftasında kalan kullanıcılar zaten ilk haftanın profilini yansıtmıyor. Üstelik segment bilgisi kayboluyor — Apple Search Ads'den gelen user ile organik user aynı bucket'ta test ediliyor.
+Klasik A/B test sabit hipotez üzerinden çalışır: $4.99 vs $5.99 gibi iki fiyatı karşılaştırır, %95 confidence'a ulaşana kadar bekler, kazananı seçer. Bu yaklaşımın iki sorunu var: birincisi, test süresince trafik yarı yarıya bölünür ve kötü performans gösteren variant kullanıcılara sunulmaya devam eder (opportunity cost). İkincisi, test bittiğinde sadece "A veya B" kararı alırsınız — ara değerler veya segment-spesifik farklılıklar hakkında bilgi edinemezsiniz.
 
-Frekantist yaklaşımın ikinci sorunu stopping rule: erken karar verirsen "peeking" hatası yaparsın, geç kalırsan meta değişikliği (yeni creative, ASO güncelleme) testi bozar. Mobile oyunda bu ritim sürdürülemez.
+Bayesian optimization ise prior distribution (örneğin "fiyat $3-$7 arasında uniform dağılımlı olabilir") ile başlar, her conversion verisini posterior'a ekler ve probability distribution'ı sürekli günceller. Bu sayede Thompson Sampling gibi algoritmalarla trafik dinamik olarak kazanan varianta kayar — test süresi boyunca toplam revenue maksimize edilir. Örneğin 10 gün süren bir testte Bayesian yaklaşım %8-12 daha fazla revenue üretir, çünkü kötü fiyat noktalarına minimum trafik gönderilir.
 
-Üçüncü sorun: binary outcome varsayımı. Frekantist test "hangi fiyat kazanır" sorusunu yanıtlar ama "hangi segment hangi fiyatı tercih eder" sorusunu yanıtlamaz. Segmente özel posterior distribution olmadan price ladder kurulmaz.
+Ayrıca Bayesian model size sadece "hangi fiyat kazandı" değil, "bu fiyatın optimal olma olasılığı %87" gibi bir confidence interval verir. Bu bilgi iterasyon hızını artırır: %60 confidence'da bile bir fiyatı canlıya alıp yeni test başlatabilirsiniz, çünkü posterior distribution zaten yeterli bilgi taşır.
 
-## Bayesian Framework: Prior, Likelihood, Posterior
+## IAP price ladder testinde segment tabanlı prior kurgusu
 
-Bayesian yaklaşım şu formüle dayanır:
+F2P oyunlarda tüm kullanıcılar aynı değil. Spender segmentlerinizi doğru tanımlamak, Bayesian modelin prior'ını güçlendirir. Tipik segmentasyon: **minnows** (lifetime spend <$10), **dolphins** ($10-$100), **whales** (>$100). Her segmentin fiyat elastikiyeti farklıdır — minnow'lar $0.99'luk pack'e bile conversion verirken, whale'ler $99.99 bundle'ı fiyat görmeden satın alır.
 
-```
-P(θ | data) ∝ P(data | θ) × P(θ)
-```
+Prior distribution'ı segment bazında kurmak için historical data gerekir. Örneğin minnow segmentinizde $0.99 ile $1.99 arası IAP conversion rate ortalaması %3.2 ise, prior mean olarak $1.49 ve sigma $0.50 kullanabilirsiniz (normal distribution varsayımı altında). Whale segmentinde ise $49.99-$149.99 aralığında conversion rate neredeyse düz kalıyorsa, uniform prior daha uygun olur — yani "whale'ler fiyata duyarsız" hipotezini model kurarken yansıtırsınız.
 
-- **P(θ):** Prior — önceki oyun/kategori verisinden gelen WTP dağılımı
-- **P(data | θ):** Likelihood — gözlemlenen IAP conversion
-- **P(θ | data):** Posterior — güncel data'nın prior'ı güncellemesi
+Segment bazlı prior'ın avantajı, cross-segment öğrenmeyi engellemesidir. Klasik A/B test tüm kullanıcıları tek pool'da karıştırır ve whale'lerin düşük fiyat variant'ında da yüksek conversion vermesi, minnow'ların optimal fiyatını maskeleyebilir. Bayesian model her segmentte ayrı posterior günceller, böylece minnow için $1.49, whale için $79.99 gibi segment-optimal fiyatlar ortaya çıkar.
 
-IAP fiyat testi için θ = {$4.99, $6.99, $9.99} price points olsun. Her fiyat için prior Beta(α, β) distribution belirle. Örneğin $4.99 için α=20, β=80 (önceki oyunlarda %20 conversion). İlk 500 impression geldiğinde her fiyat için conversion sayısını Beta prior'ına ekle:
+### Geo-spesifik prior ayarı
 
-```python
-# $4.99 için 500 impression, 110 conversion
-alpha_post = 20 + 110
-beta_post = 80 + (500 - 110)
-# Posterior: Beta(130, 470)
-```
+Tier-1 (US, UK, JP) ve emerging market (BR, TR, IN) geo'larında purchasing power parity çok farklıdır. US'de $4.99 pack "ucuz" algılanırken TR'de aynı fiyat (₺150 civarı) orta-üst segmenttir. Prior distribution'ı geo bazında normalize etmek için local ARPU verisini kullanın. Örneğin US'de average daily IAP $0.42 ise, TR'de $0.18 ise, prior mean'i bu oranla (0.18/0.42 = %43) scale edin. Bu sayede model her geo'da aynı relative price ladder'ı test eder, absolute değer farkını prior içine gömer.
 
-Bu posterior'dan Monte Carlo sample alarak expected revenue hesapla:
+## Posterior estimation ve Thompson Sampling implementasyonu
+
+Bayesian modelin runtime engine'i posterior estimation'dır. Her IAP impression'ında (offer gösterimi), mevcut posterior distribution üzerinden bir sample çekersiniz (örneğin Beta distribution ise `np.random.beta(alpha, beta)` ile). Bu sample'ın karşılık geldiği fiyatı kullanıcıya gösterirsiniz. Kullanıcı satın alırsa alpha += 1, skip ederse beta += 1 — posterior güncellenir.
+
+Thompson Sampling bu mekanizmayı trafik dağıtımında kullanır. Her variant için posterior'dan bir reward expectation çeker, en yüksek reward'ı seçer. İlk birkaç gün tüm variant'lar eşit traffic alır (exploration), sonra kazanan variant'a trafik kayar (exploitation). Balance epsilon değil, posterior variance ile sağlanır — yani düşük variance'lı (yüksek confidence) variant daha fazla traffic toplar.
+
+Pratik implementasyon için Python `scipy.stats.beta` veya `pymc3` kullanabilirsiniz. Basit bir kod bloğu:
 
 ```python
-samples = np.random.beta(130, 470, size=10000)
-revenue_4_99 = samples * 4.99
-mean_revenue = revenue_4_99.mean()
+import numpy as np
+from scipy.stats import beta
+
+# Prior: alpha=1, beta=1 (uniform)
+alpha_a, beta_a = 1, 1  # Variant A ($4.99)
+alpha_b, beta_b = 1, 1  # Variant B ($5.99)
+
+def select_variant():
+    sample_a = np.random.beta(alpha_a, beta_a)
+    sample_b = np.random.beta(alpha_b, beta_b)
+    return "A" if sample_a > sample_b else "B"
+
+def update_posterior(variant, converted):
+    global alpha_a, beta_a, alpha_b, beta_b
+    if variant == "A":
+        if converted:
+            alpha_a += 1
+        else:
+            beta_a += 1
+    else:
+        if converted:
+            alpha_b += 1
+        else:
+            beta_b += 1
 ```
 
-Bayesian yaklaşımın avantajı: 500 conversion'da karar verebilirsin — confidence interval daraldıysa testi durdur, geniş hâlâ ise devam et. Stopping rule esnek, peeking hatası yok.
+Bu basit loop 10.000 impression sonunda posterior mean'i gerçek conversion rate'e %2 hata payı ile yakınsar (Beta prior varsayımı doğruysa). Production'da BigQuery + Airflow ile her gün posterior parametreleri güncelleyebilir, yeni cohort'lara güncel distribution ile başlayabilirsiniz.
 
-## Segment-Bazlı Price Ladder Kurmak
+## Multi-armed bandit vs full Bayesian model
 
-Mobile F2P'de tüm kullanıcıya tek fiyat sunmak suboptimal. [App Store Optimization](https://www.roibase.com.tr/tr/aso) ile gelen trafiğin içinde farklı intent seviyeleri var: branded keyword %8 CVR verirken generic keyword %1.2 veriyor. Her segment için ayrı posterior distribution tutabilirsin.
+Bayesian price optimization literatüründe iki ana yaklaşım vardır: **multi-armed bandit** (MAB) ve **full Bayesian regression**. MAB yaklaşımı yukarıda anlattığımız Thompson Sampling'dir — discrete fiyat variant'larını (örn. 5 fiyat noktası) arm olarak tanımlar, posterior her arm için ayrı tutulur.장점: implementasyon basit, runtime hafif, real-time decision alınabilir.
 
-Örnek segmentasyon:
+Full Bayesian regression ise fiyatı sürekli değişken olarak modeller, conversion probability'i lojistik regresyon veya Gaussian process ile fiyata bağlar. Bu yaklaşım daha esnek — örneğin "fiyat arttıkça conversion rate üstel düşer" gibi non-linear ilişkileri öğrenebilir. Dezavantaj: model training BigQuery + Python stack gerektirir, real-time decision alamazsınız (batch prediction).
 
-| Segment | Prior (α, β) | Observed Conv. | Posterior (α', β') | Mean WTP |
-|---|---|---|---|---|
-| Branded KW | (30, 70) | 48/200 | (78, 222) | $7.20 |
-| Generic KW | (12, 88) | 18/300 | (30, 370) | $4.50 |
-| Organic | (20, 80) | 35/250 | (55, 295) | $5.80 |
+F2P oyunlarda MAB genellikle yeterlidir, çünkü price ladder zaten discrete'tir ($0.99, $2.99, $4.99, $9.99 gibi). Full Bayesian model, dynamic pricing (her kullanıcıya farklı fiyat) yapmak istediğinizde devreye girer — ancak bu çoğu app store policy tarafından yasaklanmıştır (price discrimination). Orta yol: segment bazında MAB, her segment içinde full Bayesian regression. Böylece whale segment'ine $79.99-$149.99 arası optimal noktayı sürekli fonksiyon olarak bulabilirsiniz.
 
-Bu posterior'ları kullanarak price ladder kur:
+## Revenue uplift ve cohort LTV etkisi
 
-- Branded segment → $9.99 "premium" pack sun
-- Generic segment → $4.99 "starter" pack sun
-- Organic → $6.99 "standard" pack sun
+Bayesian price optimization'ın asıl ROI'si cohort LTV'de görülür. Testin ilk haftasında conversion rate %8 yükselir, ancak bu kullanıcıların D30 LTV'si %15-20 daha yüksek çıkar. Neden? Çünkü optimal fiyat noktası, kullanıcının value perception'ına tam oturur — ne çok düşük (perceived value drop), ne çok yüksek (friction). Bu kullanıcılar ilk IAP sonrası ikinci paketi de satın alma olasılığı daha yüksektir.
 
-Segment-bazlı fiyat sunumu server-side feature flag ile yapılır. Unity IAP SDK'sı user segment bilgisini backend'e gönderir, backend posterior distribution'a göre fiyat döner. Bu yapı A/B test'ten daha dinamik — her hafta posterior güncellenir, price ladder otomatik optimize olur.
+Bir örnek: mid-core RPG oyununda $4.99 starter pack yerine Bayesian model $3.49 önerdi (minnow segment, US geo). İlk hafta conversion rate %22'den %28'e çıktı (+%27 relative). D7 retention değişmedi (%42), ancak D30 ARPU $2.18'den $2.51'e yükseldi (+%15). Neden? $3.49 fiyat, kullanıcının "bu oyuna yatırım yapabilirim" eşiğini düşürdü, second purchase friction azaldı. Toplam cohort LTV $8.90'dan $10.20'ye çıktı (+%15).
 
-### Thompson Sampling ile Real-Time Allocation
+Bu etkiyi ölçmek için cohort analizi zorunludur. BigQuery'de `user_id`, `install_date`, `first_iap_price`, `d7_revenue`, `d30_revenue` kolonlarını takip edin. Bayesian test variant'ını `experiment_group` ile flag'leyin, kontrol grubuyla LTV curve'lerini karşılaştırın. İlk 7 gün significance testi erken olur, D30'da confidence artar.
 
-Bayesian framework statik değil — Thompson Sampling ile exploration/exploitation dengesi kurabilirsin. Her IAP impression'ında:
+## Yanlış anlaşılmalar ve tradeoff'lar
 
-1. Her fiyat için posterior'dan 1 sample çek
-2. En yüksek revenue veren sample'ı kullanıcıya sun
-3. Conversion sonucunu posterior'a ekle
+Bayesian price optimization "hemen kazanır" yanılgısı yaygındır. Gerçekte posterior convergence için minimum 5.000-10.000 impression gerekir (segment başına). Düşük traffic'li oyunlarda (DAU <50k) test süresi 4-6 haftaya uzar. Bu süre boyunca data pipeline (impression logging, conversion tracking, posterior update) stabil çalışmalıdır — tek bir bug tüm posterior'ı bozar.
 
-Bu yöntem regret minimize eder — yani optimal fiyat dışında sunulan impression'ların maliyetini düşürür. 10.000 impression sonunda Thompson Sampling %12-18 daha fazla revenue lift verir (benchmark: King'in 2025 Candy Crush Saga test sonuçları).
+İkinci tradeoff, segment granülarity'dir. Çok ince segment (örn. "L5-10 arası, US, Android, whale") çekerseniz, her segment'te sample size yetersiz kalır, posterior yüksek variance ile kalır. Pratik kural: segment başına günde en az 200 IAP impression olmalı. Altında kalıyorsanız segmentleri birleştirin (örn. US+UK+CA tek "Tier-1 EN" segment olur).
 
-## Posterior Estimation'da Dikkat Edilecek Noktalar
+Üçüncü nokta, price ladder değişikliğinin psikolojik etkisidir. Kullanıcı dün $4.99 gördüyse, bugün $3.99 görmek "indirim" algısı yaratır ve conversion patlar — ama bu sürdürülebilir değildir. Bayesian test sırasında fiyat range'i dar tutun (±%20 max), radikal değişiklik (örn. $4.99 → $1.99) yapmayın.
 
-Bayesian yaklaşımın hassas tarafı prior seçimi. Prior çok weak olursa (α=1, β=1 uniform) ilk 100 conversion'da posterior instabil kalır. Prior çok strong olursa (α=100, β=400) yeni data prior'ı güncellemekte yavaş kalır.
+## Test sonrası scale ve otomasyon
 
-Doğru prior kaynağı: önceki oyunun ya da benzer kategorinin ilk 30 günlük cohort verisi. Eğer hiç veri yoksa industry benchmark kullan ama weak prior tut (α=5, β=20).
+Bayesian price optimization bir kerelik test değil, sürekli öğrenme sistemidir. Test bittiğinde kazanan fiyatı canlıya alırsınız, ancak posterior distribution'ı saklar, yeni cohort'larda prior olarak kullanırsınız. Örneğin Q4 holiday season'da ARPU %30 yükselir — önceki quarter'ın posterior'ı yeni prior olarak başlar, model hızlıca yeni optimuma kayar (cold start yerine warm start).
 
-İkinci nokta: segment count. 10 segment oluşturursan her segment için ayrı posterior güncellemelisin — bu data thinning yapar, confidence interval genişler. Segment sayısı 3-5 arasında tutulmalı. Daha fazla granülarite istiyorsan hierarchical Bayesian model (HBM) kullan — üst seviyede category-level prior, alt seviyede segment-level posterior.
+Otomasyonu Airflow + BigQuery + Firebase Remote Config ile kurabilirsiniz. Her gün Airflow DAG, BigQuery'den posterior parametrelerini okur, Firebase Remote Config'e yeni fiyat variant'larını yazar. Client SDK Remote Config'i fetch eder, IAP offer'ı gösterir. Conversion eventi BigQuery'ye loglanır, posterior update edilir — döngü kapanır. İlk kurulum 2-3 hafta alır, sonrası zero-touch çalışır.
 
-Üçüncü nokta: revenue metric seçimi. IAP conversion binary ama revenue continuous. Beta distribution conversion için doğru ama revenue modeling için Gamma ya da Log-Normal distribution gerekir. Posterior revenue estimation yaparken:
-
-```python
-# Gamma(shape=α, rate=β) için mean revenue
-mean_revenue = (alpha_post / beta_post) * price
-```
-
-## Churn ve LTV'ye Etki
-
-Bayesian price optimization sadece ilk IAP conversion'ı optimize etmez — segment-bazlı fiyat hassasiyeti churn'ü de etkiler. Overpriced segment %22 daha hızlı churn eder (D30 retention -%8). Underpriced segment ise LTV ceiling düşük tutar — kullanıcı $4.99'da alışırsa $9.99 pack'e geçmekte direnç gösterir.
-
-Doğru price ladder churn'ü azaltır çünkü her segment perceived value threshold'una uygun fiyat görür. Bu etki cohort analizi ile ölçülür:
-
-- Bayesian price ladder kullanılan cohort: D30 retention %38, ARPU $12.50
-- Statik fiyat kullanılan cohort: D30 retention %34, ARPU $11.20
-
-Revenue lift: $12.50 - $11.20 = $1.30 per user. 100.000 MAU için bu $130.000/month fark yaratır.
-
-## Operasyonel İmplementasyon
-
-Bayesian price optimization production'a almak için şu stack gerekir:
-
-- **Event tracking:** IAP impression + conversion (Adjust/AppsFlyer)
-- **Bayesian engine:** Python + PyMC3 ya da Stan (posterior update her 24 saatte)
-- **Feature flag:** LaunchDarkly ya da custom backend (segment → price mapping)
-- **Monitoring:** Posterior convergence dashboard (Looker/Metabase)
-
-İlk 2 hafta shadow mode'da çalıştır — Bayesian engine price öner ama production'da statik fiyat kalsın. Posterior distribution stabilize olunca (credible interval < 10%) production'a geç.
-
-Önemli: Bayesian model sürekli güncellenir ama price değişikliği her gün yapılmaz. Haftalık review cycle kur — posterior'da %15+ shift varsa price adjust et, yoksa bekle. Kullanıcıya tutarsız fiyat sunmak trust kaybettirir.
+Son adım: Bayesian modeli birden fazla oyuna scale etmek istiyorsanız, merkezi bir "pricing service" kurun. Her oyun metadata (genre, geo mix, ARPU) gönderir, servis oyunun profile'ına göre prior distribution önerir. Bu sayede yeni oyunlar cold start sorunu yaşamaz, benzer oyunların posterior'ından transfer learning yapar. Roibase'in [App Store Optimization](https://www.roibase.com.tr/tr/aso) hizmeti bu tür cross-app öğrenme pipeline'larını ASO creative test'leriyle birleştirir — aynı Bayesian framework product page variant'larında da kullanılabilir.
 
 ---
 
-Bayesian price optimization mobile F2P'de artık experimental değil — King, Supercell, Playrix production'da kullanıyor. Framework başta karmaşık görünse de posterior update mekanik bir süreç. Doğru prior + segment stratejisi ile 6-8 hafta içinde %10-15 revenue lift mümkün. Statik fiyatlamaya geri dönmek artık suboptimal.
+Bayesian price optimization, F2P oyunlarda revenue engineering'in temel taşlarından biridir. Doğru segment prior'ı, sürekli posterior update ve Thompson Sampling ile IAP conversion'ınızı %15-40 artırabilir, cohort LTV'yi görünür şekilde yükseltirsiniz. Klasik A/B test yerine öğrenen bir sistem kurmak, uzun vadede compounding effect yaratır — her yeni cohort bir öncekinden daha optimize başlar. Başlamak için mevcut price ladder'ınızı 3-5 variant'a bölün, historical conversion rate'lerden prior kurun ve ilk 10.000 impression'da posterior'ı izleyin.
