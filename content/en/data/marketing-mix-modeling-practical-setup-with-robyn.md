@@ -1,160 +1,271 @@
 ---
 title: "Marketing Mix Modeling: Practical Setup with Robyn"
-description: "Meta's open-source MMM framework Robyn enables saturation, adstock, and holdout validation with practical R code and correct data structures for post-cookie measurement."
-publishedAt: 2026-06-05
-modifiedAt: 2026-06-05
+description: "Meta's Robyn framework for MMM implementation: saturation curves, adstock decay, holdout validation. R code and BigQuery integration included."
+publishedAt: 2026-07-24
+modifiedAt: 2026-07-24
 category: data
-i18nKey: data-005-2026-06
-tags: [marketing-mix-modeling, robyn, adstock, saturation-curve, incrementality]
+i18nKey: data-005-2026-07
+tags: [marketing-mix-modeling, robyn, attribution, data-science, bigquery]
 readingTime: 8
 author: Roibase
 ---
 
-In the post-cookie measurement world, attribution loses a little more signal every day. With iOS 17.4 and SKAdNetwork struggling to surface true ROAS, marketing budget owners are turning to econometric models to measure channels' actual contribution. Marketing Mix Modeling (MMM), a statistical method developed in the 1960s for television advertising, has reclaimed center stage in 2026 alongside server-side measurement and first-party data lakes. **Robyn**, released as open source by Meta in 2021, accelerated adoption by adding modern machine learning and Bayesian optimization to this regression-based methodology.
+Attribution has been breaking down for three years. iOS 14.5, Consent Mode v2, the withdrawal of third-party cookies — all of it leaves the digital marketer facing the same question: which channel actually works? Marketing Mix Modeling (MMM) is the statistical answer that breaks cookie and pixel dependency, working instead with aggregate-level data. Meta's open-source Robyn framework transforms MMM from an academic exercise into a production-ready pipeline. This article provides concrete steps to set up Robyn from scratch, interpret saturation curves, adjust adstock decay parameters, and validate your model with holdout testing.
 
-## Why MMM is critical now
+## What is MMM and why it's critical now
 
-As the last-click attribution model collapses with cookie loss, multi-touch attribution (MTA) has become unusable due to event-level data requirements in the GDPR and ATT era. Google Analytics 4's data-driven attribution relies on machine learning but operates only within the Google ecosystem. Yet 60% of marketing budgets still sit outside Google: Meta, TikTok, programmatic display, offline TV, sponsorships.
+Marketing Mix Modeling explains the relationship between media spend and sales or conversions using regression-based statistics. It doesn't require user-level data — it works with weekly or daily aggregate metrics like total spend, impressions, and sales. The model calculates each channel's marginal contribution (incrementality) and shows which channels are entering saturation.
 
-MMM relies on aggregated data at the weekly or daily level rather than user-level tracking. Regression models extract the relationship between each channel's spend and sales (or conversions). Two core assumptions underpin the model: **saturation** (increasing spend yields diminishing marginal returns) and **adstock** (today's ad influences future weeks). These are statistical assumptions grounded in business reality. Robyn targets automatic parameter discovery through Bayesian hyperparameter optimization. Post-2024 releases (v3.11+) added **ridge regression** and **Prophet time-series decomposition**, improving seasonal accuracy.
+Classic last-click attribution is pixel-based — it credits the last channel the user clicked. MMM observes all channels in the same time window, isolating correlation. For example, if TV ads show a 3-week lag before driving sales (carryover effect), the model captures this lag through an "adstock" parameter. The saturation curve shows diminishing returns: the first 100,000 TL in spend may drive 50 conversions, while the next 100,000 TL drives only 20.
 
-Another critical Robyn feature is **holdout validation**: the model trains on the prior 12 weeks of data and predicts the next four weeks to measure out-of-sample error. This guards against overfitting and confirms the model actually learned channels. Google's Meridian and Facebook's legacy MMM solutions use similar approaches but remain closed-source and expensive. Robyn delivers the same methodology at no cost.
+Robyn packages this mathematical framework as an R package, trained on Meta's own campaign data. It includes Bayesian ridge regression, multi-objective evolutionary algorithm (MOEA) for hyperparameter tuning, and Nevergrad optimization. Setup isn't manual — after data preparation, 50 lines of R code generates your model.
 
-## Data structure and preparation
+## Data preparation: BigQuery to Robyn
 
-Robyn requires data in a specific format: each row represents a time unit (day or week), and each column represents channel spend or a conversion metric. A minimum of 104 weeks (two years) is recommended because regression coefficient significance depends on sample size. With fewer than 52 weeks, you'll face convergence issues.
+Robyn expects a single CSV or data.frame as input. Each row is a time period (week or day), each column is a channel spend, impression count, or sales metric. It won't tolerate missing data — if empty cells exist, you'll need to impute them. Here's the minimum schema:
+
+| date       | tv_spend | fb_spend | google_spend | revenue | control_var |
+|------------|----------|----------|--------------|---------|-------------|
+| 2024-01-01 | 50000    | 12000    | 8000         | 120000  | 0.8         |
+| 2024-01-08 | 55000    | 13000    | 9000         | 135000  | 0.9         |
+
+To pull this data from BigQuery with weekly aggregation:
+
+```sql
+SELECT
+  DATE_TRUNC(event_date, WEEK) AS date,
+  SUM(IF(channel = 'tv', spend, 0)) AS tv_spend,
+  SUM(IF(channel = 'facebook', spend, 0)) AS fb_spend,
+  SUM(IF(channel = 'google', spend, 0)) AS google_spend,
+  SUM(revenue) AS revenue,
+  AVG(seasonality_index) AS control_var
+FROM `project.dataset.marketing_events`
+WHERE event_date BETWEEN '2022-01-01' AND '2024-12-31'
+GROUP BY 1
+ORDER BY 1
+```
+
+A control variable (trend, seasonality, macroeconomic indicator) isn't mandatory but increases the model's explanatory power. For example, in retail, January is discount month — add a dummy variable. Robyn incorporates these variables into regression as "organic" baseline components.
+
+To load data into R, use the `bigrquery` package:
 
 ```r
-# Example data structure — aggregated weekly from BigQuery
-df <- data.frame(
-  DATE = seq.Date(from = as.Date("2024-01-01"), by = "week", length.out = 104),
-  revenue = runif(104, 80000, 150000),
-  google_search_spend = runif(104, 5000, 15000),
-  meta_spend = runif(104, 8000, 20000),
-  tiktok_spend = runif(104, 2000, 8000),
-  tv_grp = runif(104, 50, 200),
-  organic_sessions = runif(104, 10000, 30000),
-  competitor_index = runif(104, 0.8, 1.2)
-)
+library(bigrquery)
+bq_auth(path = "service-account-key.json")
+sql <- "SELECT date, tv_spend, fb_spend, google_spend, revenue FROM ..."
+df <- bq_project_query("your-project-id", sql) %>% bq_table_download()
 ```
 
-**Critical details:**
-- The `DATE` column must be Date class, not string
-- Revenue or conversion serves as the dependent variable fed into the model
-- Channels (`google_search_spend`, `meta_spend`) are **paid** media columns—adstock and saturation apply to these
-- Variables like `organic_sessions` and `competitor_index` are **organic/control** variables—no conversion function applies; they enter baseline inference
-- For offline channels like TV, use GRP, reach, or viewing minutes as normalized input
+Use the `robyn_inputs()` function for schema validation. The date column must be Date class, metrics must be numeric.
 
-Robyn doesn't work with manual labels like `facebook_spend`; you define column names yourself, but in the `InputCollect()` function you must explicitly specify which columns are paid and which are organic.
+## Robyn model configuration: adstock and saturation
 
-If you haven't built a [first-party data architecture](https://www.roibase.com.tr/en/firstparty), collecting this data is difficult. Server-side GTM, GA4 raw export, Meta/Google Ads APIs, sales data from your CRM—combine everything in BigQuery and roll up to weekly granularity. When we build this ETL pipeline with dbt, we produce a ready-to-use `fact_marketing_weekly` table for MMM.
-
-## Saturation and adstock configuration
-
-Robyn's strength lies in optimizing saturation curves and adstock decay parameters **individually per channel**. Saturation is modeled using the Hill function:
-
-```
-effect = spend^alpha / (spend^alpha + half_saturation^alpha)
-```
-
-The `alpha` parameter controls curve concavity; `half_saturation` defines the spend level at which half the effect materializes. Intent-based channels like Google Search saturate early (low alpha, low half_saturation). Awareness channels (TV, YouTube) saturate late.
-
-Adstock models past spend's current impact. Geometric adstock is most common:
-
-```
-adstocked_spend[t] = spend[t] + theta * adstocked_spend[t-1]
-```
-
-`theta` (between 0 and 1) is the decay rate. TV has high theta (0.7–0.9 — effects persist for weeks); search has low theta (0.1–0.3 — effects terminate quickly). Robyn finds these parameters via Nevergrad optimization, but you must provide **prior ranges**:
-
-```r
-hyperparameters <- list(
-  google_search_spend_alphas = c(0.5, 1.5),
-  google_search_spend_gammas = c(0.1, 0.4), # adstock decay
-  google_search_spend_thetas = c(0, 0.3),   # adstock theta
-  meta_spend_alphas = c(0.5, 2.0),
-  meta_spend_gammas = c(0.3, 0.8),
-  meta_spend_thetas = c(0.2, 0.6),
-  tv_grp_alphas = c(1.0, 3.0),
-  tv_grp_gammas = c(0.5, 0.9),
-  tv_grp_thetas = c(0.6, 0.9)
-)
-```
-
-Set these ranges using domain knowledge. Arbitrary ranges cause divergence or nonsensical coefficients (e.g., negative TV impact). Robyn's documentation suggests defaults, but test them on your data before deploying.
-
-## Model training and holdout validation
-
-You run Robyn using the `robyn_run()` function. Inside, **Nevergrad** performs Bayesian optimization to find the best hyperparameter combination. A typical run means 2,000 iterations × 10 trials = 20,000 model trainings. On an M1 MacBook with 8 cores, expect ~15 minutes.
+Robyn's core lies in the `robyn_inputs()` and `robyn_run()` functions. The first step is defining model inputs:
 
 ```r
 library(Robyn)
 
 InputCollect <- robyn_inputs(
   dt_input = df,
-  date_var = "DATE",
+  date_var = "date",
   dep_var = "revenue",
   dep_var_type = "revenue",
-  paid_media_vars = c("google_search_spend", "meta_spend", "tiktok_spend"),
-  paid_media_spends = c("google_search_spend", "meta_spend", "tiktok_spend"),
-  organic_vars = c("organic_sessions"),
   prophet_vars = c("trend", "season", "holiday"),
-  window_start = "2024-01-01",
-  window_end = "2025-12-31",
+  prophet_country = "TR",
+  paid_media_spends = c("tv_spend", "fb_spend", "google_spend"),
+  paid_media_vars = c("tv_spend", "fb_spend", "google_spend"),
+  context_vars = c("control_var"),
   adstock = "geometric",
-  hyperparameters = hyperparameters
+  window_start = "2022-01-01",
+  window_end = "2024-10-31"
+)
+```
+
+**Choosing adstock type:**
+- `geometric`: Most common. Constant decay rate (e.g., 80% remains each week). Suited for TV and display.
+- `weibull`: Asymmetric decay — fast drop initially, then slow. Works for video and influencer campaigns.
+
+The geometric adstock formula:
+
+```
+transformed_value[t] = spend[t] + theta * transformed_value[t-1]
+```
+
+`theta` is the decay rate (0-1 range). Robyn optimizes this automatically, but you can set manual ranges:
+
+```r
+hyperparameters <- list(
+  tv_spend_alphas = c(0.5, 3),       # saturation curve coefficient
+  tv_spend_gammas = c(0.3, 1),       # saturation inflection point
+  tv_spend_thetas = c(0, 0.5),       # adstock decay rate
+  fb_spend_alphas = c(0.5, 3),
+  fb_spend_gammas = c(0.3, 1),
+  fb_spend_thetas = c(0, 0.3)
 )
 
+InputCollect <- robyn_inputs(
+  InputCollect = InputCollect,
+  hyperparameters = hyperparameters
+)
+```
+
+**Saturation parameters:**
+- `alpha`: Curve shape. High alpha → late saturation.
+- `gamma`: Inflection point — 0.5 means the bend occurs at the midpoint.
+
+Saturation via Hill equation:
+
+```
+response = spend^alpha / (gamma^alpha + spend^alpha)
+```
+
+Robyn optimizes these parameters using an evolutionary algorithm, generating 2,000 models and selecting the best trade-offs from the Pareto frontier (R² vs NRMSE balance).
+
+## Running the model and interpreting results
+
+To run the Robyn model:
+
+```r
 OutputModels <- robyn_run(
   InputCollect = InputCollect,
   iterations = 2000,
-  trials = 10,
-  outputs = FALSE
+  trials = 5,
+  cores = 8
 )
 ```
 
-After training, the model surfaces **Pareto-optimal** solutions. Robyn optimizes two metrics: NRMSE (normalized root mean square error) and decomposition RSSD (residual sum of squared differences). Each model on the Pareto frontier represents a trade-off: one fits well but has poor decomposition; another is the reverse. You manually select the most reasonable model.
-
-For holdout validation, you reserve the final 4–8 weeks. Robyn automates this:
+The output is a list — each iteration represents a different hyperparameter set. Robyn automatically selects the best 3 models (Pareto optimal). Results include:
 
 ```r
-robyn_refresh(
-  robyn_object = OutputModels,
-  dt_input = df_new, # Refresh with new data
-  refresh_steps = 4,
-  refresh_mode = "manual"
+OutputModels$resultHypParam    # parameters for all models
+OutputModels$xDecompAgg        # channel-level contribution decomposition
+OutputModels$resultCalibration # holdout validation scores
+```
+
+**Example decomposition table:**
+
+| channel      | total_spend | total_response | roi   | mean_response |
+|--------------|-------------|----------------|-------|---------------|
+| tv_spend     | 2400000     | 1800000        | 0.75  | 15000         |
+| fb_spend     | 600000      | 720000         | 1.20  | 6000          |
+| google_spend | 400000      | 560000         | 1.40  | 4667          |
+
+**ROI interpretation:** Facebook 1.20 — each 1 TL spent generates 1.20 TL return. TV 0.75 — not negative ROI, but 0.75 TL incremental contribution above baseline. Robyn measures incrementality, not last-click credit.
+
+**Saturation detection:** Robyn plots the saturation curve:
+
+```r
+robyn_onepagers(InputCollect, OutputModels, select_model = "2_100_3")
+```
+
+In the plot, watch where the curve flattens as spend increases. For example, if TV spend beyond 80,000 TL shows 50% lower marginal gains — that's a critical signal for budget optimization.
+
+## Holdout validation and model reliability
+
+For an MMM model to be production-ready, split historical data: training set (e.g., Jan 2022–Oct 2024) + holdout set (Nov–Dec 2024). The model trains on the training set and tests on the holdout. If MAPE (mean absolute percentage error) is under 10%, the model is reliable.
+
+Robyn handles holdout validation automatically:
+
+```r
+InputCollect <- robyn_inputs(
+  InputCollect = InputCollect,
+  window_start = "2022-01-01",
+  window_end = "2024-10-31",
+  rollingWindowStartWhich = 52,  # last 52 weeks as holdout
+  rollingWindowEndWhich = 4
 )
 ```
 
-If holdout MAPE (mean absolute percentage error) falls below 10%, the model is trustworthy. Above 20% is dangerous—signals overfitting or missing variables.
+Results appear in the `resultCalibration` table:
 
-## Interpreting outputs and budget optimization
+| model_id  | nrmse_train | nrmse_val | decomp.rssd |
+|-----------|-------------|-----------|-------------|
+| 2_100_3   | 0.08        | 0.12      | 0.05        |
 
-Robyn's most critical output is the **channel contribution** table. It shows each channel's revenue contribution percentage and **ROAS** (return on ad spend). But beware: these are historical ROAS values, not **marginal ROAS**. Marginal ROAS reveals the additional revenue your next 1,000 spent will generate, calculated as the derivative of the saturation curve.
+**NRMSE (normalized root mean squared error):** Lower is better. 0.12 is acceptable (anything below 0.15 is production-ready).
+**decomp.rssd:** Consistency of decomposition between training and validation. 0.05 → 5% deviation → stable model.
 
-Robyn's `budget_allocator()` function redistributes your current budget according to saturation curves. If Google Search saturates, excess budget shifts to Meta or TikTok. This optimization finds the point where marginal returns equalize across channels (Economics 101: MR₁ = MR₂).
+If holdout validation fails, two possibilities: (1) Insufficient data — MMM requires at least 2 years of weekly data. (2) Missing variables — add seasonality, competitor spend, price changes, or other confounding variables.
+
+## Connecting Robyn output to decision-making
+
+Export the decomposition table as CSV and reload into BigQuery:
+
+```r
+write.csv(OutputModels$xDecompAgg, "robyn_output.csv")
+```
+
+Load into BigQuery:
+
+```sql
+LOAD DATA OVERWRITE `project.dataset.mmm_results`
+FROM FILES (
+  format = 'CSV',
+  uris = ['gs://bucket/robyn_output.csv']
+);
+```
+
+This table connects to your dashboard (Looker, Tableau) or budget optimizer. Use a dbt model to calculate saturation thresholds:
+
+```sql
+WITH saturation AS (
+  SELECT
+    channel,
+    total_spend,
+    roi,
+    total_spend / NULLIF(roi, 0) AS optimal_spend
+  FROM `project.dataset.mmm_results`
+)
+SELECT * FROM saturation WHERE roi > 1.0 ORDER BY roi DESC;
+```
+
+This query ranks channels by ROI > 1 — a priority list for budget increases. Robyn also has a budget allocator function:
 
 ```r
 AllocatorCollect <- robyn_allocator(
-  robyn_object = OutputModels,
-  select_model = "1_100_2", # Model ID from Pareto frontier
-  scenario = "max_response_expected_spend",
-  channel_constr_low = c(0.7, 0.7, 0.5),   # Min 70% Google, 70% Meta, 50% TikTok
-  channel_constr_up = c(1.5, 2.0, 3.0),    # Max increase caps
-  expected_spend = 100000
+  InputCollect = InputCollect,
+  OutputCollect = OutputModels,
+  select_model = "2_100_3",
+  scenario = "max_response",
+  channel_constr_low = c(0.7, 0.7, 0.7),
+  channel_constr_up = c(1.5, 1.5, 1.5)
 )
 ```
 
-The output shows how to allocate your current 100,000 spend for optimal revenue. But this is static guidance—real life shifts with creative refresh, competitor moves, and seasonality. Refresh MMM **monthly**.
+The output recommends new budget allocation per channel. Constraints ensure spend stays between 70–150% of current levels (mitigating operational risk from sudden changes).
 
-## Tradeoffs and limitations
+Setting up [first-party data and measurement architecture](https://www.roibase.com.tr/en/firstparty) is critical for MMM. Data quality fed into Robyn directly affects model reliability. Server-side event tracking, identity resolution, and Consent Mode integration gaps create bias at the aggregation level.
 
-Unlike attribution, MMM works at **aggregate level**. This means it can't inform personalization. Robyn won't tell you which keywords drive better performance in Google Search—only the total Search channel's contribution. The model is also vulnerable to **correlation ≠ causation**: if sales spike in summer and you increase TV spend in summer, the model may overweight TV's credit.
+## Common pitfalls and mitigation
 
-Solve this by validating MMM with **incrementality tests**. Measure true causal impact via geo-lift or holdout tests, then compare to MMM results. Robyn accepts incrementality findings as `calibration` parameters—they act as Bayesian priors, anchoring the model to ground truth.
+**Multicollinearity:** If two channels always run together (e.g., TV + Facebook always simultaneous), the model can't separate their contributions. Check the Variance Inflation Factor (VIF):
 
-Adding **new channels** presents challenges. If you launch a new channel (say, Snapchat) with only eight weeks of data, Robyn can't learn its saturation curve. Either set manual priors or exclude the channel's first 12 weeks, adding it later.
+```r
+library(car)
+vif_model <- lm(revenue ~ tv_spend + fb_spend + google_spend, data = df)
+vif(vif_model)
+```
 
-Finally, MMM grows strongest when **uniting offline and online**. Without offline channels (TV, outdoor, sponsorships) in the model, it overweights online channels (omitted variable bias). Robyn flexes here: it accepts GRP, reach, even brand search volume as proxies.
+VIF > 5 → problem. Solutions: (1) Temporarily pause one channel for a holdout test. (2) Collect longer time series.
 
-A correctly built MMM pipeline transforms marketing budget planning from guesswork to evidence-based engineering. Robyn makes this shift accessible via open source—but data structure, hyperparameter tuning, and incrementality validation demand human expertise. Teams investing in econometric regression over attribution in the cookie-free era will be 12 months ahead of rivals by 2027.
+**Lag timing uncertainty:** Incorrect adstock parameter (e.g., 4 weeks for TV instead of 1 week) produces misleading results. Validate true decay duration with A/B tests or geo-experiments. Meta's GeoLift package does this.
+
+**Missing seasonality control:** If Prophet components (trend, season, holiday) aren't added to the model, January sales spikes can be wrongly attributed to media (when it's actually holiday promotions). Always enable Prophet:
+
+```r
+InputCollect <- robyn_inputs(
+  InputCollect = InputCollect,
+  prophet_vars = c("trend", "season", "holiday"),
+  prophet_country = "TR"
+)
+```
+
+**Model drift:** As market dynamics shift (new competitors, price changes, platform algorithm updates), the model becomes stale. Refresh quarterly — retrain on the last 2 years of data. Version control models with Robyn's `json_file` parameter:
+
+```r
+robyn_write(InputCollect, OutputModels, dir = "./robyn_models/")
+```
+
+Git commit each model version for A/B testing reference.
+
+MMM alone isn't sufficient. Validate with incrementality tests (geo-experiments, PSA holdouts). Robyn output is prediction — tested reality is truth. Using both together anchors attribution in engineering discipline.
