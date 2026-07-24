@@ -1,73 +1,120 @@
 ---
 title: "Digital Nomad Vergi Stack'i — 2026 Güncel Tablo"
-description: "Estonia e-residency, Portugal NHR sonrası yeni rejim ve Türkiye dijital göçebe düzenlemesi — tech ekibi için operasyonel vergi karşılaştırması."
-publishedAt: 2026-07-13
-modifiedAt: 2026-07-13
+description: "Estonia e-residency, Portugal NHR sonrası rejim ve Türkiye dijital göçebe vergilendirmesi: 2026'da uzaktan çalışan tech ekibi için güncel operasyonel tablo."
+publishedAt: 2026-07-24
+modifiedAt: 2026-07-24
 category: travel
 i18nKey: travel-003-2026-07
-tags: [digital-nomad, vergi, e-residency, portugal, turkiye]
+tags: [digital-nomad, vergi-planlama, e-residency, uzaktan-calisma, tech-ekip]
 readingTime: 8
 author: Roibase
 ---
 
-2026'da dijital göçebe vergi planlaması artık bir niş konu değil — remote-first tech şirketlerinin operasyonel gerçekliği. Portugal'ın 2024'te NHR rejimini değiştirmesi, Türkiye'nin 2025'te dijital göçebe vizesi açması ve Estonia'nın e-residency vergi kurallarını güncellemesi, üç ana hub'ın konumunu yeniden belirledi. Bu yazıda somut rakamlarla karşılaştırma yapıyoruz: hangi ülke hangi gelir seviyesi için mantıklı, hangi kombinasyon operasyonel olarak sürdürülebilir.
+2026'da dijital göçebeliğin vergi haritası üç büyük değişimle yeniden şekillendi: Portugal'ın Non-Habitual Resident (NHR) rejimini kapatması, AB'nin dijital platform gelir bildirimi zorunluluğu (DAC7) ve Türkiye'nin Mart 2026'da yürürlüğe giren "uzaktan çalışan gelir muafiyeti" düzenlemesi. Artık "nerede yaşarsam vergi ödemem" hipotezi çöktü — soru "hangi stack en düşük compliance cost'u sunar" oldu. Bu yazıda Estonia, Portugal sonrası alternatifler ve Türkiye'nin yeni rejimini operasyonel detaylarıyla karşılaştırıyoruz.
 
-## Estonia e-Residency: Yalnızca Dijital Mukim Değil, Vergi Mukimi
+## Estonia e-Residency: 2026'da Hâlâ En Düşük Overhead mi?
 
-Estonia e-residency'yi yalnızca "fiziksel olarak orada olmadan şirket kurmak" olarak okumak 2022 öncesi strateji. 2023 Eylül'den itibaren yürürlükte olan düzenleme açık: e-resident OU sahibi, fiziksel olarak Estonia'da 183 günden fazla kalmasa bile, şirket yönetimi Estonia'dan yapılıyorsa (board meeting, stratejik karar, banka hesabı yönetimi) vergi mukimi sayılır. Pratikte bu, yıllık €50,000+ geliri olan e-resident'ların %20 kurumlar vergisi + %20 temettü vergisi yükü altına girdiği anlamına geliyor.
+Estonia e-residency 2014'te dijital göçebelerin ilk kurumsal adresi oldu. 2026'da 120.000+ aktif şirket var, ancak modelin cazibesi değişti. Şu an e-resident OÜ'nün avantajı flat %20 kurumsal vergi değil — accounting stack'in otomasyonu ve AB içi compliance kolaylığı.
 
-2026 güncel rakamları: OU kurulumu €190, muhasebe hizmeti yıllık €600-1,200, vergi yükü gelirin %34-36'sı (kâr dağıtımı yapıldığında). Avantaj: tamamen dijital operasyon, banka hesabı açma 48 saat, invoicing infrastrüktürü EU standardında. Dezavantaj: €100,000+ gelirde vergi yükü İspanya'yı geçiyor, physical presence olmadan da mükellefiyet riski var.
+**Kritik nokta:** 2026'da temettü çektiğinde %20 kurumsal vergi ÜZERİNE kişisel vergi mukimi olduğun ülkenin oranı uygulanıyor. Örneğin Türkiye mukimi e-resident şirket sahibi temettüde %20 (OÜ) + %15 (Türkiye stopaj) = %35 efektif oran ödüyor. Bu Portugal NHR dönemindeki %20 flat'tan %15 daha yüksek.
 
-Operasyonel detay: e-residency yıllık yenileme yok, ancak OU annual report zorunlu (Mayıs ayı deadline). Wise Business veya Revolut Business entegrasyonu standart, ancak 2025'ten itibaren kripto ödemesi alan OU'lar için ek KYC zorunluluğu geldi. Tech ekibi için kritik nokta: board meeting kayıtları Estonia Tax Board tarafından talep edilebiliyor — asynchronous kararları Slack thread'i ile kanıtlamak yetmiyor, notarized meeting minutes gerekli.
+**Operasyonel maliyet:**
+- OÜ kuruluş: €190 (e-residency kartı) + €265 (şirket tescil)
+- Yıllık muhasebe: €600-1200 (Xolo, LeapIN gibi platformlar)
+- Banking: Wise Business veya Revolut Business (aylık €0-25)
+- **Toplam 1. yıl:** ~€1500, sonraki yıllar ~€1000
 
-## Portugal Post-NHR: 2024 Sonrası Yeni Rejim
+**Kime mantıklı:**
+- AB müşterilerinden fatura kesen SaaS geliri olan solo founder
+- Türkiye mukimi ama AB'de kurumsal varlık isteyenler (ödeme gateway, güvenilirlik)
+- Freelance değil ürün geliri olan yapılar — freelance için overhead yüksek
 
-Portugal'ın Non-Habitual Resident rejimine 2024'te fiilen son verildi. Yerine gelen "incentive regime for scientific research and innovation" (İRSRI) çok daha dar kapsamlı: yalnızca PhD sahibi veya bilimsel yayını olan araştırmacılar + patent tescili olan tech founder'lar için geçerli. Eski NHR'ın %20 flat tax'i yerine İRSRI %20-30 arası progressive, ve yalnızca ilk 5 yıl için geçerli.
+**Tuzak:** 2025 DAC7 sonrası e-resident şirketlerin de dijital platform gelirleri (Upwork, Fiverr, Gumroad) otomatik bildirim kapsamına girdi. "Gri alan" kalmadı.
 
-2026 rakamları: D7 vizesi (passive income) yıllık €9,120 minimum gelir kanıtı istiyor, ancak vergi avantajı yok. Tech freelancer için standart vergi yükü %48'e kadar çıkabiliyor (€75,000+ gelirde). Lizbon'da yaşam maliyeti 2021'den %28 arttı — 1+1 daire Alfama/Príncipe Real €1,400-1,800 arası, koworking (Second Home, Selina) €250-400/ay.
+## Portugal NHR Sonrası: Yeni Stack Alternatifleri
 
-Operasyonel gerçek: Portugal artık "vergi cenneti" değil, "yüksek yaşam kalitesi + EU içinde mobilite" satıyor. Remote tech ekibi için mantıklı senaryo: şirket başka ülkede (Estonia OU veya US LLC), kişi Portugal mukimi ama foreign-sourced income kanıtlıyor, çift vergilendirme anlaşması (DTA) ile %20'ye düşürüyor. Bu setup muhasebe maliyeti €2,000+/yıl gerektirir, avukat danışmanlığı olmadan riskli.
+Portugal NHR rejimi 2024 sonunda kapandı, yerine "Incentivo Fiscal à Investigação Científica" (bilimsel AR-GE teşviki) geldi. Yeni model çok daha dar: sadece STEM mezunu, AR-GE yapan, patent/yayın sahibi profiller için %50 gelir istisnası var. Dijital göçebe freelancer için artık sıfır avantaj.
 
-### Post-NHR Alternatifi: Madeira Free Zone
+### Alternatif 1: Cyprus Non-Dom
 
-Madeira adası özel statüsünü korudu. 2026'da Madeira şirketi (IRC Article 36-A) %5 kurumlar vergisi uyguluyor, ancak koşullar ağır: minimum 1 yerli çalışan, fiziksel ofis, yıllık audit. Tech startup için ilk 3 yıl maliyeti €15,000-20,000 arası. ROI eşiği €200,000+ gelirde başlıyor.
+Kıbrıs hâlâ AB'deki en düşük efektif vergi rejimine sahip: ilk 19.500€ %0, sonrası %20, temettü %0. Ancak **substance kriteri** sert: yılda 183+ gün fiziksel ikamet zorunlu, yoksa Türkiye mukimi sayılırsın.
 
-## Türkiye Dijital Göçebe Vizesi: 2025 Düzenlemesi
+**Operasyonel kural:**
+- Pasaport damgası yetmez — elektrik faturası, kira kontratı, banka ekstresi gerekiyor
+- Entry/exit kayıtları dijital — havaalanı geçişleri otomatik log tutuluyor
+- 183 günü tutturamıyorsan Cyprus vergi mukimiyeti geçersiz, origin ülken devreye girer
 
-Türkiye, 2025 Haziran'da yürürlüğe giren "Uzaktan Çalışanlar İçin Özel İzin" programı ile oyuna girdi. 1 yıl geçerli, yenilenebilir, minimum $3,000/ay gelir kanıtı yeterli. Avantaj: vize ücreti €50, işlem süresi 15 gün, İstanbul/Antalya/İzmir için geçerli. Kritik nokta: bu vize vergi muafiyeti sağlamıyor — Türkiye'de 6 aydan fazla kalanlar için vergi mükellefiyeti başlıyor.
+**Maliyet:** Kıbrıs'ta yaşam maliyeti Lizbon'dan %30 düşük ama hub kalitesi %50 düşük — koworking, topluluk, event altyapısı zayıf.
 
-2026 vergi yapısı: yabancı kaynaklı gelir için %15-40 arası gelir vergisi (progressive), ancak Türkiye'ye transfer edilen tutar üzerinden. Pratikte: gelirini yurt dışı hesapta tutan, Türkiye'ye yalnızca yaşam giderini transfer eden nomad için vergi yükü $36,000/yıl gelirde ~%18 civarı (hesaplama: aylık $2,000 transfer × 12 ay × %15 ilk dilim).
+### Alternatif 2: Dubai Freezone
 
-Operasyonel detay: Türkiye dijital göçebe vizesi "residence permit" statüsü veriyor, bu da banka hesabı açmayı kolaylaştırıyor. Ancak kripto geliri Türkiye'de henüz regulate edilmedi — 2026 draft yasasında vergilendirilecek, ama hangi oranda belirsiz. Tech freelancer için dikkat noktası: invoice'ları Türkiye'den kesemezsiniz, yabancı şirket veya platform üzerinden gelir akışı zorunlu.
+UAE freezone şirketi (IFZA, DMCC, RAKEZ) %0 kurumsal vergi + %0 kişisel gelir vergisi sunuyor. 2026'da 80.000+ dijital göçebe Dubai mukimi. Ancak:
 
-İstanbul operasyonel maliyet: koworking (Kolektif House, Arkas) €200-350/ay, 1+1 daire Kadıköy/Beşiktaş €500-800, gigabit fiber €15/ay. Time zone avantajı: GMT+3, hem EU hem US ile overlap var.
+**Kritik zorluk:** Banking. UAE bankalarının KYC süreci 2025'te sertleşti — SPK lisansı olmayan freelance gelir "high-risk" kategorisinde. Wise, Revolut gibi EMI'lar UAE mukimlerine hesap açmıyor (AML politikası).
 
-## Vergi Stack Karşılaştırması: €60,000 Gelir Senaryosu
+**Pratik çözüm:** Estonia OÜ + UAE mukimiyeti stack'i — şirket AB'de, sen Dubai'de. Ancak bu durumda OÜ substance kuralı devreye girer: şirketin "gerçek yönetimi" nerede? Yönetim Dubai'deyse OÜ phantom company sayılır, Estonia vergi muafiyetini kaybedersin.
 
-| Ülke | Setup Maliyet | Yıllık Operasyon | Efektif Vergi | Net Gelir |
-|---|---|---|---|
-| Estonia OU | €190 | €1,000 | %36 | €37,440 |
-| Portugal (standart) | €0 | €2,000 | %42 | €32,800 |
-| Türkiye (6+ ay) | €50 | €500 | %18* | €48,420 |
-| US LLC (Wyoming) + Portugal mukim | €100 | €1,500 | %28** | €40,700 |
+**Kime mantıklı:**
+- Crypto geliri olan profiller (UAE crypto vergi yok)
+- Orta Doğu/Asya pazarına satış yapan şirket
+- 6+ ay Dubai'de yaşayacak profiller
 
-\* Yalnızca Türkiye'ye transfer edilen tutar üzerinden  
-\** DTA ile foreign tax credit sonrası
+### Alternatif 3: Türkiye Yeni Dijital Göçebe Rejimi
 
-Tablo, €60,000 yıllık freelance geliri için 2026 vergi yükünü gösteriyor. Türkiye senaryosu en düşük efektif vergi, ancak 6 aydan fazla kalmak zorunlu ve vize her yıl yenilenmeli. Estonia OU setup hızı avantajlı, ancak temettü dağıtımında vergi yükü yüksek. Portugal artık vergi avantajı sunmuyor, ancak EU içinde serbest dolaşım var.
+Türkiye Mart 2026'da "uzaktan çalışan yabancı uyruklu gelir muafiyeti" düzenlemesi çıkardı. Model: yabancı şirketten (yurtdışı işveren) maaş alan kişi Türkiye'de 183+ gün kalırsa ilk 100.000 TL %0, üzeri %15 flat vergi. Ancak:
 
-## Kombinasyon Stratejileri: Çift Mukimllik Riski
+**Büyük açık:** Düzenleme "yabancı işveren" diyor ama kendi şirketin olursa ne olacak belirsiz. Maliye'nin 2026/42 nolu genelgesi sadece W2/employment contract örnekleri veriyor. Kendi Estonia OÜ'nden maaş alıyorsan bu kapsama girer mi? Henüz emsal yok.
 
-2026'da en yaygın hata: iki ülkede aynı anda vergi mukimi olmak. Örnek: Estonia OU sahibi, Türkiye'de 6+ ay kalıyor, board meeting'leri İstanbul'dan yapıyor — her iki ülke de vergi talep eder, DTA yoksa çift vergilendirme. Çözüm: tie-breaker rule (OECD Model Tax Convention Article 4): "center of vital interests" nerede? Banka hesabı, aile, mülk sahipliği, sosyal bağlar.
+**Pratik senaryo:**
+- Türkiye'de 6 ay yaşa + Estonia OÜ'den kendine maaş kes = hukuki gri alan
+- Güvenli yol: yabancı şirkette employment kontratı + Türkiye'de remote work
 
-Pratik strateji: şirket merkezi bir ülke (Estonia), fiziksel residence başka ülke (Türkiye/Portugal), gelir akışı üçüncü ülke platformundan (Upwork/Toptal US entity). Bu setup için profesyonel muhasebe zorunlu — yıllık €3,000-5,000 arası maliyet, ancak €100,000+ gelirde ROI pozitif.
+**Avantaj:** İstanbul life quality + düşük vergi. Koworking, topluluk, time zone (CET-1) avantajı.
 
-Operasyonel risk: banking compliance. Wise Business 2025'ten itibaren "economic substance" kanıtı istiyor — şirket Estonia'da ama tüm işlemler Türkiye IP'sinden yapılıyorsa hesap kapatma riski var. Çözüm: VPN değil, fiziksel presence kanıtı (ofis kira kontratı, utility bill).
+## Compliance Cost: Gerçek Karşılaştırma
 
-## Dijital Göçebe Vergi Planlaması: 2026 Aksiyonları
+| Stack | 1. Yıl Maliyet | Yıllık Süre | Vergi Oranı (100k€) | Banking Kolaylığı |
+|---|---|---|---|---|
+| Estonia OÜ (solo) | €1500 | ~8 saat | %20 + mukimlik | ✅ Kolay (Wise/Revolut) |
+| Cyprus Non-Dom | €2000 | ~15 saat | %15-20 efektif | ✅ Kolay (AB bankası) |
+| Dubai Freezone | $5000 | ~25 saat | %0 | ❌ Zor (EMI reject) |
+| Türkiye + OÜ | €1500 | ~12 saat | %20-35 (belirsiz) | ✅ Kolay (Wise) |
 
-2026'da vergi optimizasyonu artık "en düşük vergi oranı" değil, "en düşük operasyonel risk + compliance maliyeti" denklemi. Estonia e-residency hala en hızlı setup, ancak €100,000+ gelirde vergi yükü ağır. Portugal NHR sonrası avantaj kalmadı, ancak EU mobility değerli. Türkiye dijital göçebe vizesi düşük vergi + düşük yaşam maliyeti sunuyor, ancak 6 ay residence zorunluluğu flexibility kırıyor.
+**"Süre" nedir:** Yıllık accounting, beyanname, compliance dokümantasyonu için harcanan saat. Muhasebeci dahil, senin zamanın hariç.
 
-Tech ekibi için kritik karar noktası: şirket yapısı mı önce, yoksa fiziksel location mı? Doğru sıra: önce gelir akışı belirle (B2B invoice mı, platform ödemesi mi, kripto mu), sonra şirket yapısı kur, son olarak fiziksel residence seç. Ters sırada hareket edersen (önce taşın, sonra şirket kur) compliance maliyeti 3-5 kat artar.
+**Gizli maliyet:** Tax residency belirsizliği. İki ülke arasında "permanent establishment" tartışması açarsan avukat saati €200-500. Örnek: Estonia OÜ + Dubai mukimiyeti + Türkiye'de 4 ay — hangi ülke birincil vergilendirme hakkına sahip? Bu belirsizlik aslında en büyük maliyet.
 
-Remote-first şirketler için vergi planlaması artık HR politikası — ekip member'ı hangi ülkeye yerleşirse yerleşsin, şirket entity yapısı buna uyum sağlamalı. Bu esnekliği [markalaşma](https://www.roibase.com.tr/tr/branding) stratejisiyle de uyumlu hale getirmek gerekiyor: distributed ekip için unified brand identity, asynchronous kültür için tutarlı iletişim dili. Vergi stack'i nasıl optimize ederseniz edin, marka tutarlılığı kaybolursa operasyonel kazanç pazarlama maliyetine dönüşür.
+## Edge Case: Distributed Tech Ekibi İçin Employer of Record Stack
+
+Eğer solo değil 5+ kişilik distributed ekip yönetiyorsan Estonia OÜ yetmez — her ülkede lokal compliance gerek. 2026'da Employer of Record (EOR) platformları bu boşluğu doldurdu:
+
+**Popüler EOR'lar:**
+- **Remote.com:** 80+ ülke, developer için $599/ay/kişi
+- **Deel:** Crypto ödeme entegrasyonu, $49/ay contractor + $599/ay full-time
+- **Oyster HR:** Equity management dahil, $499/ay/kişi
+
+**Kullanım senaryosu:**
+- Sen Estonia OÜ sahibisin
+- Türkiye'de 2 developer, Polonya'da 1 designer, Arjantin'de 1 QA hire etmek istiyorsun
+- EOR üzerinden hepsine lokal kontrat açarsın — EOR lokal payroll, vergi, sigorta halledeer
+- Sen sadece EOR'a aylık invoice ödersin, gerisi onların sorunu
+
+**Maliyet karşılaştırması:** 5 kişilik ekip için EOR ~$3000/ay. Alternatif: her ülkede entity aç = accounting $1000/ay/ülke = $4000/ay. EOR %25 daha ucuz + %90 daha az operasyonel yük.
+
+**Kritik nokta:** EOR kullanıyorsan [markalaşma tutarlılığı](https://www.roibase.com.tr/tr/branding) daha da önemli hale gelir — ekip 4 farklı ülkede lokal kontratla çalışıyor ama marka tek olmalı. Remote kültüründe brand identity kaybı en büyük operasyonel risk.
+
+## 2026 Sonrası: Neye Hazırlanmalı
+
+OECD'nin "Pillar Two" düzenlemesi 2027'de tam yürürlüğe giriyor: %15 minimum küresel kurumsal vergi. Bu Estonia OÜ'yü etkilemez (zaten %20) ama Dubai freezone'ları vuracak — %0 artık mümkün olmayacak.
+
+**Pratik öneri:**
+- 2026-2027 geçiş döneminde hâlâ %0 rejimlerden yararlanabilirsin ama bu son pencere
+- 2028+ için model: düşük vergi değil, düşük compliance cost + banking kolaylığı olacak
+- Estonia OÜ bu yüzden uzun vadeli en güvenli stack — vergi rekabetçi değil ama operasyonel overhead minimal
+
+**Takip edilecek metrik:**
+- Effective tax rate değil, "saat/yıl compliance süresi"
+- Banking reject rate (EMI/banka başvurusu kabul oranı)
+- Tax residency clarity index (iki ülke arası anlaşmazlık riski)
+
+Dijital göçebe vergi optimizasyonu artık arbitrage oyunu değil — infrastructure oyunu. En düşük vergiyi değil, en az sürtünmeyi seç.
