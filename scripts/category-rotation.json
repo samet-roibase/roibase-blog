@@ -9,15 +9,9 @@
     "travel",
     "lifestyle"
   ],
-  "lastIndex": 0,
-  "lastRunAt": "2026-07-25T14:02:33.409Z",
+  "lastIndex": 1,
+  "lastRunAt": "2026-07-25T22:02:46.188Z",
   "history": [
-    {
-      "at": "2026-07-09T06:02:30.721Z",
-      "category": "ai",
-      "topicId": "ai-003",
-      "i18nKey": "ai-003-2026-07"
-    },
     {
       "at": "2026-07-09T14:02:33.538Z",
       "category": "marketing",
@@ -311,6 +305,12 @@
       "category": "ai",
       "topicId": "ai-002",
       "i18nKey": "ai-002-2026-07"
+    },
+    {
+      "at": "2026-07-25T22:02:46.188Z",
+      "category": "marketing",
+      "topicId": "marketing-002",
+      "i18nKey": "marketing-002-2026-07"
     }
   ]
 }
