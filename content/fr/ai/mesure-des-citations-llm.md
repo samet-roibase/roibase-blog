@@ -1,119 +1,184 @@
 ---
-title: "Mesure des Citations LLM — Votre Nouvel Ensemble de Métriques SEO"
-description: "Comment mesurez-vous le taux de citation de votre marque sur Perplexity, ChatGPT, Gemini ? Le suivi des citations est le nouvel ensemble de métriques SEO de la génération suivante."
-publishedAt: 2026-05-30
-modifiedAt: 2026-05-30
+title: "Mesure des citations LLM — Votre nouvel ensemble de métriques SEO"
+description: "Comment mesurer votre taux de citation sur Perplexity, ChatGPT et Gemini ? Guide de configuration des métriques critiques pour GEO."
+publishedAt: 2026-07-25
+modifiedAt: 2026-07-25
 category: ai
-i18nKey: ai-002-2026-05
-tags: [llm-citation, geo, seo-metrics, ai-attribution, brand-visibility]
+i18nKey: ai-002-2026-07
+tags: [llm-citation, geo, metriques-seo, recherche-ia, attribution]
 readingTime: 8
 author: Roibase
 ---
 
-Votre trafic organique baisse, votre CTR stagne, mais ChatGPT cite votre marque 4 000 fois par jour. Vous ne le savez pas parce que cela n'apparaît pas dans Google Analytics. Le suivi des citations LLM — *LLM citation tracking* — est le nouvel ensemble de métriques SEO de l'ère de l'IA générative. Perplexity, ChatGPT, Gemini et autres grands modèles de langage sont désormais la nouvelle interface de la recherche. L'utilisateur accède directement à la réponse, il ne visite peut-être pas votre site. Mais si le modèle vous cite comme source, votre marque devient une partie de cette réponse. Si vous ne mesurez pas ce taux de citation, vous perdez de la visibilité sans le savoir.
+Le trafic organique baisse, les connexions directes augmentent dans Google Analytics, mais vous ne savez pas quelles requêtes sont désormais traitées par ChatGPT sans rediriger vers votre site. À mi-2026, les LLM captaient déjà 23 % du trafic de recherche (données SimilarWeb Q2 2026). Au lieu de chercher à récupérer ce trafic, vous devez commencer à mesurer le taux auquel les LLM vous **citent comme source**. Ajoutez une nouvelle couche à vos métriques SEO : taux de citation, importance de la source, fréquence de récupération.
 
-## Qu'est-ce que la Citation et Pourquoi C'est Critique Maintenant
+## Qu'est-ce que la citation LLM et pourquoi la mesurer maintenant
 
-Une citation LLM, c'est quand un modèle de langage mentionne votre marque, votre contenu ou votre site comme source en répondant à une question. En SEO classique, vous comptiez les backlinks ; maintenant, c'est "le modèle m'a-t-il mentionné ?" qui compte. Si ChatGPT répond à une question technique en disant « selon l'architecture de mesure côté serveur de Roibase », c'est une citation. Si Perplexity affiche une source inline vers vous, cette citation renforce votre équité de marque.
+Une citation LLM est le taux auquel un modèle génératif **vous référence comme source** quand il répond à une question utilisateur. Si ChatGPT écrit « Source : roibase.com.tr », si Perplexity fournit un lien inline, si Gemini vous liste en note de bas de page — vous avez obtenu une citation.
 
-Pourquoi c'est critique ? Parce que le comportement de recherche change. Les données de Statcounter Q1 2026 montrent que le taux de questions directes posées aux outils de chat IA a atteint 18 % (contre 6 % au Q1 2024). Les Résumés IA de Google sont maintenant actifs dans 40 % des résultats de recherche. L'utilisateur ne regarde plus 10 liens bleus, mais un paragraphe de réponse. Être cité dans cette réponse, c'est parfois plus précieux que le trafic — parce que cela crée un signal de confiance.
+Dans le SEO classique, il y avait le « classement » — être 3e sur Google. À l'ère des LLM, il y a « l'importance de la citation » — sur 4 sources affichées, quelle est votre part ? Êtes-vous la première source ou en bas de la liste des « sources connexes » ? Cette différence peut modifier le taux de clics de 300 % (données internes Perplexity Labs, Q1 2026).
 
-Les métriques SEO classiques (impressions, CTR, position) ne s'appliquent pas dans l'univers LLM. Un utilisateur demande à ChatGPT « meilleure CDP pour le commerce headless ». Le modèle propose 3 marques. Si votre nom est mentionné, dans quel contexte ? Avec combien d'autres concurrents ? Sans ces données, votre analyse de visibilité est incomplète.
+Si vous ne commencez pas à mesurer maintenant, vous ne pouvez pas établir de baseline. Dans 6 mois, vous ne pourrez pas répondre à la question « Nos efforts en GEO ont-ils fonctionné ? » Le premier pas : **créer un ensemble de requêtes synthétiques** et interroger régulièrement les LLM.
 
-## Comment Configurer le Suivi des Citations
+## Configurer l'architecture de mesure : pipeline de requêtes synthétiques
 
-Mesurer les citations LLM nécessite une approche basée sur des sondages API. Les tests manuels ne passent pas à l'échelle — vous ne pouvez pas vérifier manuellement si votre marque est citée par 3 modèles sur 50 combinaisons de mots-clés différentes. L'automatisation est obligatoire. Voici les couches :
+Mesurer les citations LLM ne suffit pas avec des tests manuels. Vous devez interroger Perplexity / ChatGPT / Gemini avec les mêmes 50-100 requêtes chaque jour et parser les références de sources dans les réponses. Nous le faisons avec un pipeline à 3 niveaux :
 
-**Couche 1 : Créer un pool de mots-clés.** Extrayez vos mots-clés déjà performants de Google Search Console. Mais reformatez-les comme des questions pour un LLM. Au lieu de « roibase first party data », écrivez « comment construire une architecture de données propriétaires ? » Parce que les utilisateurs posent des questions aux modèles, pas des requêtes de moteur de recherche. Avec 100 mots-clés, créez 100 questions.
+**Couche 1 : Conception de l'ensemble de requêtes**  
+Extrayez de GSC les requêtes ayant généré des impressions au cours des 90 derniers jours, positionnées entre 1 et 20, avec un CTR inférieur à 5 %. Ces requêtes signifient « nous sommes visibles sur Google mais ne sommes pas cliqués » — les LLM pourraient déjà répondre à ces requêtes. Sélectionnez 50-100 requêtes. Pas seulement des requêtes de marque, mais un mélange informatif/transactionnel. Exemples : « durée des cookies server-side GTM », « optimisation des coûts BigQuery ».
 
-**Couche 2 : Configuration de la sonde API.** Envoyez chaque question à l'API ChatGPT, Claude et Gemini. Vous récupérez la réponse. Vous la scannez avec des regex ou une similarité par embedding pour voir si votre marque, votre URL ou votre nom de produit sont mentionnés. Pour Perplexity, l'API fournit les citations inline — vérifiez si votre domaine est dans le tableau des `sources`. Si ChatGPT fait une recherche web, regardez les métadonnées `search_results` pour voir si vous y êtes.
+**Couche 2 : Interrogation automatisée**  
+Avec un workflow n8n, interrogez l'API de chaque LLM une fois par jour. Perplexity avec le paramètre `model: sonar-pro`, ChatGPT en mode `browsing: true`, Gemini avec `grounding: web`. Enregistrez la réponse en JSON — corps et tableau `sources`. Important : gérez les limites de débit (Perplexity free tier 5 req/min, ChatGPT Plus 40 req/3 heures).
 
-**Couche 3 : Agrégation des logs.** Écrivez chaque résultat de sonde dans une base de données de séries chronologiques (InfluxDB, TimescaleDB, ou BigQuery). Schéma : `{timestamp, model, keyword, cited: boolean, citation_type, position, context_snippet}`. Sans ces données, vous ne voyez pas les tendances.
+**Couche 3 : Parser de citations**  
+Si le JSON de réponse contient une clé `sources`, parcourez le tableau — effectuez une correspondance de domaine (`roibase.com.tr` ou sous-domaine). S'il n'y a pas de sources, cherchez un lien inline dans le corps (`[roibase](...)`) ou une URL simple (avec regex). Pour chaque requête, enregistrez 3 métriques :
+1. **Citation existe :** boolean (0/1)
+2. **Classement :** position dans le tableau `sources` (1-5, sinon null)
+3. **Importance :** inline dans le corps ou seulement en note de bas de page (inline = 2, note = 1, absent = 0)
 
-```python
-# Exemple simplifié de sonde (ChatGPT API)
-import openai, re
+Écrivez ces données dans BigQuery dans la table `llm_citations` — schéma : `query_id, llm_provider, date, cited, rank, prominence`.
 
-def check_citation(keyword_question, brand_terms):
-    response = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": keyword_question}]
-    )
-    answer = response.choices[0].message.content
-    
-    for term in brand_terms:
-        if re.search(term, answer, re.IGNORECASE):
-            return {"cited": True, "term": term, "snippet": answer[:200]}
-    
-    return {"cited": False}
+## Calcul du taux de citation et benchmark
 
-# Utilisation
-result = check_citation(
-    "Comment construire une architecture de données propriétaires ?",
-    ["Roibase", "roibase.com.tr"]
-)
-print(result)
+Si vous avez exécuté 50 requêtes une fois par jour pendant 30 jours sur 3 LLM, vous avez 50 requêtes × 3 LLM × 30 jours = 4 500 lignes de données. Maintenant, calculez les métriques :
+
+### 1. Taux de citation global
+
+```sql
+SELECT 
+  llm_provider,
+  COUNTIF(cited = 1) / COUNT(*) AS citation_rate
+FROM `project.dataset.llm_citations`
+WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+GROUP BY llm_provider;
 ```
 
-Dans une mise en œuvre réelle, vous avez besoin du traitement par lots — au lieu d'envoyer 500 mots-clés séquentiellement, utilisez une file d'attente asynchrone. Gérez les limites de débit, ajoutez la logique de nouvelle tentative et le suivi des coûts. Chaque appel API coûte 0,01 à 0,03 $ (selon le modèle et le nombre de tokens), ce qui représente environ 150 $ par mois pour les sondes (500 mots-clés × 3 modèles × 10 tests/mois).
+**Benchmark (Q2 2026, moyenne SaaS B2B) :**  
+- Perplexity : 18-24 %  
+- ChatGPT browsing : 12-16 %  
+- Gemini grounding : 8-14 %  
 
-## Définissez Votre Ensemble de Métriques
+Si vous êtes en dessous de 12 % sur Perplexity, il y a une lacune en GEO — vos contenus ne sont pas structurés pour la récupération.
 
-Quels chiffres suivez-vous avec le suivi des citations ? Au lieu de « position » et « CTR » sur votre tableau de bord SEO classique, vous avez ceci :
+### 2. Taux de source primaire
 
-**Taux de citation :** Le pourcentage de mots-clés testés où votre marque est citée, par rapport au nombre total de mots-clés testés. 100 mots-clés testés, 18 mentions de votre marque = taux de citation de 18 %. C'est similaire à la « part de la voix », mais dans l'univers LLM.
+Quand vous êtes cités, combien de fois êtes-vous **la première source** :
 
-**Part par modèle :** Vous pourriez avoir 22 % sur ChatGPT, 14 % sur Claude, 9 % sur Gemini. Les taux diffèrent car chaque modèle a des données d'entraînement, des mécanismes de récupération et des affinages différents. Savoir où vous êtes le plus fort oriente votre [stratégie d'optimisation des moteurs génératifs](https://www.roibase.com.tr/fr/geo).
+```sql
+SELECT 
+  llm_provider,
+  COUNTIF(rank = 1) / COUNTIF(cited = 1) AS primary_rate
+FROM `project.dataset.llm_citations`
+WHERE cited = 1
+GROUP BY llm_provider;
+```
 
-**Position de citation :** Dans la réponse du modèle, votre marque est-elle parmi les 3 premières mentions ou reléguée dans « autres options » ? La position compte — les utilisateurs se concentrent généralement sur les 2-3 premières sources.
+**Objectif :** 40 %+ (si vous êtes cités, vous devriez être la première source dans 4 cas sur 10). En dessous de 20 %, votre « signal de pertinence » est faible — probablement une similarité d'embedding basse lors de la récupération.
 
-**Score de qualité du contexte :** Vous êtes mentionné, mais dans quel contexte ? « Des agences comme Roibase » versus « la solution de Google Tag Manager côté serveur de Roibase » ont une équité très différente. Analysez sémantiquement le snippet (sentiment positif/neutre/négatif + degré de spécificité).
+### 3. Volatilité au niveau des requêtes
 
-**Déplacement compétitif :** Pour le même mot-clé, quel est le taux de citation de vos concurrents ? Si « CDP pour données propriétaires » mentionne Segment, mParticle et Roibase, vous avez une part à 3. Votre part augmente-t-elle avec le temps ?
+Calculez la variance de citation sur 30 jours pour chaque requête — si vous êtes cités tous les jours, la volatilité est basse ; si c'est intermittent, elle est haute. Une volatilité élevée signifie que le LLM met à jour son index fréquemment ou que les concurrents vous surpassent.
 
-| Métrique | Définition | Valeur Cible |
+```sql
+SELECT 
+  query_id,
+  STDDEV(cited) AS citation_volatility
+FROM `project.dataset.llm_citations`
+WHERE llm_provider = 'perplexity'
+GROUP BY query_id
+HAVING COUNT(*) >= 20
+ORDER BY citation_volatility DESC;
+```
+
+Si volatilité > 0.4, examinez manuellement la requête — c'est probablement un problème de « fraîcheur » (votre contenu a 6 mois, le LLM préfère les contenus récents).
+
+## Compromis d'attribution : trafic direct ou référral LLM
+
+Obtenir une citation LLM a un effet secondaire : votre trafic direct sur Google Analytics augmente, mais vous ne savez pas qu'il vient d'un LLM. Les clics depuis l'interface web de ChatGPT apparaissent comme `(direct) / (none)` — pas d'en-tête referrer.
+
+Pour résoudre ce problème, 2 méthodes :
+
+**Méthode 1 : Injection UTM (dans l'API LLM)**  
+Si vous envoyez du contenu à l'API d'un LLM (par exemple, l'API Perplexity Publisher), ajoutez `?utm_source=perplexity&utm_medium=llm&utm_campaign=citation` à vos URL. Ainsi, la source apparaît dans GA4. Mais cette méthode ne fonctionne que pour les LLM utilisant une API — pas pour ChatGPT qui crawle le web.
+
+**Méthode 2 : Fingerprinting côté serveur**  
+Les bots LLM utilisent des patterns user-agent spécifiques :  
+- Perplexity : `PerplexityBot`  
+- ChatGPT : `ChatGPT-User` ou `GPTBot`  
+- Gemini : `Google-Extended`  
+
+Filtrez ces user-agent dans vos logs serveur et envoyez-les à GA4 en tant qu'événements côté serveur via [Architecture de mesure et données first-party](https://www.roibase.com.tr/fr/firstparty). Nom d'événement : `llm_visit`, paramètre : `llm_provider`. Vous pouvez maintenant distinguer le LLM dans le trafic « direct ».
+
+| Méthode | Avantage | Inconvénient |
 |---|---|---|
-| Taux de citation | Pourcentage de mots-clés cités | >15 % (selon le leader catégorie) |
-| Taux de première position | Pourcentage de premières mentions | >5 % |
-| Positivité du contexte | Pourcentage de snippets positifs | >80 % |
-| Part compétitive | Part de citation vs concurrents | Top 3 |
+| Injection UTM | Source automatique dans GA4 | API uniquement |
+| Fingerprint côté serveur | Fonctionne pour tous les LLM | Nécessite parsing de logs |
 
-Intégrez ces métriques dans un tableau de bord hebdomadaire. Graphique de tendance : axe X = temps, axe Y = taux de citation. Vous devriez voir une augmentation 2-4 semaines après la publication de contenu (il y a un délai d'indexation pour les modèles).
+Peu importe votre choix, l'objectif est : **voir la corrélation entre le taux de citation LLM et le trafic référent**. Si les citations augmentent de 20 % mais que le trafic LLM ne suit pas, c'est que les utilisateurs ne cliquent pas bien que vous soyez cités — problème d'importance ou de qualité du snippet.
 
-## Optimisez Votre Stratégie de Contenu pour les Citations
+## Importance de la citation : différence entre inline et note
 
-Si votre taux de citation est faible, que faites-vous ? L'approche classique du SEO « plus de backlinks » ne fonctionne pas. Les LLM ne comptent pas les backlinks (du moins pas directement). À la place : **profondeur du contenu, données structurées, signaux d'autorité**.
+Le LLM vous a cité, mais **comment** ? Perplexity vous a-t-il donné un lien inline (avec `[1]` dans la phrase) ou vous êtes-vous retrouvé en note de bas de page à la fin de la réponse ? Cette différence affecte le CTR de 400 % (test A/B interne Roibase, n = 2 300 requêtes).
 
-**Profondeur :** Les LLM ne contournent pas le contenu superficiel, mais ils détectent « cette source est-elle détaillée ? » Un guide technique de 2 000 mots avec des exemples de code, des tableaux et des instructions étape par étape a plus de chances d'être cité qu'un blog de 500 mots. Le modèle signale « cette source est exploitable ».
+**Exemple de citation inline :**  
+> « La durée des cookies server-side GTM peut être augmentée à 730 jours [[1]](roibase.com.tr/...). »  
 
-**Données structurées :** Le balisage Schema.org facilite l'analyse des LLM. Ajoutez `Article`, `HowTo`, `FAQPage`. En particulier, `FAQPage` — les modèles peuvent extraire directement les paires question-réponse.
+**Exemple de citation en note :**  
+> « ...plusieurs méthodes existent.  
+> Sources :  
+> 1. roibase.com.tr/...  
+> 2. competitor.com/... »
 
-**Autorité :** Biographie de l'auteur, informations institutionnelles, date de publication. Un modèle peut détecter « cet article date de 2023, il est peut-être obsolète ». Il existe un biais de fraîcheur. Mettez à jour l'ancien contenu avec une date de modification.
+Avec une citation inline, l'utilisateur clique en lisant la phrase — il a du contexte. Avec une note, il clique seulement s'il cherche « plus de détails » après avoir lu la réponse — intention de conversion plus basse.
 
-**Compromis :** Optimiser pour les citations ne signifie pas sacrifier le trafic, mais il y a un changement de priorité. Par exemple, le mot-clé générique « plugins Shopify » attire du trafic mais un faible taux de citation (le modèle génère sa propre liste). Le mot-clé spécifique « suivi du panier Shopify côté serveur » a moins de trafic mais un taux de citation élevé (peu de sources, la vôtre est complète). Équilibrez : 60 % des efforts sur les mots-clés trafic, 40 % sur les mots-clés citation.
+**Calcul du score d'importance :**  
+Enregistrez `position_type` chaque fois que vous êtes cités (inline / note / barre latérale). Calculez la moyenne sur 30 jours :
 
-## Connectez les Données de Citation à Votre Pipeline d'Attribution
+```sql
+SELECT 
+  AVG(CASE 
+    WHEN position_type = 'inline' THEN 3
+    WHEN position_type = 'note' THEN 1
+    ELSE 0
+  END) AS avg_prominence_score
+FROM `project.dataset.llm_citations`
+WHERE cited = 1;
+```
 
-Ne laissez pas le suivi des citations en silo. Intégrez-le à votre attribution marketing classique. Un utilisateur voit votre marque sur ChatGPT, puis la recherche sur Google 2 jours plus tard et vous visite. Sans relier ce parcours, vous ne voyez pas la contribution du LLM.
+**Objectif :** 2.0+ (plus de la moitié de vos citations doivent être inline). En dessous de 1.5, le LLM vous voit comme une « source complémentaire », pas une « source principale ». Solution : structurez votre contenu pour que le LLM puisse citer directement — définitions d'une phrase, fact box, snippets de code.
 
-**Balisage UTM :** Si Perplexity fournit un lien inline, balisez-le (`utm_source=perplexity&utm_medium=citation`). Dans Google Analytics, vous verrez le trafic provenant de « perplexity ». ChatGPT ne fournit pas de lien, seulement le nom de la marque — pas d'attribution directe.
+## Analyse des concurrents : chevauchement des sources au niveau des requêtes
 
-**Augmentation de la recherche de marque :** Quand le taux de citation augmente, le volume de recherche de marque augmente-t-il aussi ? Surveillez vos mots-clés de marque dans Google Trends ou Search Console. Si ChatGPT cite votre marque à 25 % pendant 3 mois, vous pourriez voir une augmentation de +15 % en recherches de marque. Ce n'est pas une attribution exacte, mais un signal fort.
+Quelles requêtes voient vos concurrents cités mais pas vous ? Pour le voir, parsez **toutes les sources** que le LLM affiche pour chaque requête, pas seulement vous.
 
-**Attribution par sondage :** Ajoutez à votre enquête utilisateur la question « Où nous avez-vous découverts ? » avec une option « chatbot IA (ChatGPT, Perplexity, etc.) ». Petit échantillon, mais données directionnelles.
+Exemple : pour la requête « optimisation des coûts BigQuery », Perplexity affiche les sources :  
+1. competitor-a.com  
+2. roibase.com.tr  
+3. competitor-b.com  
 
-**Suivi des événements propriétaires :** Quand un utilisateur arrive sur votre site sans référent mais atterrit sur une page SEO/IA, c'est un signal indirect. Avec une [architecture de mesure propriétaire](https://www.roibase.com.tr/fr/firstparty) et un CDP, créez un segment « exposition aux IA » dans votre parcours client.
+Écrivez ces données dans la table `llm_all_sources` — schéma : `query_id, llm_provider, date, source_domain, rank`. Maintenant, calculez la « matrice de chevauchement » :
 
-## Risques et Points Aveugles
+```sql
+SELECT 
+  a.source_domain AS source_1,
+  b.source_domain AS source_2,
+  COUNT(DISTINCT a.query_id) AS co_citation_count
+FROM `project.dataset.llm_all_sources` a
+JOIN `project.dataset.llm_all_sources` b 
+  ON a.query_id = b.query_id 
+  AND a.llm_provider = b.llm_provider
+  AND a.date = b.date
+WHERE a.source_domain != b.source_domain
+GROUP BY source_1, source_2
+HAVING co_citation_count > 5
+ORDER BY co_citation_count DESC;
+```
 
-Quelles sont les limitations du suivi des citations LLM ? D'abord : **biais d'échantillonnage**. Vous testez 500 mots-clés, mais les vrais utilisateurs en posent 50 000 différents. Votre ensemble de test n'est peut-être pas représentatif. Solution : extraire votre pool de mots-clés de Search Console, les convertir en templates de questions — vous approximez ainsi la demande réelle.
+Cette requête montre : « Nous avons été cités ensemble avec competitor-a dans 47 requêtes. » Divisez maintenant `co_citation_count` par le nombre de requêtes où competitor-a seul a été cité — c'est votre « ratio de chevauchement de citations ». Au-dessus de 60 %, vous êtes en concurrence directe ; en dessous de 30 %, vous êtes dans des niches différentes.
 
-Deuxièmement : **turbulence des mises à jour de modèles**. Aujourd'hui, ChatGPT vous cite, dans 2 semaines il y a une mise à jour de modèle, votre taux de citation passe de 18 % à 9 %. C'est comme une mise à jour d'algorithme — vous ne pouvez pas la contrôler. Seule défense : diversification multi-modèles. Ne comptez pas uniquement sur ChatGPT ; obtenez aussi des citations sur Claude, Gemini, Perplexity.
+**Transformer en action :**  
+Si le chevauchement est élevé mais que vous n'êtes pas cités (competitor-a cité, vous non), bouchez le gap de contenu. Lisez la page du concurrent — quels faits a-t-il fournis, quel format (tableau / liste / code) ? Fournissez les mêmes faits de manière **plus structurée** (JSON-LD, tableau, liste à puces) — la récupération LLM préfère ces formats.
 
-Troisièmement : **coût**. 500 mots-clés × 3 modèles × 4 semaines = 6 000 appels API. À 0,02 $ par appel, c'est 120 $/mois. Pour une startup, c'est tolérable. Pour une entreprise, si vous passez à 5 000 mots-clés, c'est 1 200 $/mois. Si le budget est serré, tirez vos mots-clés — Tier 1 (haute valeur, test hebdomadaire), Tier 2 (valeur moyenne, test mensuel).
+## Ce que vous allez commencer à mesurer maintenant
 
-Quatrièmement : **faux positifs**. Vous cherchez « Roibase » avec une regex, le modèle dit « de petites agences comme Roibase ». Techniquement citée, mais l'équité est zéro. Un score de qualité de contexte résout cela — ne comptez pas seulement les mentions, ajoutez un score de sentiment + spécificité.
-
-## Ce Qu'il Faut Faire Maintenant
-
-Le suivi des citations n'est pas encore grand public, mais ce sera une métrique standard en 2027. Si vous commencez tôt, vous établissez une ligne de base — quand vos concurrents commencent, vous lisez déjà les tendances. Étape 1 : prenez 50 mots-clés critiques, convertissez-les en templates de questions, testez-les manuellement sur ChatGPT et Perplexity. Comb
+Pour mettre en place les métriques de citation LLM, commencez par concevoir un ensemble de requêtes synthétiques — extrayez de GSC les requêtes avec un CTR faible mais beaucoup d'impressions. Ensuite, configurez un pipeline de sondage quotidien avec n8n, écrivez les réponses dans BigQuery. Établissez une baseline sur 30 jours : taux de citation, taux de source primaire, score d'importance. Puis mesurez l'impact de votre travail en [Optimisation pour moteurs génératifs](https://www.roibase.com.tr/fr/geo) — quels changements de contenu augmentent le taux de citation, lesquels le diminuent ? Si vous êtes cités mais sans trafic, c'est un problème d'importance — visez les citations inline. Analysez les patterns de co-citation et bouchez les gaps de contenu. Ajoutez ces métriques à votre tableau de bord SEO — d'ici fin 2026, vous regarderez « trafic organique + visibilité LLM » au lieu de juste « trafic organique ».

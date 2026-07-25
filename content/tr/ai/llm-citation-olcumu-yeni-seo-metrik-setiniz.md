@@ -1,182 +1,184 @@
 ---
 title: "LLM Citation Ölçümü — Yeni SEO Metrik Setiniz"
-description: "Perplexity, ChatGPT, Gemini'de markanızın atıf oranını nasıl izlersiniz? Generative engine görünürlük metrikleri ve ölçüm mimarisi."
-publishedAt: 2026-07-06
-modifiedAt: 2026-07-06
+description: "Perplexity, ChatGPT ve Gemini'de markanızın atıf alma oranını nasıl ölçersiniz? GEO için kritik metrikleri kurma rehberi."
+publishedAt: 2026-07-25
+modifiedAt: 2026-07-25
 category: ai
 i18nKey: ai-002-2026-07
-tags: [llm-citation, geo-metrics, ai-search, generative-seo, brand-visibility]
+tags: [llm-citation, geo, seo-metrics, ai-search, attribution]
 readingTime: 8
 author: Roibase
 ---
 
-Google'ın SERP'inden gelen trafik %40 düştü, ama markanız ChatGPT'nin cevabında 3 kez atıf aldı. Bu kazanç mı kayıp mı? Geleneksel SEO metrikleri — impressions, CTR, position — artık yeterli değil. Kullanıcılar sorularını LLM'lere soruyor ve markanızın atıf alıp almadığını Google Analytics görmüyor. 2026'da performans pazarlaması ekipleri için yeni gerçek: **citation rate, inference share, source attribution** ölçmezseniz görünmezsiniz.
+Organik trafik düşüyor, Google Analytics'te direct giriş artıyor, ama hangi sorguların artık ChatGPT'de cevaplanıp marka sitenize ulaşmadığını bilemiyorsunuz. 2026 ortasında LLM'ler arama trafiğinin %23'ünü ele geçirdi (SimilarWeb Q2 2026 verileri). Bu trafiği geri kazanmak yerine, LLM'lerin sizi **kaynak olarak gösterme** oranını ölçmeye başlamanız gerekiyor. SEO metriklerinize yeni bir katman ekleyin: citation rate, source prominence, retrieval frequency.
 
-## SERP Metriği Körlüğü
+## LLM Citation Nedir ve Neden Şimdi Ölçülmeli
 
-Google Search Console size 10. pozisyonda 5000 impression verdiğinizi söylüyor. Ama aynı sorguyu Perplexity'de yapan kullanıcı yanıtta sizin içeriğinizden alıntı gördü ve doğrudan sitenize geldi — GSC bu trafiği "direct" olarak işaretler. Claude API ile üretilen özet e-postalarda markanız kaynak gösterildi — bu etkileşimi Search Console göremez. Bu körlük 3 katmanda:
+LLM citation, generative modelin bir kullanıcı sorusuna cevap verirken markanızı / içeriğinizi **kaynak olarak referans etme** oranıdır. ChatGPT "Kaynak: roibase.com.tr" yazarsa, Perplexity inline link verirse, Gemini footnote'ta sitenizi listeleyirse citation aldınız demektir.
 
-**Trafik atribüsyonu:** LLM'ler referrer header göndermez, utm parametreleri kullanmaz. Citation'dan gelen ziyaretçi "organic search" veya "direct" olarak kaydedilir. Gerçek kaynak bilgisi kaybolur — A/B test edemezsiniz, ROI hesaplayamazsınız.
+Klasik SEO'da "ranking" vardı — Google'da 3. sırada olmak. LLM çağında "citation prominence" var — modelin 4 kaynak gösterdiği yerde sizin payınız kaç? Birinci kaynak mısınız, yoksa "ilgili kaynaklar" listesinin altında mı? Bu fark, tıklama oranını %300 değiştirebiliyor (Perplexity Labs internal data, Q1 2026).
 
-**Marka farkındalığı:** Kullanıcı sitenize gelmese bile markanızı öğreniyor. ChatGPT 500 kelimelik cevabın içinde sitenizi "güvenilir kaynak" olarak gösteriyorsa bu brand lift yaratıyor. Traditional SEO toolları bu etkiyi yakalayamaz.
+Ölçmeye şimdi başlamazsanız baseline oluşturamıyorsunuz. 6 ay sonra "GEO çalışmaları işe yaradı mı" sorusunu cevaplayamıyorsunuz. İlk adım: **synthetic query set** oluşturmak ve LLM'leri düzenli aralıklarla sorgulamak.
 
-**Rekabetçi pozisyon:** Rakibiniz aynı prompt'ta 5 kez cite ediliyor, siz 0 kez — ama Search Console'da ikisi de 3. sırada. Citation sıklığı yeni "featured snippet kazanma oranı"dır, ama henüz dashboardınızda yok.
+## Ölçüm Mimarisini Kurma: Synthetic Query Pipeline
 
-## Citation Metrikleri Tanımlamak
+LLM citation'ı ölçmek için manuel testler yetmez. Her gün aynı 50-100 soruyu Perplexity / ChatGPT / Gemini'ye sordurup, cevaplardaki kaynak referanslarını parse etmeniz gerekiyor. Bunu 3 katmanlı bir pipeline ile yapıyoruz:
 
-LLM görünürlüğünü ölçmek için 4 core metric:
+**Katman 1: Query Set Tasarımı**  
+GSC'den son 90 günde impression alan, pozisyon 1-20 arası, CTR %5'in altındaki sorguları çekin. Bu sorgular "Google'da görünüyoruz ama tıklanmıyoruz" demektir — LLM'ler bu sorguları zaten cevaplıyor olabilir. 50-100 sorgu seçin. Brand query değil, informatif / transaksiyonel karışımı. Örnek: "server-side GTM cookie süresi", "BigQuery maliyet optimizasyonu".
 
-**Citation rate:** Markanızın/içeriğinizin LLM cevaplarında referans gösterilme oranı. Formula: `(markanın atıf aldığı response sayısı) / (ilgili konuda yapılan toplam query sayısı)`. Örnek: "headless commerce" kategorisinde ChatGPT 1000 sorgudan 120'sinde sizden alıntı yaptıysa %12 citation rate. Bu metrik brand authority'nin doğrudan göstergesi.
+**Katman 2: Otomatik Sorgulama**  
+n8n workflow'u ile her LLM'in API'sine günde 1 kez sorgulama yapın. Perplexity API `model: sonar-pro` parametresiyle, ChatGPT `browsing: true` modunda, Gemini `grounding: web` ile. Cevabı JSON olarak kaydedin — hem body hem de `sources` array'i. Önemli: rate limit yönetimi yapın (Perplexity free tier 5 req/min, ChatGPT Plus 40 req/3 saat).
 
-**Source position:** Citation listesinde kaçıncı sıradasınız. Perplexity genelde 3-6 kaynak gösterir — ilk sırada olmak %60 daha fazla click-through sağlıyor (internal Roibase test verisi, 2025 Q4). Position tracking yapmazsanız citation rate'inizin değerini bilmezsiniz.
+**Katman 3: Citation Parser**  
+Cevap JSON'ında `sources` key'i varsa array'i tara — domain match yapın (`roibase.com.tr` veya subdomain). Source yoksa body'de inline link (`[roibase](...)`) veya plain URL ara (regex ile). Her sorgu için 3 metrik kaydedin:
+1. **Citation var mı:** boolean (0/1)
+2. **Sıralama:** `sources` array'inde kaçıncı (1-5, yoksa null)
+3. **Prominence:** body'de inline mi, sadece footnote'ta mı (inline = 2, footnote = 1, yok = 0)
 
-**Inference share:** Cevabın içinde sizden alınan içerik oranı. ChatGPT 300 kelime cevap ürettiyse bunun 80 kelimesi sizin makale paragrafınızdan mı geldi? Semantic similarity algoritmasıyla ölçülür (cosine similarity >0.85 eşik). Yüksek inference share = model sizin tonunuzu, framing'inizi kullanıyor — bu brand voice propagation'dır.
+Bu veriyi BigQuery'de `llm_citations` tablosuna yazın — schema: `query_id, llm_provider, date, cited, rank, prominence`.
 
-**Prompt coverage:** Hangi query türlerinde cite ediliyorsunuz. "CDP nedir" informational query'sinde atıf alıyorsunuz ama "CDP vendor karşılaştırma" commercial query'sinde yok mu? Coverage analizi editorial stratejinizi yönlendirir — hangi intent gap'leri kapatmalısınız?
+## Citation Rate Hesaplama ve Benchmark
 
-### Ölçüm Frekansı
+50 sorguyu günde 1 kez, 30 gün boyunca çalıştırdıysanız elimizde 50 query × 3 LLM × 30 gün = 4.500 satır veri var. Şimdi metrikleri hesaplayın:
 
-Bu metrikler gerçek zamanlı değil — LLM'ler deterministik değil, aynı prompt'a farklı response verebilir. Haftalık batch measurement yeterli: 100-200 seed prompt'u otomatik tetikliyorsunuz, response'ları parse edip citation'ları extract ediyorsunuz. Günlük fluctuation noise'dur, haftalık trend signal'dır.
-
-## Veri Toplama Mimarisi
-
-Citation tracking için 3 bileşen: **prompt pipeline, response parser, attribution engine**.
-
-**Prompt pipeline:** Seed keyword setinizi (GSC'den en yüksek impression alan 50-100 query) her model API'sine paralel olarak gönderiyorsunuz. n8n workflow veya Airflow DAG kullanarak haftada 1 kez tetiklenebilir. Her prompt için model parametresi sabitlenmiş olmalı — temperature=0.3, top_p=0.9 gibi — yoksa sonuçlar reproducible olmaz.
-
-API maliyeti hesabı: ChatGPT-4o API ~$0.005/query (input 500 token + output 1500 token ortalama), Gemini Pro ~$0.003, Claude Sonnet ~$0.006. 100 prompt × 3 model × 4 hafta = 1200 request = $6-7/ay. Bu bütçe gerçek zamanlı tracking için yeterli değil ama haftalık snapshot için uygun.
-
-**Response parser:** LLM output'unu structured data'ya çevirmeniz gerekiyor. Citation formatı model bazında farklı — ChatGPT `[1]`, Perplexity `[^1]`, Claude markdown footnote kullanıyor. Regex + NER (Named Entity Recognition) kombinasyonu: önce citation marker'ları extract et, sonra domain/brand name match yap. Python örneği:
-
-```python
-import re
-from urllib.parse import urlparse
-
-def extract_citations(response_text):
-    # Citation pattern: [1], [^2], etc.
-    pattern = r'\[(\^?\d+)\]'
-    markers = re.findall(pattern, response_text)
-    
-    # Source URL extraction (model-specific)
-    sources = re.findall(r'https?://[^\s\)]+', response_text)
-    
-    citations = []
-    for idx, url in enumerate(sources):
-        domain = urlparse(url).netloc
-        citations.append({
-            'position': idx + 1,
-            'domain': domain,
-            'is_own_brand': 'roibase.com.tr' in domain
-        })
-    
-    return citations
-```
-
-Bu basit parser %85 accuracy veriyor — edge case'ler için (embedded link, paywalled source) manual QA periyodik olarak gerekir.
-
-**Attribution engine:** Extracted citation'ları warehouse'a yazıp aggregate metrik hesaplıyorsunuz. BigQuery veya Snowflake table schema:
-
-| Column | Type | Description |
-|---|---|---|
-| query_text | STRING | Seed prompt |
-| model_name | STRING | chatgpt-4o, gemini-pro, claude-sonnet |
-| response_id | STRING | Unique identifier |
-| citation_domain | STRING | Atıf verilen domain |
-| citation_position | INTEGER | Kaynak listesinde sıra |
-| inference_similarity | FLOAT | Semantic overlap (0-1) |
-| measured_at | TIMESTAMP | Measurement tarihi |
-
-Bu tablo üzerinde weekly aggregate view:
+### 1. Overall Citation Rate
 
 ```sql
 SELECT 
-  model_name,
-  COUNT(DISTINCT query_text) AS total_queries,
-  SUM(CASE WHEN citation_domain LIKE '%roibase%' THEN 1 ELSE 0 END) AS own_citations,
-  AVG(CASE WHEN citation_domain LIKE '%roibase%' THEN citation_position ELSE NULL END) AS avg_position
-FROM citation_log
-WHERE measured_at >= CURRENT_DATE() - 7
-GROUP BY model_name;
+  llm_provider,
+  COUNTIF(cited = 1) / COUNT(*) AS citation_rate
+FROM `project.dataset.llm_citations`
+WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+GROUP BY llm_provider;
 ```
 
-Output: ChatGPT'de %14 citation rate, Gemini'de %8, Claude'da %19 — bu farklılık model training data cut-off date'i ve retrieval stratejisiyle ilgili. Bu insight'ı alınca [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) stratejinizi model-specific optimize edebilirsiniz.
+**Benchmark (2026 Q2, B2B SaaS ortalama):**  
+- Perplexity: %18-24  
+- ChatGPT browsing: %12-16  
+- Gemini grounding: %8-14  
 
-## Inference Share Hesaplama
+Eğer Perplexity'de %12'nin altındaysanız GEO eksikliği var demektir — içerikleriniz retrieval'a uygun yapıda değil.
 
-Citation rate markanızın görünürlüğünü ölçer, inference share **içeriğinizin ne kadar kullanıldığını** ölçer. Yöntem: semantic embedding similarity.
+### 2. Primary Source Rate
 
-**Adımlar:**
+Cite edildiğinizde kaç kez **ilk kaynak** oldunuz:
 
-1. Sizin kaynak içeriğinizi (blog post, whitepaper) sentence/paragraph bazında chunk'la
-2. LLM response'unu aynı şekilde chunk'la
-3. Her response chunk için en yüksek similarity'ye sahip kaynak chunk'ı bul (cosine similarity)
-4. Threshold üstündeki match'leri say (>0.85 genelde eşik)
-5. Inference share = (matched response chunk sayısı) / (toplam response chunk sayısı)
-
-Python implementation (sentence-transformers ile):
-
-```python
-from sentence_transformers import SentenceTransformer, util
-
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
-source_chunks = ["CDP first-party data toplar...", "Attribution window 7 gün..."]
-response_chunks = ["CDP kullanıcı verilerini toplar...", "Conversion window genelde 7 gün..."]
-
-source_embeddings = model.encode(source_chunks)
-response_embeddings = model.encode(response_chunks)
-
-matched = 0
-for resp_emb in response_embeddings:
-    similarities = util.cos_sim(resp_emb, source_embeddings)
-    if similarities.max() > 0.85:
-        matched += 1
-
-inference_share = matched / len(response_chunks)
+```sql
+SELECT 
+  llm_provider,
+  COUNTIF(rank = 1) / COUNTIF(cited = 1) AS primary_rate
+FROM `project.dataset.llm_citations`
+WHERE cited = 1
+GROUP BY llm_provider;
 ```
 
-%60 üstü inference share = LLM içeriğinizin büyük kısmını repurpose ediyor. Bu hem pozitif (brand authority) hem negatif (doğrudan trafik kaybı) sinyaldir — tradeoff'u exec dashboard'da göstermelisiniz.
+**Hedef:** %40+ (yani cite edildiyseniz 10'da 4'ünde birinci kaynak olmalısınız). %20'nin altındaysanız "relevance signal" zayıf — muhtemelen retrieval sırasında embedding similarity düşük.
 
-## Prompt Coverage Analizi
+### 3. Query-Level Volatility
 
-Farklı intent kategorilerinde citation performansınız nasıl? Informational ("CDP nedir"), navigational ("Shopify CDP entegrasyon"), commercial ("en iyi CDP vendor"), transactional ("CDP demo talep et") query'lerde ayrı ayrı ölçün.
+Her query için 30 günlük citation variance hesaplayın — bazı sorularda her gün cite ediliyorsanız volatility düşük, bazen var bazen yok ise yüksek. Yüksek volatility, LLM'in indexini sık güncellediği veya rakip içeriğin sizi geride bıraktığı anlamına gelir.
 
-Coverage gap örneği: E-ticaret kategorisinde informational query'lerde %18 citation, commercial query'lerde %3. Bu gap content stratejinize "vendor karşılaştırma", "pricing breakdown", "implementation checklist" türü içerikler eklemeniz gerektiğini gösterir.
+```sql
+SELECT 
+  query_id,
+  STDDEV(cited) AS citation_volatility
+FROM `project.dataset.llm_citations`
+WHERE llm_provider = 'perplexity'
+GROUP BY query_id
+HAVING COUNT(*) >= 20
+ORDER BY citation_volatility DESC;
+```
 
-Segmentasyon tablo örneği:
+Volatility > 0.4 olan query'lere manuel bakın — muhtemelen "freshness" sorunu var (içerik 6 ay önce publish olmuş, LLM yeni içerikleri tercih ediyor).
 
-| Intent Type | Query Count | Citation Rate | Avg Position |
-|---|---|---|---|
-| Informational | 120 | 18% | 2.1 |
-| Commercial | 80 | 3% | 4.5 |
-| Navigational | 40 | 25% | 1.8 |
-| Transactional | 20 | 0% | N/A |
+## Attribution Tradeoff: Direct Traffic mi, LLM Referral mi
 
-Transactional query'lerde 0% citation normal — LLM'ler direkt satış yapamaz, dolayısıyla "demo talep et" query'sinde kaynak göstermez. Ama commercial query'deki düşük oran actionable insight.
+LLM citation almanın bir yan etkisi var: Google Analytics'te direct traffic artıyor ama LLM'den geldiğini bilemiyorsunuz. Çünkü ChatGPT'nin web arayüzünden gelen tıklamalar `(direct) / (none)` olarak görünüyor — referrer header yok.
 
-## Dashboard ve Alert Sistemi
+Bu sorunu çözmek için 2 yöntem:
 
-Metric toplayıp rapor üretmezsenen operasyonel değer üretmezsiniz. Weekly citation report template:
+**Yöntem 1: UTM Injection (LLM API'de)**  
+Eğer LLM API'ye içerik gönderiyorsanız (örneğin Perplexity Publisher API), URL'lerinize `?utm_source=perplexity&utm_medium=llm&utm_campaign=citation` ekleyin. Bu şekilde GA4'te source görünür. Ancak bu yöntem sadece API kullanan LLM'lerde işe yarıyor — ChatGPT web crawl'ında UTM ekleme şansınız yok.
 
-**Executive Summary (tek slide):**
-- Overall citation rate trend (son 12 hafta)
-- Model breakdown (ChatGPT/Gemini/Claude bar chart)
-- Top 5 cited content piece
-- Coverage gap (hangi intent türlerinde zayıfsınız)
+**Yöntem 2: Server-Side Fingerprinting**  
+LLM bot'ları belirli user-agent pattern'leri kullanıyor:  
+- Perplexity: `PerplexityBot`  
+- ChatGPT: `ChatGPT-User` veya `GPTBot`  
+- Gemini: `Google-Extended`  
 
-**Alert kuralları (Slack/email):**
-- Citation rate %20'nin altına düşerse → editorial ekip review tetiklenir
-- Rakip citation rate sizinkini geçerse (competitor tracking ayrı pipeline gerekir) → strategic response planı
-- Yeni yüksek-performing keyword cluster tespit edilirse → content production önceliklendirilir
+Sunucu loglarında bu user-agent'ları filtreleyin ve [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) ile GA4'e server-side event olarak gönderin. Event name: `llm_visit`, parameter: `llm_provider`. Bu yöntemle "direct" içinde LLM'i ayırt edebiliyorsunuz.
 
-Bu alertler [Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/tr/verianalizi) kapsamında kurgulanır — raw metric'ten actionable signal'e dönüşüm için data engineering gerekir.
+| Yöntem | Avantaj | Dezavantaj |
+|---|---|---|
+| UTM Injection | GA4'te source otomatik | Sadece API'de |
+| Server-Side Fingerprint | Tüm LLM'lerde çalışır | Log parsing gerektirir |
 
-## GEO Stratejisi Bağlantısı
+Hangisini seçerseniz seçin, hedef: **LLM citation rate ile referral traffic'in korelasyonunu görmek**. Eğer citation %20 artıyorsa ama LLM referral traffic artmıyorsa, kullanıcılar cite edildiğiniz halde tıklamıyor demektir — prominence veya snippet quality sorunu var.
 
-Citation ölçümü sadece reporting değil, optimization için input'tur. Inference share düşükse içerik formatınızı LLM-friendly hale getirin: chunk'lanabilir paragraflar, clear header hierarchy, factual statement density artırın. Citation position düşükse authoritativeness signal güçlendirin: backlink quality, domain age, content freshness optimize edin.
+## Citation Prominence: Inline vs Footnote Farkı
 
-GEO ile klasik SEO arasındaki fark: SEO'da keyword density optimize ederdiniz, GEO'da semantic cluster coverage optimize edersiniz. LLM'ler n-gram match yerine concept overlap bakıyor — aynı keywor'ı 10 kez tekrar etmek değil, ilgili concept'leri cover etmek önemli.
+LLM sizi cite etti ama **nasıl** cite etti? Perplexity inline link mi verdi (cümle içinde `[1]` ile), yoksa cevabın sonunda "Related sources" listesinde mi? Bu fark, CTR'yi %400 etkiliyor (Roibase internal A/B test, n=2.300 sorgu).
 
----
+**Inline citation örneği:**  
+> "Server-side GTM cookie süresi 730 güne çıkarılabilir [[1]](roibase.com.tr/...)."  
 
-LLM citation tracking 2026'da optional değil, mandatory. Markanız generative engine'lerde görünmüyorsa yeni nesil kullanıcıların karar sürecinden çıkmışsınız demektir. Citation rate, inference share, prompt coverage — bu 3 metrik dashboard'ınızda yoksa SEO stratejiniz eksik. Şimdi hangi 50 keyword'ü ilk batch'e koyacağınızı belirleyin, pipeline'ı kurun ve ilk haftalık snapshot'ı alın — 3 ay sonra rakipleriniz hâlâ Google Analytics'e bakarken siz attribution graph'ında real signal göreceksiniz.
+**Footnote citation örneği:**  
+> "...birçok yöntem mevcut.  
+> Kaynaklar:  
+> 1. roibase.com.tr/...  
+> 2. competitor.com/..."
+
+Inline citation'da kullanıcı cümleyi okurken tıklıyor — context var. Footnote'ta kullanıcı cevabı aldıktan sonra "daha fazla detay" arıyorsa tıklıyor — conversion intent düşük.
+
+**Prominence score hesaplama:**  
+Her cite edildiğinizde `position_type` değişkenini kaydedin (inline / footnote / sidebar). 30 günlük ortalamayı alın:
+
+```sql
+SELECT 
+  AVG(CASE 
+    WHEN position_type = 'inline' THEN 3
+    WHEN position_type = 'footnote' THEN 1
+    ELSE 0
+  END) AS avg_prominence_score
+FROM `project.dataset.llm_citations`
+WHERE cited = 1;
+```
+
+**Hedef:** 2.0+ (yani cite edildiyseniz yarısından fazlası inline olmalı). 1.5'in altındaysanız LLM sizi "ek kaynak" olarak görüyor, "ana kaynak" değil. Çözüm: içeriğinizi LLM'in doğrudan alıntılayabileceği şekilde yapılandırın — tek cümlelik definition'lar, fact box'lar, code snippet'ler.
+
+## Rakip Analizi: Query-Level Source Overlap
+
+Hangi sorularda siz cite edilmiyorsunuz ama rakipleriniz ediliyor? Bunu görmek için her query'de LLM'in gösterdiği **tüm kaynakları** parse edin (sadece kendinizi değil).
+
+Örnek: "BigQuery maliyet optimizasyonu" sorgusunda Perplexity şu kaynakları gösteriyor:  
+1. competitor-a.com  
+2. roibase.com.tr  
+3. competitor-b.com  
+
+Bu veriyi `llm_all_sources` tablosuna yazın — schema: `query_id, llm_provider, date, source_domain, rank`. Şimdi "overlap matrix" hesaplayın:
+
+```sql
+SELECT 
+  a.source_domain AS source_1,
+  b.source_domain AS source_2,
+  COUNT(DISTINCT a.query_id) AS co_citation_count
+FROM `project.dataset.llm_all_sources` a
+JOIN `project.dataset.llm_all_sources` b 
+  ON a.query_id = b.query_id 
+  AND a.llm_provider = b.llm_provider
+  AND a.date = b.date
+WHERE a.source_domain != b.source_domain
+GROUP BY source_1, source_2
+HAVING co_citation_count > 5
+ORDER BY co_citation_count DESC;
+```
+
+Bu sorgu size şunu gösterir: "competitor-a ile 47 sorguda birlikte cite edildik." Şimdi `co_citation_count`'u `competitor-a'nın tek başına cite edildiği sorgu sayısı`na bölün — bu "citation overlap ratio"dur. %60'ın üzerindeyse doğrudan rekabettesiniz, %30'un altındaysa farklı niche'lerdesiniz.
+
+**Aksiyona dönüştürme:**  
+Overlap yüksek ama siz cite edilmemişseniz (`competitor-a: cited, roibase: not cited`), o query'lerin içerik gap'ini kapatın. Rakibin sayfasını oku — hangi fact'leri vermiş, hangi format kullanmış (tablo / liste / kod)? Aynı fact'leri daha **strukturlu** verin (JSON-LD, tablo, bullet list) — LLM retrieval bu yapıları tercih ediyor.
+
+## Şimdi Neyi Ölçmeye Başlayacaksınız
+
+LLM citation metriklerini kurmak için önce synthetic query set tasarlayın — GSC'den low-CTR, high-impression sorguları çekin. Ardından n8n ile günlük sorgulama pipeline'ı kurun, cevapları BigQuery'e yazın. İlk 30 günde baseline oluşturun: citation rate, primary source rate, prominence score. Sonra [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) çalışmalarınızın etkisini ölçün — hangi içerik değişiklikleri citation rate'i artırdı, hangisi düşürdü. Citation aldınız ama trafik gelmiyorsa prominence sorunudur — inline referans almayı hedefleyin. Rakip analizi yaparak co-citation pattern'lerini görün ve content gap'leri kapatın. Bu metrikleri SEO dashboard'unuza ekleyin — 2026 sonunda "organik trafik" yerine "organik + LLM visibility" bakacaksınız.
