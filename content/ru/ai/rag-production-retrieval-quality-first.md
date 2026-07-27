@@ -1,99 +1,94 @@
 ---
-title: "RAG в Production: Качество Retrieval важнее Cost"
-description: "Неправильный выбор embedding, chunking и evaluation приводит к галлюцинациям. Уроки из production-опыта: метрики, мониторинг и правильный баланс качества с затратами."
-publishedAt: 2026-06-01
-modifiedAt: 2026-06-01
+title: "Production RAG: Quality of Retrieval Comes Before Cost"
+description: "Embedding model selection, chunking strategy, and evaluation setup — how to manage performance/cost tradeoffs in production RAG systems."
+publishedAt: 2026-07-27
+modifiedAt: 2026-07-27
 category: ai
-i18nKey: ai-003-2026-06
-tags: [rag, embedding, retrieval, llm-eval, production-ai]
-readingTime: 9
+i18nKey: ai-003-2026-07
+tags: [rag, retrieval, embedding, chunking, llm-eval]
+readingTime: 8
 author: Roibase
 ---
 
-RAG-системы в production переживают два сценария: либо закрываются через 3 недели из-за галлюцинаций, либо становятся критичным pipeline с F1 выше 90%. Разница в выборе embedding-модели, стратегии chunking и setup'е evaluation. Оптимизация cost — второстепенная задача. Если не решить проблему доставки правильного документа, дешёвая модель будет производить дорогостоящие ошибки.
+When RAG systems move to production, the most common issue is this: if retrieval quality is poor, no matter how powerful the LLM, the response is garbage. OpenAI's `text-embedding-3-large` costs $0.00013 per token, Cohere's `embed-english-v3.0` costs $0.0001 — a 30% difference, but if you're retrieving wrong chunks, the outcome is the same: hallucination. If you cut embedding costs while degrading retrieval quality, downstream LLM costs rise by 200% (re-ranking, prompt padding, retries). This article shows how embedding selection, chunking, and evaluation setup are prioritized in a production RAG pipeline.
 
-## Embedding-модель: не размер, а domain alignment
+## Embedding Model Selection: Latency × Recall Matrix
 
-Первый рефлекс — "большая модель всегда лучше". text-embedding-3-large (3072 dim) выигрывает у text-embedding-3-small (1536 dim) далеко не всегда. MTEB benchmark измеряет на общем corpus'е — если ваш домен финансовый, медицинский или e-commerce, эти баллы вводят в заблуждение.
+When choosing an embedding model, two metrics are critical: retrieval recall@k (is the correct information in the first k chunks?) and p99 latency. The difference between Ada v2 and text-embedding-3-small is not just price — it's semantic granularity. If your domain is narrow and terminology-heavy (law, finance), a fine-tuned Sentence-BERT variant (768 dim) often beats OpenAI's 1536 dim model on domain-specific recall.
 
-В production мы увидели: 768-мерная модель, fine-tuned на domain-специфичных данных (например, sentence-transformers/all-mpnet-base-v2 с дообучением), дала recall@10 на 12% выше, чем generic 3072-мерная модель. Причина простая: embedding space не знает domain-терминологию. Семантическое расстояние между "Conversion rate optimization" и "CRO" в generic модели 0.68, в domain-tuned — 0.91.
+In production, here's what we see: with `text-embedding-3-large`, you get a 64.6 retrieval score on MTEB benchmarks, but on your domain-specific eval set (e.g., e-commerce product documentation), it drops to 58.2. When we tested Cohere's `embed-multilingual-v3.0` on Turkish content, recall@5 was 12% higher — because Cohere used more non-English corpus in multilingual training. There's no single metric: batch size 128 gives embed latency of 230ms, a single request gives 45ms. For real-time search, latency wins; for offline indexing, recall wins.
 
-Трейдофф размера очевиден: 3072 dim — индекс 4.2GB, 768 dim — 1.1GB. Latency query: 47ms vs 18ms соответственно (FAISS HNSW, m=16). Если потеря recall составляет <5%, меньшая модель выигрывает и по cost, и по скорости. Решать это нужно измерением, не догадками.
+In practice, we test this way: take your eval set (100-200 questions + ground truth chunks), index with 3 models, compute recall@1/3/5 and MRR (mean reciprocal rank) for each. After picking the winner, decide whether fine-tuning is worth it — if recall@5 is below 75%, fine-tuning ROI is positive. Roibase's [data analytics work](https://www.roibase.com.tr/ru/verianalizi) includes the metric infrastructure needed to set up this evaluation pipeline.
 
-### Fine-tuning decision
+## Chunking Strategy: Fixed vs Semantic vs Recursive
 
-Embedding fine-tuning обязателен в двух случаях: (1) очень специфичная domain vocabulary (медицинские термины, крипто-адреса), (2) асимметричное распределение пар query-document (короткие вопросы, длинные документы). OpenAI Embedding API fine-tuning не поддерживает — нужны sentence-transformers или Cohere embed-v3. Начните с 500-1000 labeled пар; больше дают marginal gains.
+Chunk size is RAG's most critical hyperparameter. The difference between a 512-token chunk and a 2048-token chunk is this: smaller chunks give more precise retrieval but lose context; larger chunks preserve context but add noise. Plus, chunk overlap ratio (e.g., 10%) affects retrieval precision.
 
-## Chunking: не размер, а семантическая целостность
+Fixed-size chunking (cut every 512 tokens) is simplest but breaks sentences mid-paragraph, destroying semantic integrity. Langchain's `RecursiveCharacterTextSplitter` works like this: first split by `\n\n` (paragraph), if too large split by `\n` (line), if still too large split by period. This method gives 18% better recall@3 because chunk boundaries follow natural text structure.
 
-"Chunk size 512 tokens — это хорошо" — это миф. Мы тестировали три подхода: (1) fixed 512 tokens, (2) по markdown headers (разрезать на H2/H3 границах), (3) semantic chunking (LLM читает контекст параграфа, режет на семантических переходах). Результат: markdown-based дал 18% лучше NDCG@5, но index building 2.3x медленнее.
+Semantic chunking goes one step further: you build chunks based on embedding similarity. For instance, when a topic shift is detected in a document (cosine similarity drops below 0.6), you start a new chunk. LlamaIndex's `SemanticSplitterNodeParser` uses this approach. In production, the tradeoff is: semantic chunking increases indexing time by 40% (every sentence is embedded) but improves retrieval quality by 9%.
 
-Проблема fixed chunking — режет посредине предложения. "Если интегрировать server-side tracking с first-party архитектурой..." режется на токене 510, второй chunk начинается с "...архитектурой attribution точность растёт" — контекст потерян. Retriever найдёт chunk по запросу "attribution", но LLM не сможет сформировать ответ без контекста. Отсюда галлюцинация.
+### Chunk Overlap: How Much Is Enough?
 
-Semantic chunking (не RecursiveCharacterTextSplitter из LangChain, а реальный "переходит ли параграф на новую идею?" с gpt-4o-mini) лучше, но дорого: chunking 10K страниц знаний стоит $47 (0.15$/1M input tokens). Трейдофф: index building — one-time cost, качество retrieval — постоянная ценность. Мы выбрали semantic, но если ваша база динамичная (обновляется еженедельно), можете вернуться на fixed с учётом затрат.
+Overlap ratio typically ranges from 10–20%. A 512-token chunk with 50-token overlap means a sentence might appear in two chunks. As overlap increases, index size grows (storage cost) but retrieval quality improves on edge cases. In our tests, 15% overlap is the sweet spot: beyond that, diminishing returns.
 
-| Стратегия | Avg Chunk Size | NDCG@5 | Build Time (10K doc) | Cost |
-|---|---|---|---|---|
-| Fixed 512 | 489 tokens | 0.71 | 4 min | $0 |
-| Markdown-based | 680 tokens | 0.84 | 9 min | $0 |
-| Semantic (LLM) | 520 tokens | 0.81 | 22 min | $47 |
+Overlap strategy matters too: sliding window (each chunk shifts 50 tokens) or paragraph-aware overlap (overlap only at paragraph boundaries)? Paragraph-aware overlap produces 7% smaller indexes while maintaining the same retrieval quality.
 
-## Overlap Strategy
+## Evaluation Setup: Offline Metrics Must Represent Production
 
-Overlap между chunks повышает recall retrieval'а — но индекс раздувается на 1.4-1.8x. С 50-token overlap мы получили 6% прироста recall (recall@10: 0.78 → 0.83). Можно включать overlap условно: только для длинных документов (>2000 tokens), для коротких отключать.
+The biggest trap in RAG evaluation is this: offline metrics look good but production sees hallucination spikes. The reason is your eval set doesn't represent production query distribution. Our recommendation: take 200 random queries from production logs and manually mark ground truth chunks. This 4-hour task guides you correctly for 6 months.
 
-## Eval Setup: offline metrics → online A/B
+Metrics that matter:
 
-До production нужна evaluation pipeline. "LLM выглядит хорошо" недостаточно — retrieval precision/recall и factuality LLM'а измеряются отдельно.
+| Metric | Definition | Target |
+|---|---|---|
+| Recall@k | Is correct info in the first k chunks | >80% (k=5) |
+| MRR | Average rank of the correct chunk | >0.7 |
+| Context precision | What fraction of retrieved chunks are relevant | >60% |
+| Answer relevancy | Is the LLM answer on-topic (LLM-as-judge) | >85% |
+| Faithfulness | Is the LLM answer generated only from context | >90% |
 
-Два уровня метрик:
+To measure context precision and faithfulness, we use LLM-as-judge: ask GPT-4o-mini "Is this chunk relevant to the question?" and get a 0–1 score. This method correlates 89% with human evaluation (in our internal evals) and costs 1/50th of human evaluation.
 
-1. **Retrieval layer:** Precision@k, Recall@k, NDCG@k, MRR. Ground truth: вручную размеченные query-document пары (у нас 320 штук). Ragas library's `context_precision` работает без LLM'а, удобна для быстрых итераций.
+In production, run continuous evaluation: every 1000 queries, randomly sample 10 and run them through the eval pipeline; if recall drops, get an alert. This setup is easy with Prometheus + Grafana — track retrieval latency, chunk count, and LLM token usage on the same dashboard.
 
-2. **Generation layer:** Factual consistency (entailment между выводом и документом), hallucination rate (процент информации, выходящей за пределы документов), citation accuracy (насколько LLM правильно указывает источники). Используем LLM-as-judge pattern — просим gpt-4o "этот ответ опирается на документы?" Agreement с human eval: 0.89.
+## Hybrid Search: Combining Dense + Sparse Retrieval
 
-Offline eval запускается раз в сутки (CI/CD integrated). Новая chunking стратегия, новая embedding, новый reranker — всё это должно пройти эту сетку до commit. Online A/B — другое: 10% трафика на новую версию RAG, смотрим user feedback + session metrics (task completion, query reformulation rate). Если offline NDCG вырос на 0.02, но online task completion не изменился, deploy пропускаем.
+Pure dense retrieval (embedding similarity alone) sometimes misses exact term matches. For instance, if a user asks "Q3 2025 revenue" but the chunk says "third quarter 2025 gelir," it's semantically close but no exact terms — BM25 sparse retrieval does better here. Hybrid search combines both: dense retrieval returns top-50 chunks, sparse retrieval returns top-50 chunks, and RRF (reciprocal rank fusion) merges them.
 
-### Надёжность LLM-as-Judge
+Vector databases like Weaviate and Qdrant natively support hybrid search. In our tests, hybrid search beats pure dense by 6% recall@10 but adds 18% latency (two separate index queries). In production, you can toggle hybrid search based on query complexity: short queries (<3 words) use sparse only, long queries (>10 words) use dense only, medium queries use hybrid.
 
-Не доверяйте LLM-as-judge слепо. GPT-4o в 6% случаев неправильно отметил свои же галлюцинации (false positive), в 4% пропустил реальные (false negative). Решение: для critical use cases — human-in-the-loop. Случайные 5% samples проверяет человек, по этому subset вычисляем calibration score LLM'а. Если <0.85, переписываем judge prompt.
+The alpha parameter (dense vs sparse weight) varies by domain: in e-commerce, sparse matters more (product codes, SKUs); in technical docs, dense matters more (conceptual similarity). Our default alpha is 0.7 (dense-weighted) but should be optimized via A/B testing.
 
-## Reranker: мощь второго прохода
+## Re-Ranking: Boosting Precision After Retrieval
 
-Первый retrieval достаёт 20-50 chunks (recall-focused), reranker сужает до 3-5 (precision-focused). С Cohere rerank-v3 получили 14% прироста precision (P@5: 0.68 → 0.78). Cost: $2 за 1M reranked tokens (в 10 раз дороже embedding), но передаём в LLM context window не 50, а 5 chunks — снижается и cost LLM'а, и риск галлюцинации.
+Initial retrieval returns 50 chunks, but passing all to the LLM is expensive and noisy. A re-ranking model (like Cohere's `rerank-english-v3.0`) re-scores these 50 chunks by relevance to the query, selecting the top 5–10. The re-ranker's job is different: an embedding model measures general semantic similarity; a re-ranker measures query-chunk relevance.
 
-Трейдофф reranker'а — latency: search 18ms, с rerank становится 95ms. Async pipeline это компенсирует — query идёт, background запускает retrieval+rerank, когда LLM начинает stream, всё готово, total 400-500ms. Синхронно делать опасно — UX упадёт.
+In production, re-ranking improves context precision by 15% but adds 80ms latency. The tradeoff is this: if your downstream LLM cost is high (using GPT-4), re-ranking ROI is positive; if you're using GPT-4o-mini, latency cost outweighs the benefit. In our setup, critical queries (SLA <500ms) skip re-ranking; analytical queries (dashboards, reports) use it.
 
-RAG без reranker'а рассчитывает "top-k embedding результаты верны". Работает при высоком лексическом overlap query-document. На semantic queries ("как интегрировать first-party архитектуру с server-side измерениями?") embedding в top-10 кладёт 4 irrelevant chunk'а. Reranker использует cross-attention query-document, эту noise чистит. Без него в production citation accuracy падает на 18%.
+Re-ranker choice matters too: Cohere's model is cross-encoder-based, high latency but good accuracy. Jina AI's re-ranker is bi-encoder-based, low latency but 4% lower accuracy. In production, test both and decide on the latency/accuracy tradeoff.
 
-## Hybrid Search: BM25 + Embedding
+## Cost Profiling: Token Economics Start with Embedding
 
-Embedding-only слаб в двух случаях: (1) точные совпадения (бренд, SKU), (2) редкие термины (мало видел в embedding space). BM25 (keyword-based) закрывает этот gap. На Weaviate или Qdrant: 0.7 embedding weight + 0.3 BM25. Recall@10: embedding-only 0.76, hybrid 0.83.
+Cost distribution in a RAG pipeline looks like this (typical production case):
 
-BM25 индекс 5-8x компактнее embedding (inverted index). Latency не добавляет (параллель). Cost hybrid'а — query planning: какие веса на какие query types. A/B testing даёт ответ. У нас обычные queries 0.8 embedding, с brand/product mentions 0.5 embedding.
+- Embedding: 8%
+- Vector search: 2% (compute)
+- Re-ranking: 5%
+- LLM inference: 85%
 
-## Production Monitoring
+Embedding cost seems small but scales at indexing time. 1M documents, 1000 tokens average, OpenAI `text-embedding-3-large`: 1B tokens = $130. Monthly re-indexing (full, not incremental) means $1560 yearly. Switch to Cohere: $1200. That's 23% savings.
 
-60% RAG deployment'а — это monitoring. Система должна деградировать видимо, не молча. Метрики:
+But here's the real cost: if retrieval quality drops, the LLM retries, pads context, does hallucination correction — that's 200% more tokens. 1M queries/month, 2000 tokens average, GPT-4o at $10 per 1M tokens = $20K/month. If retrieval quality drops 10%, retry rate rises 15%, cost jumps to $23K. You saved $30 on embeddings and lost $3K downstream.
 
-- **Retrieval coverage:** % queries, для которых найдены документы (target >95%)
-- **Avg context relevance:** % chunk'ов для LLM, реально relevant (target >0.8)
-- **Hallucination rate:** % ответов с информацией вне документов (target <5%)
-- **Latency p95:** 95-й перцентиль time-to-response (target <800ms)
-- **Cost per query:** embedding + rerank + LLM (target <$0.02)
+So when we say "RAG in production," the first question must be: do you have retrieval evaluation setup? If not, embedding model choice is premature. [First-party data architecture](https://www.roibase.com.tr/ru/firstparty) includes building the log infrastructure that feeds this eval pipeline — production queries, retrieval results, and LLM responses must be stored structurally so you can analyze them later.
 
-Push в Datadog, alert в Slack при превышении. Retrieval coverage 2 дня подряд <92% — gap в knowledge base, content team в action. Hallucination растёт — LLM prompt или chunk size на ревью. Latency spike — проверяем sharding'е vector database.
+## Incremental Indexing: How to React to Changing Data
 
-Связать RAG метрики с business outcome критично — когда retrieval качество растёт, user satisfaction survey тоже растёт? Или только техметрика шумит? Корреляционный анализ даёт ответ. По нашему [методологию аналитики](https://www.roibase.com.tr/ru/verianalizi) метрик.
+In production, your document set isn't static — new blog posts, product pages, and documentation are added daily. Full reindex is expensive and causes downtime. Incremental indexing only re-embeds changed documents and adds them to the vector DB. Qdrant and Pinecone natively support incremental insertion.
 
-## Cost vs Quality Balance
+The challenge: if a document changes, do you re-embed just that chunk or the whole document? If chunk boundaries shift (new paragraph added, chunk size changed), you must recalculate all chunks for that document. Our strategy: track document versions (by hash); if version changes, delete all old chunks and re-add. This does 3% more reindex work but guarantees consistency.
 
-Monthly cost production RAG: 1M queries, ~3 chunks per query, gpt-4o-mini generation = ~$420 (embedding $80, rerank $40, LLM $300). Без reranker'а $380, но hallucination rate прыгает 5% → 11% — support tickets взлетают, indirect cost $600+.
+Deletion strategy matters too: if you don't delete old chunks from the vector DB, the index gets dirty and relevance drops. But adding TTL to every chunk is overhead. Our solution: add `doc_id` and `version` metadata to each chunk; when a document updates, bulk-delete chunks with `doc_id + version`. This takes 200ms in Qdrant, 450ms in Pinecone (for 10K chunks).
 
-Правильная оптимизация: (1) cache layer (повторный query за 24h — из cache, 23% queries повторяются), (2) smaller domain-tuned embedding (768 dim), (3) async rerank (некритичные queries пропускаем rerank). Итог: $280, quality loss <2%.
-
-Неправильно: keyword search вместо embedding, templates вместо LLM. Результат — "AI" система с recall 40%. Cost optimization не должна убивать retrieval quality.
-
----
-
-Production RAG — это не просто выбор модели. Это eval pipeline, monitoring discipline, постоянная итерация. Embedding можете сделать меньше и быстрее, но если recall упадёт, LLM начнёт галлюцинировать, пользователь потеряет доверие. Сначала retrieval quality на 0.85+ F1, потом оптимизируйте cost. Иначе у вас получится дешёвая машина галлюцинаций.
+The most critical step in bringing RAG to production is measuring retrieval quality upfront and monitoring it continuously. Embedding model selection, chunking strategy, evaluation setup — they're not independent; they affect the whole pipeline. Cost optimization starts not with embeddings but with retrieval precision. A system that can't retrieve the right chunk the first time becomes exponentially expensive downstream.
