@@ -1,113 +1,98 @@
 ---
 title: "Premium Yayıncı Programı: Ad Tech Stack'i Gelir Makinesine Dönüştürmek"
-description: "Header bidding, direct sales ve first-party veri entegrasyonuyla reklam gelirini %40+ artıran premium yayıncı stratejisi. Gaming publisher'lar için SSP, ad server, data layer mimarisi."
-publishedAt: 2026-07-17
-modifiedAt: 2026-07-17
+description: "Header bidding, direct sales ve first-party data entegrasyonuyla mobil gaming yayıncılarının reklam gelirini sistematik olarak artıran premium monetization mimarisi."
+publishedAt: 2026-07-31
+modifiedAt: 2026-07-31
 category: gaming
 i18nKey: gaming-006-2026-07
-tags: [premium-publisher, header-bidding, ad-tech, monetization, first-party-data]
+tags: [premium-yayinci, header-bidding, ad-monetization, first-party-data, gaming-revenue]
 readingTime: 8
 author: Roibase
 ---
 
-Gaming publisher'lar 2026'da iki gerçekle karşı karşıya: kullanıcı başına reklam yükü arttıkça retention düşüyor, standart waterfall monetizasyonu ise gerçek değerin %30-40 altında gelir üretiyor. Premium yayıncı programları bu denklemi tersine çeviriyor — header bidding ile gerçek zamanlı açık artırma, direct sales ile premium brand anlaşmaları ve first-party veri katmanıyla targeting optimizasyonu. Bu üç ayak, ad tech stack'ini pasif reklam alanından aktif gelir makinesine dönüştürüyor.
+Mobil oyun yayıncıları reklam gelirini artırmak için daha fazla waterfall segment ekler, daha fazla network entegre eder, daha fazla placement açar. Bu yaklaşım 2019'da işe yarıyordu. 2026'da eCPM tavanına çarptı. Gaming yayıncılarının %73'ü eski ad mediation yapısıyla average revenue per daily active user (ARPDAU) hedefini tutturamıyor. Sorun demand değil — mimarinin kendisi. Header bidding, direct programmatic ve first-party audience data entegrasyonu olmadan ad tech stack gelir maksimizasyonu yapamaz. Premium yayıncı programı bu üç katmanı engineering discipline ile kurar.
 
-## Waterfall Monetizasyon Neden Sınıra Dayandı
+## Waterfall Modeli Neden Artık Gelir Artışı Üretmiyor
 
-Klasik waterfall'da SSP'ler sırayla çağrılır: bidder A yanıt vermezse B'ye geçilir, o da dolmazsa C. Bu model 2018'de işliyordu çünkü DSP'ler arası fiyat farkı %10-15 seviyesindeydi. 2026'da fark %60'a çıktı — özellikle Tier-1 kullanıcı segmentlerinde Amazon DSP, Google DV360 ve The Trade Desk arasında aynı impression için $8 ile $22 arası teklif farkı oluyor. Waterfall'da ilk SSP $8 teklifi kabul eder, geriye kalan $14 masada kalır.
+Waterfall mediation 2015-2019 arası industry standard'dı. Yayıncı demand source'ları eCPM tahminlerine göre sıralar, placement request zincirleme olarak aşağı iner. İlk kabul eden network impression'ı kazanır. Bu model şeffaf görünür ama iki kritik hata içerir: (1) eCPM tahmini geçmiş veri üzerinden yapılır, gerçek zamanlı bid değildir; (2) aynı impression için birden fazla demand source yarışamaz — yalnızca waterfall'da ilk sıradaki kazanır. Sonuç: yayıncı her impression'da ±%15-30 gelir kaybeder.
 
-İkinci sorun latency: waterfall zinciri 3-4 SSP ile 800ms'ye ulaşıyor. Mobile gaming'de 800ms gecikme session başına 2.1 ek exit anlamına geliyor (ironSource 2025 benchmark). Kullanıcı reklam yüklenmeyi beklerken oyun dışına çıkıyor, gelir hiç realize olmuyor.
+AppLovin MAX, ironSource, AdMob gibi SDK'lar waterfall'ı otomatize eder ama mantık değişmez. Network A'nın geçen haftaki ortalaması $4.80 eCPM gösteriyorsa placement request önce oraya gider. Gerçek zamanlı bid $5.20 olabilir ama Network B waterfall'da 3. sıradaysa impression orada test edilmez. Yayıncı her zaman ikinci en yüksek bid'i alır. Türkiye, MENA, LATAM gibi emerging market'lerde bu kayıp %40'a çıkar çünkü demand volatility yüksektir.
 
-Üçüncü yapısal kusur transparency eksikliği. Waterfall'da hangi DSP'nin hangi fiyata teklif verdiğini göremezsin — sadece "fill rate %87" gibi aggregate metrik gelir. Bu da SSP komission stack'ini görünmez kılar: bazı waterfall partner'ları %30 rev-share alırken bunu disclosure etmiyor. Publisher net gelirin %70'ini görüyor, %30'u kayboluyor.
+AdMob'un 2024 Q4 verisi gaming vertical'inde waterfall yayıncılarının median fill rate'ini %82 olarak gösterir. Kalan %18 unfilled request yayıncının CPM floor'u tutturamadığı için boş kalır. Header bidding aynı envanter için %96 fill rate üretir çünkü demand source'lar parallel bid verir, en yüksek kazanır.
 
-## Header Bidding: Gerçek Zamanlı Açık Artırma Mimarisi
+## Header Bidding: Parallel Auction Mimarisinin Gelir Etkisi
 
-Header bidding tüm SSP'leri paralel çağırır, en yüksek teklifi kazanan alır. Bu "unified auction" modeli waterfall'ın üç sorununu da çözer: tüm DSP'ler eşit şartlarda yarışır, latency 200-300ms'ye düşer, her bid şeffaf log'lanır.
+Header bidding (unified auction) mobil oyunlarda 2021'den itibaren Tier-1 yayıncılar tarafından benimsendi. Impression request aynı anda 8-12 demand source'a gider, her biri gerçek zamanlı bid döner, en yüksek kazanır. Waterfall'ın sıralama hatası ortadan kalkar. Google Ad Manager'ın open bidding sistemi, Index Exchange, Amazon Publisher Services (APS) ve Prebid Mobile bu mantığı SDK seviyesinde destekler.
 
-Teknik kurulum iki katmanlı: client-side header bidding (CSHB) ve server-side header bidding (SSHB). CSHB'de SDK düzeyinde birden fazla SSP paralel çağrılır — Prebid.js benzeri bir wrapper tüm partner'ları orkestre eder. Avantajı latency düşük kalır çünkü network hop'u yok. Dezavantajı SDK weight artar: her SSP +200KB binary demek. 5 SSP entegre edersen app size +1MB şişer, bu da ASO'da binary size ranking penalty'sine yol açar.
+Bir Türkiye merkezli hyper-casual publisher 2025 Q2'de header bidding'e geçtiğinde rewarded video eCPM'i $3.40'tan $4.65'e çıktı (%37 artış). Interstitial placement'ta artış %28 oldu. Neden? Çünkü AdColony, Unity Ads, Meta Audience Network aynı impression için paralel yarıştı. Waterfall'da AdColony her zaman ilk sırada olduğu için bid düşük kalıyordu (kazanma garantisi vardı). Header bidding'de kazanma garantisi yok — her network maksimum bid vermek zorunda.
 
-SSHB'de tüm SSP çağrısı sunucu tarafında gerçekleşir. Client sadece 1 request gönderir (kendi sunucuna), sunucu 8-10 SSP'yi çağırıp en yüksek bidi döner. SDK weight sorunu çözülür ama latency 50-80ms artar (ek server hop). Gaming publisher'lar için optimal hybrid model: yüksek-trafikli placement'larda CSHB (interstitial, rewarded), low-frequency placement'larda SSHB (banner).
+Header bidding'in latency cost'u var. Waterfall mediation 120-180ms'de request tamamlar. Header bidding parallel bid topladığı için 200-280ms sürer. 100ms latency artışı session length'i -%2 etkiler. Bu tradeoff kabul edilebilir: gelir +%30, retention -%2 = net win. Latency'yi düşürmek için timeout stratejisi kurulur: 250ms sonra gelen bid'ler ignore edilir. Bu yapılandırma olmadan header bidding gelir artışı yerine kullanıcı deneyimi kaybı üretir.
 
-```javascript
-// Hybrid header bidding config örneği (Prebid wrapper)
-const hbConfig = {
-  clientSide: {
-    bidders: ['appnexus', 'pubmatic', 'rubicon'],
-    timeout: 800, // ms — interstitial için kabul edilebilir
-    placements: ['interstitial_main', 'rewarded_daily']
-  },
-  serverSide: {
-    bidders: ['magnite', 'indexExchange', 'openx', 'sovrn'],
-    timeout: 1200,
-    placements: ['banner_top', 'native_feed']
-  },
-  priceGranularity: 'dense', // $0.01 step — precision için
-  enableAnalytics: true
-};
+### Header Bidding Teknik Gereksinimleri
+
+```yaml
+# Prebid Mobile entegrasyonu — rewarded video placement
+placement_id: "rewarded_main"
+timeout_ms: 250
+demand_sources:
+  - bidder: "appnexus"
+    params: { placement_id: "12345678" }
+  - bidder: "rubicon"
+    params: { account_id: "9876", site_id: "54321" }
+  - bidder: "ix"
+    params: { site_id: "987654" }
+price_floor: 3.20  # USD, dynamic olarak güncellenebilir
 ```
 
-Yukarıdaki config'de critical placement'lar (rewarded, interstitial) client-side kalıyor çünkü 800ms timeout ile kullanıcı experience korunuyor. Banner gibi daha az kritik yerler server-side'a alınıyor, böylece SDK bloat önleniyor.
+Price floor header bidding'de kritiktir. Çok düşük floor tüm bid'leri kabul eder, yüksek value impression'lar düşük CPM'de gider. Çok yüksek floor fill rate düşürür. Optimal floor dinamik hesaplanır: son 7 gün eCPM dağılımının 25. percentile'ı. Bu yapılandırma %95+ fill rate korurken low-value bid'leri bloke eder.
 
-### Price Floor Stratejisi
+## Direct Programmatic: Garantili Gelir + Premium Demand
 
-Header bidding'i enable etmek yetmez — dynamic price floor çalıştırmazsan bidder'lar hala düşük teklif verir. Floor fiyat minimum kabul edilebilir CPM. Floor çok düşükse ($0.50) düşük bid'ler geçer, çok yüksekse ($15) fill rate %40'a düşer. Optimal floor data-driven bulunur: son 7 günün 95th percentile bid'ini baz al, segment bazlı (geo, device tier) farklılaştır.
+Header bidding açık pazar auction'ı optimize eder. Direct programmatic deal garantili geliri kilitler. Yayıncı bir brand (örneğin oyun publisher veya telco) ile fixed CPM anlaşması yapar, bu deal ID header bidding'e priority olarak eklenir. Deal ID'nin CPM'i waterfall/header bidding ortalamasından %15-25 yüksektir çünkü brand first-party data erişimi ister, yayıncı premium placement garantisi verir.
 
-| Segment | 95th Percentile Bid | Optimal Floor | Fill Rate Impact |
+Bir stratejik RPG oyunu 2025'te Vodafone ile rewarded video için $6.80 fixed CPM deal yaptı. Vodafone 25-34 yaş, tier-1 city kullanıcılara özel kampanya yürütüyordu. Oyun bu segment için guaranteed inventory sundu. Deal ID header bidding'de priority line item olarak eklendi: Vodafone her zaman ilk sırada bid verir, eğer target segment aktifse kazanır. Segment dışındaysa header bidding devreye girer. Bu yapı yayıncının ARPDAU'sunu $0.83'ten $1.12'ye çıkardı (Q2 2025 verisi).
+
+Direct deal'in teknik implementasyonu Google Ad Manager'da deal ID olarak kurulur. Deal ID header bidding timeout'undan önce response verir, böylece latency artışı olmaz. Deal segment dışı kalırsa backfill header bidding üzerinden gerçekleşir. Bu yapı fill rate'i %98'e taşır.
+
+Direct deal negotiation yapabilmek için yayıncının first-party data segmentasyonu olmalı. Brand "25-34, iOS, tier-1 city, RPG affinity" gibi segment ister. Yayıncı bu segmenti Firebase, Adjust veya custom CDP üzerinden oluşturur ve deal'e targeting olarak ekler. Segment data yok ise direct deal CPM premium alamaz.
+
+## First-Party Data Monetization: Audience Segmentation + Retargeting Inventory
+
+Header bidding ve direct deal gelir artışı üretir ama yayıncının en yüksek value asset'ini kullanmaz: kullanıcı davranış datası. Mobil oyun kullanıcısının session frequency, retention cohort, IAP history, genre affinity gibi first-party sinyaller brand'lar için değerlidir. Bu data Google Analytics veya Firebase'de durursa yalnızca internal analytics olarak kalır. CDP (customer data platform) entegrasyonuyla bu data audience segment olarak paketlenir ve reklam envanterine targeting sinyali olarak eklenir.
+
+Örnek senaryo: casual puzzle oyunu kullanıcılarının %18'i D7 retention'da kalıyor, %12'si IAP yapıyor. Bu segment brand'lar için "high-intent mobile user" profili. Yayıncı bu segmenti CDP'de (Segment, mParticle, Tealium) oluşturur, Google Ad Manager'a audience olarak push eder. Advertiser bu segment için +%40 CPM ödemeye hazırdır çünkü conversion probability yüksektir. Yayıncı aynı impression'ı artık generic olarak değil, "high-value puzzle gamer" olarak satar.
+
+| Segment Tipi | CPM Uplift | Fill Rate Impact | Implementasyon Süresi |
 |---|---|---|---|
-| US / iPhone 15 Pro | $18.20 | $16.50 | -%3 fill, +%41 eCPM |
-| EU / Mid-tier Android | $6.80 | $6.00 | -%5 fill, +%28 eCPM |
-| LATAM / Low-tier | $1.90 | $1.60 | -%8 fill, +%19 eCPM |
+| Generic (first-party yok) | — | %82 | — |
+| Behavioral (session freq) | +%18 | %89 | 2 hafta |
+| Cohort (D7, D30 retention) | +%28 | %91 | 3 hafta |
+| IAP intent (cart abandon, trial) | +%42 | %87 | 4 hafta (CDP gerekli) |
 
-Bu tabloda görülen: floor'u agresif tutup fill rate'i biraz feda ederek net gelir artıyor. Örneğin US high-tier segment'te fill %92'den %89'a düşse bile eCPM %41 yükselince net gelir +%37 oluyor.
+First-party data monetization [Premium Yayıncı Programı](https://www.roibase.com.tr/tr/premiumyayinci) kapsamında CDP entegrasyonu, audience taxonomy ve real-time segment activation olarak kurulur. Bu kurulum yayıncının ad revenue'sunu artırır, aynı zamanda brand'lara daha hassas targeting sağlar.
 
-## Direct Sales: Premium Brand Anlaşmalarıyla Programmatic'i Bypass Etmek
+## Subscription Hybrid Model: Ad-Funded + Premium Tier
 
-Header bidding programmatic demand'i optimize eder ama tavan $20-25 CPM civarında. Premium brand'ler (Samsung, Nike, McDonald's) direct anlaşmada $40-60 CPM ödeyebilir çünkü intermediary yok, targeting quality yüksek ve brand safety kontrolü publisher'da. Direct sales için gereken unsurlar: first-party data segment'leri (demographic, behavioral), custom creative format'ları, guaranteed impression delivery SLA'sı.
+Premium yayıncı monetization yalnızca ad revenue değildir. Subscription tier eklenmesi hem reklamsız kullanıcıya hizmet verir hem de toplam geliri artırır. Hybrid model şu mantıkla çalışır: free tier ad-supported, premium tier ($4.99-9.99/ay) ad-free + exclusive content. Kullanıcı kendi tercihine göre geçiş yapar. Bu model özellikle narrative-driven oyunlar, puzzle, trivia gibi session-based oyunlarda işe yarar.
 
-İlk adım audience taxonomy: kullanıcılarını 15-20 segment'e ayır — sadece "18-24 yaş erkek" değil, "mid-core RPG oyuncusu, 30 gün retention, IAP geçmişi var, competitive gameplay tercih ediyor" gibi davranışsal katmanlar. Bu segment'ler brand'e pitch edilirken value proposition net olmalı: "Bu segment'in 30 günlük LTV'si $12, oyun içi satın alma oranı %18, session frequency 4.2/gün — premium snack brand için ideal hedef kitle."
+Bir trivia oyunu 2024'te hybrid modele geçti: free tier interstitial + rewarded video gösterir, premium tier ($5.99/ay) reklamsız + erken erişim sorular. İlk 3 ayda kullanıcıların %7.2'si premium tier'a geçti. Free tier ARPDAU $0.92, premium tier $2.40 (subscription MRR divided by DAU). Toplam blended ARPDAU $1.08 oldu — yalnızca ad-supported modelden %24 yüksek. Subscription churn rate %11/ay (industry median %15).
 
-İkinci unsur custom creative: brand'in standart banner'ı değil, oyun içi entegre edilmiş özel format. Örnek: racing game'de trackside billboard olarak gösterilecek Red Bull reklam creative'i, puzzle game'de power-up öncesi 3 saniyelik video. Bu format'ları satarken "custom placement fee" üstüne %40 premium ekleyebilirsin çünkü viewability %95+, engagement rate %12+.
+Subscription modeline geçerken ad placement frequency optimize edilmeli. Çok fazla interstitial kullanıcıyı premium'a iter ama session experience'ı bozar, retention düşer. Optimal strateji: interstitial frequency cap 1/3 level (RPG, puzzle için), rewarded video unlimited (kullanıcı opt-in). Bu yapılandırma free tier retention'ı -%3 etkiler, premium conversion'u +%28 artırır.
 
-Üçüncü kritik nokta attribution: brand'e göstermen gereken metrik sadece impression değil, exposed kullanıcı vs control grubu karşılaştırması. A/B test yap: kullanıcıların %10'unu campaign'e expose et, %10'unu kontrol tut, 14 gün sonra iki grup arasında brand recall, purchase intent, actual conversion farkını raporla. Bu metrik olmadan direct sales pitch weak kalır — brand "programmatic'ten ne farkı var" der.
+## İmplementasyon Yol Haritası: 8-12 Hafta
 
-## First-Party Veri Katmanı: Targeting Optimizasyonunun Temeli
+Premium yayıncı programı aşağıdaki fazlarla kurulur:
 
-Premium yayıncı gelirinin asıl kaldıracı first-party data. 2026'da third-party cookie yok, IDFA zorunlu consent gerektiriyor, ATT opt-in rate %32 civarında. Kalan %68'lik kullanıcı havuzu için tek targeting sinyali first-party data — oyun içi event'ler, progression log'ları, IAP transaction history.
+**Faz 1 (Hafta 1-2): Baseline audit.** Mevcut mediation stack'i analiz et: waterfall yapılandırması, placement CPM, fill rate, latency. Google Ad Manager, AppLovin MAX veya ironSource dashboard'undan son 90 gün veri çek. Hangi placement highest revenue, hangi network lowest fill? Bu data header bidding önceliklendirmesi için gerekli.
 
-Bu veriyi hem header bidding hem direct sales'te kullanabilmek için Data Management Platform (DMP) veya Customer Data Platform (CDP) entegrasyonu şart. CDP oyun event'lerini gerçek zamanlı consume eder, kullanıcı profile'larına zenginleştirir ve SSP'lere bid request'te audience segment olarak gönderir. Örnek flow:
+**Faz 2 (Hafta 3-5): Header bidding entegrasyonu.** Prebid Mobile veya Google Ad Manager Open Bidding kur. İlk 3-4 demand source entegre et (AppNexus, Index Exchange, Rubicon). Timeout 250ms yap, price floor 25. percentile eCPM. A/B test: %50 trafik header bidding, %50 eski waterfall. 2 hafta sonuç karşılaştır.
 
-```
-1. Kullanıcı level 10'a ulaşıyor (oyun event'i)
-2. CDP event'i işliyor → profile'a "mid-core_engaged" tag ekliyor
-3. Sonraki ad request'te SSP'ye `audience_segments: ['mid-core_engaged']` gönderiliyor
-4. DSP bu segment'e $8 yerine $14 bid veriyor (segment premium)
-5. Publisher'a net +%75 eCPM
-```
+**Faz 3 (Hafta 6-8): Direct deal negotiation.** Top 5 brand/agency ile direct programmatic konuş. Segment data göster (Firebase cohort, IAP funnel). Fixed CPM teklifi al, deal ID kur. Deal priority line item olarak header bidding'e ekle.
 
-CDP entegrasyonu için Roibase'in [Premium Yayıncı Programı](https://www.roibase.com.tr/tr/premiumyayinci) hem ad tech stack kurulumunu hem first-party data pipeline'ını kapsıyor — oyun analytics'inden DMP'ye data flow, SSP entegrasyonu ve real-time bidding optimizasyonu dahil.
+**Faz 4 (Hafta 9-12): First-party data activation.** CDP entegrasyonu yap (Segment, mParticle), behavioral segment oluştur, Google Ad Manager'a audience push et. İlk iki segment: high-retention (D7>%15) ve IAP-intent (cart abandon last 7 days). CPM uplift track et.
 
-### Consent Management ve GDPR Compliance
+Bu yol haritası 12 hafta içinde ad revenue'yi %30-45 artırır (industry median). Hybrid subscription model eklenirse toplam monetization uplift %50'yi geçer.
 
-First-party data kullanırken consent management kritik. GDPR/CCPA/KVKK kapsamında kullanıcıdan explicit consent almadan behavioral segment'leri SSP'ye gönderemezsin. Consent Management Platform (CMP) entegre et, oyun ilk açılışta consent prompt'u göster. Consent opt-in rate'i %60+ tutmak için prompt timing'i optimize et: oyunun tutorial sonrasında, ilk rewarded video öncesi göster — app launch anında gösterirsen opt-in %35'e düşer.
+---
 
-## Hybrid Monetization: Subscription + Ad-Supported Tier'lar
-
-Premium publisher gelir modelinde tek reklam yetmez — subscription + ad-supported hybrid tier'lar oluştur. Kullanıcıya seçenek sun: ayda $4.99 ödeyip ad-free oyna ya da ücretsiz oyna ama rewarded video + interstitial gör. 2026 mobile gaming datası gösteriyor ki %8-12 kullanıcı subscription'a geçiyor, kalan %88-92 ad-supported'da kalıyor. Net etkisi: subscription'dan gelen $4.99 × %10 user base + ad geliri %90 user base = toplam gelir %35+ artıyor.
-
-Subscription tier'ını pazarlarken bundling stratejisi kullan: sadece "reklam yok" değil, "+%20 bonus currency, exclusive skins, priority support" gibi value ekle. Bu şekilde subscription ARPU $4.99'dan $7.99'a çıkabiliyor.
-
-## Tech Stack: SSP, Ad Server, Analytics Entegrasyonu
-
-Premium publisher operasyonunun backbone'u doğru tech stack. Minimum gerekli bileşenler:
-
-| Bileşen | Araç Örnekleri | Fonksiyon |
-|---|---|---|
-| SSP (Supply-Side Platform) | Google Ad Manager, Magnite, PubMatic | Demand agregasyonu, header bidding orkestrasyon |
-| Ad Server | Google Ad Manager 360, Smart AdServer | Direct campaign serve, frequency capping, creative rotation |
-| CDP | Segment, mParticle, Treasure Data | First-party data toplama, segment oluşturma, SSP entegrasyonu |
-| CMP | OneTrust, Cookiebot, TrustArc | GDPR/CCPA consent yönetimi |
-| Analytics | Amplitude, Mixpanel + custom BI | Monetization funnel analizi, cohort LTV modelleme |
-
-Bu stack'i kurarken kritik nokta data flow seamless olmalı: oyun event'i → CDP → SSP bid request 150ms altında tamamlanmalı. 150ms üstü latency bid loss rate'ini %8+ artırıyor.
-
-Premium yayıncı programları bu tech stack'i pasif reklam yüklemekten aktif gelir mühendisliğine dönüştürüyor. Header bidding gerçek zamanlı fiyat rekabetini enable ediyor, direct sales premium brand demand'ini unlock ediyor, first-party data targeting precision'ını artırıyor. Bu üç unsurun entegrasyonu ad tech stack'ini gaming publisher'ın en büyük growth lever'ına çeviriyor — şartı doğru kurulmuş mimari, data-driven floor stratejisi ve consent-compliant first-party veri pipeline'ı.
+Premium yayıncı programı ad tech stack'i mühendislik disiplinli bir gelir makinesine dönüştürür. Header bidding parallel auction yapar, direct deal garantili premium demand kilitler, first-party data CPM uplift üretir. Waterfall mediation 2019'da işe yarıyordu — 2026'da gelir tavanına çarptı. Mobil oyun yayıncıları impression bazında kazanmak istiyorsa mimariyi değiştirmek zorunda. Bu değişiklik A/B test değil,stack migration'dır.
