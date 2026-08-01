@@ -1,135 +1,85 @@
 ---
 title: "Creative Operations: Bidding Algoritmasına Beslenecek Variation Stratejisi"
-description: "Performance Max ve Advantage+ kampanyalarında kreatif test mimarisi: algoritma için signal üretmek, variation sistemi kurmak, winneri ölçeklendirmek."
-publishedAt: 2026-05-16
-modifiedAt: 2026-05-16
+description: "Performance Max ve Advantage+ kampanyalarında kreatif test mimarisi: AI'ya doğru sinyali vermek için structured variation yaklaşımı."
+publishedAt: 2026-08-01
+modifiedAt: 2026-08-01
 category: marketing
-i18nKey: marketing-005-2026-05
-tags: [creative-operations, performance-max, advantage-plus, bidding-algorithm, creative-testing]
+i18nKey: marketing-005-2026-08
+tags: [creative-operations, performance-max, meta-advantage-plus, creative-testing, bidding-optimization]
 readingTime: 8
 author: Roibase
 ---
 
-Google Performance Max ve Meta Advantage+ kampanyalarında kreatif artık sadece mesaj değil — algoritmanın öğrenme malzemesi. Makine bidding'in gücü, beslendiği varyasyon setinin zenginliğiyle doğru orantılı. Ama çoğu ekip hâlâ kreatifi tasarım departmanına havale edip "güzel görseller" bekliyor. Sonuç: kampanya 2 hafta boyunla sinyale aç kalıyor, algoritma dar bir alanda lokal optimuma sıkışıyor, CPA yükseliyor. Creative operations — kreatif üretimini, test mimarisini ve signal besleme sürecini mühendislik disipliniyle kurmak — bu döngüyü kırmak için kritik.
+Google Performance Max ve Meta Advantage+ kampanyalarının bidding algoritmaları, kreatif varyasyonları öğrenme materyali olarak kullanır. Ancak çoğu marka "algoritmaya 50 kreatif ver, en iyisini seçsin" mantığıyla hareket eder — sonuç: dağınık sinyal, belirsiz kazanan, yavaş öğrenme. 2026'da AI-driven kampanyalar için asıl sorun budget değil, algoritmanın kullanabileceği **structured signal architecture**.
 
-## Kreatif artık iterasyon sorunu, tasarım sorunu değil
+Bu yazı, kreatif varyasyon stratejisini bidding algoritmasının öğrenme mekanizmasına göre kurgulamanın teknik çerçevesini açıyor. Amacımız creative brainstorming değil — creative operations.
 
-Performance Max ve Advantage+ gibi otomatik kampanya formatlarında kreatif, bid ayarı kadar günlük bir operasyon haline geldi. Kampanyaya 3 görsel + 5 headline verip "öğrenme fazı 14 gün" diye beklemek, algoritmanın makul bir karar verebildiği minimum veri havuzunu bile oluşturmuyor. Google'ın kendi rehberinde Performance Max'te en az 4 asset grubu, her birinde 5-15 görsel + 5 başlık kombinasyonu tavsiye ediliyor — bunun sebebi algoritmanın exploration/exploitation dengesini kurmak için yeterli çeşitlilik istemesi.
+## Bidding Algoritması Kreatifi Nasıl Kullanıyor
 
-Ama sorun sadece sayı değil — kreatifler arasında anlamlı farklılıklar olmazsa algoritma yine dar alanda döner. Aynı ürünün 5 açıdan çekilmiş fotoğrafı, makine için aynı signal cluster'ında. Bunun yerine farklı value proposition (fiyat vs. teslimat vs. sosyal kanıt), farklı format (statik vs. carousel vs. video), farklı kitle proxy (lifestyle vs. product-focus) üzerinden varyasyon inşa etmek gerekiyor. Kreatif üretimi tasarımcının Adobe dosyasından çıkıp, growth ekibinin template × değişken matrisine dönüşmeli.
+Performance Max ve Advantage+ kampanyalarında bidding algoritması her impression'da şu hesabı yapar: "Bu kullanıcıya bu kreatifte gösterirsem dönüşüm olasılığı nedir?" Tahmin modeli, **kreatif ID'sini feature olarak** öğrenir. Ancak kreatif çok benzerse (aynı görsel, farklı headline), algoritmaya ayrı feature olarak değil noise olarak gelir. Çok farklıysa (tamamen farklı konsept), öğrenme segmente bölünür ve her varyasyon az impression alır.
 
-Roibase'in [dijital pazarlama](https://www.roibase.com.tr/tr/dijitalpazarlama) pratiğinde kreatif operasyonunu şöyle kuruyoruz: haftalık kreatif sprint, her sprint 8-12 yeni variation, her variation bir hipotezi test ediyor (angle değişikliği, hook testi, CTA iterasyonu). Tasarımcı süreci yavaşlatmıyor — Figma'da component library + değişken setleri + bulk export ile operasyon hızlanıyor. Bir kampanyaya 2 haftada 20+ unique kreatif beslenebiliyor, algoritmanın 2. haftada zaten kazanan cluster'ı bulması için yeterli variation oluşuyor.
+Sorun basit: **kreatif varyasyon stratejisi, algoritmanın öğrenme kapasitesiyle uyumlu değil**.
 
-## Signal üretimi için test mimarisi: cohort + holdout
+Meta'nın Advantage+ Shopping kampanyalarında creative fatigue metriği ("frequency vs. conversion rate decay") bunu açıkça gösterir. Bir kreatif 3-5 gün içinde CTR'sini %40-60 kaybedebilir, ancak algoritma yeni varyasyonu test etmek için yeterli impression toplamadan rotasyona geçerse, bidding modeli "hangisi daha iyi" sorusunu yanıtlayamaz. Sonuç: sürekli exploration, düşük exploitation, yüksek CPA.
 
-Kreatif variation üretmek yetmiyor, bunları algoritmanın öğrenebileceği şekilde organize etmek gerekiyor. Performance Max'te her asset grubu ayrı bir test hücresi gibi çalışıyor — ama sadece rastgele variation dağıtırsanız hangisinin kazandığını bilemezsiniz, çünkü asset grubu düzeyinde performans Google'ın siyah kutusunda kalıyor. Bunun yerine cohort bazlı test mimarisi kuruyoruz: her dönemde (örneğin 2 hafta) yeni bir asset grubu yaratıyoruz, içine o dönemin variation setini besliyoruz, eski kazananlar "control" grubunda kalıyor. 2 hafta sonra yeni grubun performansını (ROAS, CVR, CPA) control ile kıyaslayıp kazanan variation'ları genişletiyoruz.
+Google'ın Performance Max asset group yapısı da aynı sorunu yaşıyor. Bir asset group'a 15 görsel, 5 video, 10 headline verirseniz, algoritma kombinasyon sayısını artırır ama her kombinasyonun yeterli impression alması haftalar alır. Google'ın kendi dokümanında "asset group başına 3-5 farklı mesaj konsepti" önerisi bu yüzden — daha fazlası öğrenme hızını düşürür.
 
-Bu yapı Bayesian testing mantığıyla birleşiyor: Her asset grubu bağımsız bir dağılım oluşturuyor, posterior güncellemesi anlık olarak hesaplanabiliyor (Google Ads API ile dönüşüm + maliyet datasını çekip kendi hesaplamanı yapıyorsun). 7 gün içinde %95 confidence'a ulaşan variation varsa onu hemen ana budget asset grubuna taşıyorsun. Ulaşmıyorsa 14 gün sonuna kadar bekleyip o kohortu kapatıyorsun. Bu şekilde statik "kampanya setup" yerine sürekli signal pipeline oluşuyor.
+## Structured Variation: Dimension Bazlı Test Mimarisi
 
-Meta Advantage+ tarafında durum biraz farklı — asset düzeyinde performans Meta'nın "Ads Reporting" arayüzünde görünüyor, ama breakdown bazında. Burada holdout cell kullanmak daha kritik: Yeni kreatif setini test etmek için ayrı bir kampanya (yeni kreatifler) vs. kontrol kampanya (eski kazananlar) şeklinde ayırıyorsun, budget split 20/80 gibi. 1 hafta boyunca ikisinin de aynı audience targeting'e eriştiğinden emin oluyorsun (CBO açık, placement otomatik, lookalike geniş bırakılmış). 7. günde test kampanyasının CPA'sı kontrol kampanyasına göre %15+ düşükse yeni seti kazanan ilan edip kontrol kampanyasını da yeni kreatife geçiriyorsun.
+Kreatif varyasyonu rastgele çoğaltmak yerine, **hangi boyutun (dimension) algoritma için ayrı sinyal olduğunu** belirlemek gerekir. Roibase'in [Performans Pazarlaması (PPC)](https://www.roibase.com.tr/tr/ppc) çalışmalarında uyguladığımız yaklaşım şu:
 
-```python
-# Basit Bayesian winner hesabı (Google Ads API'den dönüşüm + maliyet çekince)
-import numpy as np
-from scipy import stats
+| Dimension | Algoritma İçin Sinyal Değeri | Test Hızı |
+|---|---|---|
+| Görsel konsept (farklı ürün, scene) | Yüksek — ayrı feature | Orta (3-7 gün) |
+| Headline mesajı (pain point vs. benefit) | Yüksek — semantic farklılık | Hızlı (1-3 gün) |
+| CTA button rengi | Düşük — minor UI detay | Çok hızlı (<1 gün) |
+| Video uzunluğu (6s vs. 15s) | Orta — format farklılığı | Orta (3-5 gün) |
+| Marka logosu varlığı | Düşük — brand recall için önemli ama bidding'e az etki | Yavaş (7+ gün) |
 
-def bayesian_winner(conversions_a, cost_a, conversions_b, cost_b, prior_alpha=1, prior_beta=1):
-    # Beta dağılımı ile conversion rate posterior
-    posterior_a = stats.beta(prior_alpha + conversions_a, prior_beta + (cost_a/10 - conversions_a))
-    posterior_b = stats.beta(prior_alpha + conversions_b, prior_beta + (cost_b/10 - conversions_b))
-    
-    # Monte Carlo ile P(B > A)
-    samples = 10000
-    prob_b_wins = np.mean(posterior_b.rvs(samples) > posterior_a.rvs(samples))
-    
-    return prob_b_wins
+Bu tablo şunu söylüyor: **eğer boyut algoritmanın conversion prediction'ını değiştirmiyorsa, o boyutu varyasyon olarak test etmek bidding performansına katkı vermez**. CTA button rengini 5 versiyonda test etmek yerine, 2 farklı headline mesajı test etmek algoritmanın öğrenmesini hızlandırır.
 
-# Örnek: Asset Group A: 120 dönüşüm, $2400 maliyet vs. B: 95 dönüşüm, $1800 maliyet
-prob = bayesian_winner(120, 2400, 95, 1800)
-print(f"B'nin kazanma olasılığı: {prob:.2%}")
-# Eğer > 0.95 ise B kazanan, budget'ı B'ye kaydır
+### İki Aşamalı Test Protokolü
+
+1. **Initial launch (Week 1-2):** Asset group başına maksimum 3 görsel konsept × 2 headline yaklaşımı = 6 kombinasyon. Budget split eşit değil — algoritma kendi dağıtır.
+2. **Iteration (Week 3+):** Kazanan konsepti al, onun üzerinde format varyasyonu (video uzunluğu, aspect ratio) test et.
+
+Bu yaklaşım, algoritmanın exploration-exploitation tradeoff'unu optimize eder. İlk 2 haftada "hangi mesaj çalışıyor" sorusunu yanıtlar, sonraki dönemde "o mesajı hangi formatta vermeli" sorusuna geçer.
+
+## Meta Advantage+ için Creative Fatigue Rotation
+
+Meta'nın algoritması, bir kreatifin CTR düşüşünü tespit edince yeni varyasyona geçmek yerine **eski varyasyonu farklı audience segment'ine göstermeyi** dener. Bu durumda kreatif henüz tükenmemiştir — sadece ilk gösterildiği segment'te tükenmiştir. Ancak algoritma yeni varyasyon yoksa bu rotation'ı yapamaz.
+
+Bunu engellemek için **rolling creative refresh** stratejisi kullanıyoruz:
+
+```
+Hafta 1: Creative A, B aktif
+Hafta 2: Creative B, C aktif (A pause)
+Hafta 3: Creative C, D aktif (B pause)
+Hafta 4: Creative D, A aktif (C pause, A yeniden canlanır)
 ```
 
-## Format çeşitliliği: statik, carousel, video, collection
+Bu döngüde her kreatif 1 hafta aktif, 2 hafta pause kalır. Pause sırasında algoritma o kreatifi "unutmaz" ama tekrar aktif olduğunda audience freshness yüksektir. Meta'nın kendi testinde bu yaklaşım, sürekli yeni kreatif eklemekten %18 daha iyi CPA verdi (Meta Blueprint, Q2 2026 case study).
 
-Algoritmaların en çok signal aldığı nokta format değişikliği. Aynı mesajı hem statik görselde hem video'da hem carousel'de test etmek, makineye farklı kullanıcı davranış pattern'lerini öğrenme şansı veriyor. Örneğin Performance Max'te video asset'ler genelde discovery ve YouTube placement'larda servis ediliyor, statik görseller display'de — ama sen hangisinin daha iyi ROAS getirdiğini bilmiyorsun, algoritma biliyor. Ona seçenek vermezsen default placement mix'ini kullanıyor, optimal dağılımı bulamıyor.
+## Google Performance Max için Asset Group Segmentasyonu
 
-Pratik olarak kreatif pipeline'ı şöyle kurabiliriz:
+Performance Max'te tek asset group'a tüm varyasyonları yığmak yerine, **user intent bazlı segmentasyon** yapıyoruz:
 
-| Format | Üretim süresi | Test süresi | Kazanma oranı (Roibase datasından ortalama) |
-|---|---|---|---|
-| Statik (5 variation) | 2 gün | 7 gün | %40 (en az 1 kazanan çıkıyor) |
-| Carousel (3 set, her biri 3 kart) | 3 gün | 10 gün | %25 (statikten daha az winner ama kazanınca lift büyük) |
-| Video (15 sn, 3 variation) | 5 gün | 14 gün | %50 (kazanınca cost düşüşü %20+) |
-| Collection (1 hero + 4 product) | 2 gün | 7 gün | %30 (e-commerce için güçlü) |
+- **Asset Group 1 (High-Intent):** Branded search, retargeting audience. Kreatif: fiyat, stok, hızlı teslimat vurgulu.
+- **Asset Group 2 (Cold Audience):** Discovery, YouTube placement. Kreatif: problem-solution storytelling, uzun video.
+- **Asset Group 3 (Consideration):** Search genişletme, Gmail. Kreatif: karşılaştırma, özellik detayı.
 
-Video üretimi 5 gün gibi görünüyor ama bu profesyonel çekim değil — stock footage + product shot + text overlay ile template bazlı üretim. CapCut, Canva gibi araçlar zaten AI ile auto-assembly yapıyor. Önemli olan video'nun "sinematik" olması değil, ilk 3 saniyede hook vermesi ve CTA'nın net olması. Meta'nın kendi Creative Guidance raporu 3 saniye watch rate'e bakıyor — %50'nin altındaysa video işe yaramıyor demek.
+Her grup kendi içinde 3-4 varyasyon taşır. Algoritma asset group'lar arasında budget optimize eder ama **grup içindeki varyasyonları aynı intent segment'inde test eder** — bu da öğrenme hızını artırır.
 
-Carousel formatında dikkat edilecek nokta: her kartın bağımsız bir mesaj taşıması. "Kart 1: ürün, Kart 2: fiyat, Kart 3: teslimat" gibi sıralı anlatım Meta algoritması için sinyal üretmiyor, çünkü kullanıcı %80 ihtimalle ilk karttan sonra kaymıyor. Bunun yerine her kart farklı bir value prop veya farklı bir SKU göstermeli — böylece algoritma "bu kullanıcı kart 2'ye tıkladı, demek ki X özelliğine ilgisi var" çıkarımı yapabiliyor.
+Google'ın Insights sayfası, asset group bazında "best performing asset combination" gösterir. Ancak bu metrik yanıltıcı olabilir — eğer bir asset group düşük impression alıyorsa, "en iyi kombinasyon" yeterli test görmemiştir. Bizim kuralımız: bir kombinasyon en az 1000 impression + 30 conversion görmeden "kazanan" ilan edilmez.
 
-## Incrementality ölçümü: kazanan kreatif mi, yoksa audience shift mi?
+## Incrementality Test ile Creative Strategy Validasyonu
 
-Kreatif test sonuçlarını yorumlarken en büyük tuzak: yeni kreatif setini launch edince ROAS yükseldi, "kazandık" dedin — ama aslında algoritma sadece daha kolay convert olan bir audience segmentine shift etti, toplam dönüşüm hacmi düştü. Buna pseudo-winner diyoruz. Bunu engellemek için incrementality check yapman gerekiyor: yeni kreatif setini test ederken toplam dönüşüm sayısının (sadece ROAS'ın değil) düşmediğinden emin ol. Eğer ROAS %20 yükseldi ama dönüşüm %15 düştüyse, algoritma sadece dar bir segmente odaklanmış demektir — bu uzun vadede scale problemi yaratır.
+Kreatif varyasyon stratejisinin işe yaradığını anlamak için **conversion artışı değil, incremental lift** bakıyoruz. Holdout-based geo test veya conversion lift study (Meta, Google) ile şunu ölçüyoruz: "yeni kreatif stratejisi olmasa da bu dönüşümler olur muydu?"
 
-İki metod:
+Örnek senaryo: Bir e-ticaret markası için creative ops değişikliği sonrası ROAS %25 arttı. Ancak geo test gösterdi ki incrementality sadece %8 — geri kalan %17 artış, organik büyüme veya sezonsal taleple açıklanıyor. Bu durumda kreatif stratejisi "çalıştı" ama katkısı sanıldığından düşük.
 
-1. **Holdout geo test:** ABD'de eyalet bazlı split yap (örneğin California + Texas'ta yeni kreatif, Florida + New York'ta eski kreatif). 2 hafta sonra toplam dönüşüm artışına bak. Eğer yeni kreatifli geo'larda %10+ daha fazla dönüşüm varsa, bu gerçek lift.
+Incrementality testi kreatif stratejisi için şart — çünkü bidding algoritması **correlation öğrenir, causation değil**. Eğer yeni kreatif ile beraber fiyat indirimi de yaptıysanız, algoritma kreatifte kazandığını söyler ama asıl etken fiyat olabilir.
 
-2. **Budget pacing check:** Yeni kreatif setini test kampanyasına 20% budget verdin, kontrol kampanyasına 80% kaldı. Eğer test kampanyası hızlıca budget'ı tüketip "limited by budget" statusüne geçtiyse ve ROAS hâlâ yüksekse, bu gerçek kazanan. Ama budget yavaş tükeniyorsa ve ROAS yüksekse, algoritma dar segmentte dolaşıyor demek.
+## Şimdi Ne Yapmalı
 
-Roibase'in [performans pazarlaması](https://www.roibase.com.tr/tr/ppc) projelerinde geo-based incrementality testi mecbur yapıyoruz — özellikle $50K+ aylık budget'larda. Bunun için basit bir Python script Google Ads API + BigQuery ile dönüşüm datasını geo dimension'ında split edip t-test yapıyor. %95 confidence ile lift varsa kreatif winner, yoksa iteration devam ediyor.
-
-## Automation: Figma API + bulk upload pipeline
-
-Manuel kreatif upload süreci ölçeklemiyor. 20 variation × 3 format = 60 asset, her birini Google Ads'e tek tek yüklemek 2 saat alıyor. Bunun yerine automation pipeline kur:
-
-1. **Figma → Export:** Figma'da component library'deki tüm variation'ları auto-export eden plugin (Figma REST API ile). Her variation bir JSON dosyası + PNG/MP4 export.
-2. **Metadata injection:** JSON'da her variation'a tag ver (angle, format, audience proxy). Bu tag'ler sonra asset group assignment'ta kullanılacak.
-3. **Google Ads / Meta bulk upload:** Google Ads API'nin `AssetService` endpoint'i ile batch upload yap. Meta tarafında Campaign Creation API kullan, her kreatif için `ad_creative` objesi oluştur.
-4. **Auto asset group assignment:** Yeni variation'ları en düşük impression alan asset grubuna otomatik ata (böylece test hızlanır).
-
-Bu pipeline'ı kurunca kreatif upload süresi 2 saatten 15 dakikaya düşüyor. Hatta cron job ile her Pazartesi sabahı otomatik olarak geçen haftanın kazanan kreatiflerini ana asset grubuna taşıyabiliyorsun.
-
-```javascript
-// Figma REST API ile component export (Node.js örneği)
-const axios = require('axios');
-const fs = require('fs');
-
-const FIGMA_TOKEN = process.env.FIGMA_TOKEN;
-const FILE_KEY = 'your-figma-file-key';
-
-async function exportVariations() {
-  const response = await axios.get(`https://api.figma.com/v1/files/${FILE_KEY}`, {
-    headers: { 'X-Figma-Token': FIGMA_TOKEN }
-  });
-  
-  const components = response.data.document.children
-    .filter(node => node.type === 'COMPONENT')
-    .map(node => ({ id: node.id, name: node.name }));
-
-  for (const comp of components) {
-    const imageUrl = await axios.get(`https://api.figma.com/v1/images/${FILE_KEY}?ids=${comp.id}&format=png`, {
-      headers: { 'X-Figma-Token': FIGMA_TOKEN }
-    });
-    
-    // Download ve Google Cloud Storage'a yükle
-    const image = await axios.get(imageUrl.data.images[comp.id], { responseType: 'arraybuffer' });
-    fs.writeFileSync(`./exports/${comp.name}.png`, image.data);
-  }
-}
-
-exportVariations();
-```
-
-## Kazananı ölçeklendirme: creative refresh cycle
-
-Bir kreatif kazandığında onu sonsuza dek kullanmak yanlış — creative fatigue gerçek. Meta'da ortalama 14 gün sonra aynı kreatifin frequency'si 3.5+'ya çıkıyor, CTR %30+ düşüyor. Google Performance Max'te fatigue daha yavaş oluyor (placement çeşitliliği sayesinde) ama 30 gün sonra yine etkisi azalıyor. Bunun için creative refresh cycle kur:
-
-- **0-14 gün:** Yeni variation test et, kazananı bul.
-- **14-30 gün:** Kazananı %70 budget'a çıkar, kontrolü %30'da tut.
-- **30-45 gün:** Kazanan kreatifin micro-iteration'larını test et (aynı angle, farklı görseller).
-- **45+ gün:** Kazanan kreatifi retire et, yeni döngü başlat.
-
-Bu cycle sayesinde kampanya hiçbir zaman tek bir kreatife bağımlı kalmıyor, sürekli signal flow var. Bazı sektörlerde (özellikle fashion, gaming) cycle daha hızlı — 7 günde refresh gerekebiliyor. Bunu anlık CTR düşüşü ile tespit edebilirsin: eğer bir kreatifte son 3 günün CTR'si ilk 3 güne göre %20+ düşükse fatigue başlamış demek.
-
-Kreatif operasyonunu disiplinli bir sistem haline getirmek, algoritma-driven kampanyaların temel yakıtını sağlamak demek. Variation üretimini haftalık sprint'e çevirmek, test mimarisini cohort bazlı kurmak, incrementality'yi ölçmek ve otomasyonla hızlandırmak — bu dört ayak algoritmanın öğrenmesi için gerekli malzemeyi kesintisiz besliyor. Sonuç: makine bidding 2. haftadan itibaren optimal dağılımı buluyor, CPA düşüyor, scale mümkün oluyor.
+Creative operations, "güzel görsel üret" işi değil — bidding algoritmasına doğru sinyali besleyecek test mimarisini kurmak. Performance Max veya Advantage+ kullanıyorsanız, kreatif sayısını değil **kreatif dimension'larının algoritma öğrenmesine katkısını** optimize edin. İlk 2 haftada konsept testini bitirin, sonra format iterasyonuna geçin. Incrementality test olmadan "bu kreatif kazandı" demeyin — çünkü algoritma korelasyonu lift olarak gösterebilir.
