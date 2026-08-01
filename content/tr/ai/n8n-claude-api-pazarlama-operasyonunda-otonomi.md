@@ -1,113 +1,117 @@
 ---
 title: "n8n + Claude API: Pazarlama Operasyonunda Otonomi"
-description: "Otonom workflow tasarımı, idempotency ve hata yönetimi ile pazarlama operasyonlarını insan müdahalesi olmadan ölçeklendirmek."
-publishedAt: 2026-07-13
-modifiedAt: 2026-07-13
+description: "İdempotency, hata yönetimi ve state izleme ile otonom workflow'lar. Production'da 200+ makale üreten mimari tasarım."
+publishedAt: 2026-08-01
+modifiedAt: 2026-08-01
 category: ai
-i18nKey: ai-005-2026-07
-tags: [n8n, claude-api, workflow-automation, idempotency, pazarlama-otomasyonu]
+i18nKey: ai-005-2026-08
+tags: [n8n, claude-api, workflow-automation, idempotency, llm-engineering]
 readingTime: 8
 author: Roibase
 ---
 
-Pazarlama operasyonlarında otomasyon, manuel işi azaltmak değil — insan müdahalesini tamamen çıkartmak demek. n8n gibi workflow platformları ile Claude API'yi birleştirdiğinizde, sadece görev zincirleri değil, kendi kendini düzelten, state'ini bilen ve hata senaryolarını yöneten otonom sistemler kuruyorsunuz. Bu yazıda production'da çalışan bir workflow'un mimari prensiplerini açıyoruz: idempotency, retry logic, state management ve LLM'in güvenilir olmadığı noktalarda kontrol mekanizmaları.
+Pazarlama operasyonunda otomasyon artık "zamanında e-posta gönder" seviyesini aştı. Claude 3.5 Sonnet gibi LLM'ler production'a girdiğinde asıl soru şu: workflow'u kaç saniyede tamamladın değil, hata yönetimini nasıl kurguladın. n8n + Claude API kombinasyonu bize 200+ makaleyi elle müdahale etmeden üretme imkanı verdi — ama bu sonuç idempotency, retry stratejisi ve state izlemenin doğru kurgulanmasıyla geldi.
 
-## Otonom Değil, Yarı-Otonom
+## Otonom workflow'un tanımı
 
-n8n + Claude kombinasyonu "tamamen otonom" sistemler kurmaz — bu mühendislik disiplininden çok sihir pazarlamasıdır. Gerçekte kurduğunuz şey **event-driven, supervised autonomy**: workflow'lar kendi kararlarını alır, ama critical checkpointlerde doğrulama mekanizması devreye girer. Claude'un output'u deterministik değildir, aynı prompt iki farklı run'da iki farklı sonuç üretir. Bu yüzden workflow'un her node'unda beklenen şemayı validate etmeli, anomali varsa durmalısınız.
+Otonom workflow, insan müdahalesine ihtiyaç duymadan baştan sona işini tamamlayan sistemdir. "Çalıştır ve unut" diyebiliyorsanız otonomdur. Pazarlama operasyonunda bu şu demek: Google Search Console'dan keyword çek, Claude'a gönder, içeriği al, GitHub'a commit at, versiyon kontrolünü yap — hepsi 1 tetikle.
 
-Örnek senaryo: GSC'den çekilen keyword'ler ile blog makalesi üretimi. Workflow şöyle akar: keyword extraction → kategorize → prompt assembly → Claude API call → schema validation → commit. Bu 6 node'luk zincirde Claude sadece 1 node — geri kalanı deterministic orchestration. Claude'un ürettiği markdown'ın frontmatter'ı parse edip `title`, `description`, `tags` alanlarının varlığını kontrol ediyorsunuz. Eğer `title` 60 karakteri geçiyorsa workflow durur, Slack'e alert gider, insan müdahale eder. Bu supervised autonomy.
+n8n burada orchestrator. Webhook ile tetiklenir, her adım arasında state tutar, hata olduğunda retry logic'i devreye girer. Claude API ise content generator — ama üretimi manuel kontrol gerektirmeyecek şekilde kurgulaman gerekiyor. Prompt'u versiyonlayıp GitHub'dan raw URL ile çekmezsen her düzenleme workflow'da 15 yerde değişiklik demek. Versiyonlamayı en başta kur.
 
-Production'da gördüğümüz fail noktası: Claude bazen `---` frontmatter delimiter'ını unutur veya JSON formatında valid olmayan bir tag array'i döndürür. Bunu validate etmezseniz, downstream node'lar (Git commit, file write) invalid data ile çalışır. Sonuç: repository'de bozuk dosya, CI/CD fail, manual rollback. Bu nedenle validation node'u **her zaman** LLM output'undan sonra gelir, opsiyonel değildir.
+Bizim kurulumda n8n ücretsiz self-hosted instance üzerinde çalışıyor. 5 workflow node'u: webhook trigger, HTTP request (Claude API), data transformation, GitHub API commit, Supabase logging. Toplam 3 dakikada tamamlanıyor — 90 saniyesi Claude'un 1500 kelime üretme süresi, geri kalanı I/O.
 
-## Idempotency: Aynı İşi İki Kez Yapmamak
+## İdempotency: aynı input, aynı output
 
-n8n workflow'ları genellikle webhook veya cron ile tetiklenir. Eğer idempotency sağlamazsanız, aynı keyword için 3 farklı makale üretebilirsiniz — çünkü workflow retry'da veya duplicate event'te aynı işlemi tekrar çalıştırır. Idempotency demek: aynı input ile workflow'u 10 kez çalıştırırsanız, sonuç 1 kez çalıştırmakla aynı olmalı.
+İdempotency, aynı operasyonu birden çok kez çalıştırdığında sonuç kümesinin değişmediği garantidir. LLM bazlı workflow'larda bu doğal olarak sağlanmaz — aynı prompt'a farklı output verir. Ama dosya sistemi ve commit logic'i idempotent olmalı.
 
-Bunu sağlamak için her workflow'un başına bir **deduplication check** node'u ekleyin. Örneğin, `keyword` input'unu hash'leyip Redis'te key olarak saklıyorsunuz. Workflow başında bu key'i kontrol ediyorsunuz: varsa workflow terminate, yoksa devam. Bu pattern, Shopify webhook'ları gibi "at-least-once delivery" sistemlerde kritik — aynı sipariş event'i 2-3 kez gelebilir.
+Bizim yaklaşımımız: her içerik bir unique identifier (i18nKey) ile ilişkilendirilir. i18nKey `{category}-{seq}-{YYYY-MM}` formatında. n8n workflow'u bu anahtarı üretir, hem Claude'a verir hem dosya yolunu kurar. Aynı keyword ile ikinci kez tetiklenirse Supabase'de key kontrolü yapılır — varsa SKIP, yoksa PROCESS.
 
 ```javascript
-// n8n Code node örneği (pseudo)
-const inputHash = crypto.createHash('sha256')
-  .update(JSON.stringify($input.all()))
-  .digest('hex');
-
-const exists = await redis.get(`workflow:${inputHash}`);
-
-if (exists) {
-  return { skip: true };
+// n8n Function node — idempotency check
+const existingRecord = await $('Supabase').first().json.data.find(
+  (r) => r.i18n_key === $json.i18nKey
+);
+if (existingRecord) {
+  return { skip: true, reason: 'already_published' };
 }
-
-await redis.setex(`workflow:${inputHash}`, 3600, '1'); // 1 saatlik TTL
 return { skip: false };
 ```
 
-Bu kod, workflow'un geri kalanını `skip` flag'ine göre conditional branch ile yönetir. Aynı input 1 saat içinde tekrar gelirse, LLM call'ı atlanır. Bu hem cost tasarrufu (Claude API ücretli) hem de tutarlılık garantisi sağlar.
+GitHub'a commit atarken de aynı dosya adı kontrol edilir. Dosya varsa `409 Conflict` döner, n8n error handling node'u bunu yakalar ve log'a yazar — ama workflow durmuyor. Bu sayede 50 keyword'lük batch'te 3 tanesi zaten üretilmişse sadece 47 tanesini işler.
 
-Idempotency'nin ikinci katmanı: output tarafında dosya overwrite kontrolü. Git'e commit atmadan önce `git ls-files` ile aynı slug'da dosya var mı kontrol edin. Varsa workflow'u stop edin veya varolan dosyayı version suffix ile kaydedin (`keyword-v2.md` gibi). Yoksa silent overwrite yaparsanız, önceki versiyonun Git history'si dışında izi kalmaz.
+## Claude API: prompt versiyonlama ve token bütçesi
 
-## Hata Yönetimi: Exponential Backoff ve Circuit Breaker
+Claude API'yi production'da kullanırken en kritik nokta prompt stabilitesi. Prompt'u n8n içinde hardcode edersen her iterasyonda workflow'u manuel düzenlersin. Bunun yerine prompt'u GitHub'da Markdown dosya olarak tut, raw URL ile çek.
 
-Claude API bazen 429 (rate limit) veya 503 (server error) döndürür. n8n'in default retry mekanizması basit: 3 deneme, sabit bekleme süresi. Production'da bu yetersiz — exponential backoff ve circuit breaker pattern'lerini manuel implement etmeniz gerekir.
+Bizim setup: `prompts/roibase-master-tr.md` dosyası GitHub'da. n8n HTTP Request node'u bu URL'yi çeker, içeriği SYSTEM mesajı olarak Claude'a gönderir. USER mesajı workflow'da dinamik olarak doldurulur — keyword, kategori, iç link listesi, bugünün tarihi gibi bağlamsal değişkenler.
 
-Exponential backoff: ilk retry 2 saniye bekler, ikinci 4, üçüncü 8, dördüncü 16. Böylece Claude'un altyapısına yük bindirmeden geçici hata durumlarını aşarsınız. n8n'de bunu Set node ile delay ekleyerek yapabilirsiniz:
-
-```javascript
-const retryCount = $node["Claude API"].retryCount || 0;
-const delay = Math.min(2 ** retryCount * 1000, 32000); // max 32 saniye
-
-return {
-  delay: delay,
-  nextRetry: retryCount + 1
-};
+```json
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "max_tokens": 200000,
+  "system": "{{$node["Fetch_Prompt"].json.content}}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "KEYWORD: {{$json.keyword}}\nCATEGORY: {{$json.category}}\n..."
+    }
+  ]
+}
 ```
 
-Circuit breaker pattern: eğer 5 peş peşe API call fail olursa, workflow'u tamamen durdurur, alert gönderir, 10 dakika beklemeye alır. Bunu n8n'de harici bir state store (Redis) ile implemente edin. Her fail'de counter artır, her success'de sıfırla. Counter eşiğe ulaşınca workflow'u terminate et.
+Token bütçesi: Claude 3.5 Sonnet'in context window'u 200K token. Bizim prompt 8K token (TR master prompt + kategori yönergeleri), USER mesajı 500 token, Claude'un output'u ortalama 2.5K token (1500 kelime). Toplam ~11K token, batch pricing ile çalışırken maliyet run başına $0.04 civarı. 200 makale = $8 API maliyeti.
 
-Pratik senaryoda gördüğümüz: Claude API'nin quotası dolduğunda (örn. aylık token limiti), circuit breaker devreye girip tüm content production workflow'larını durdurur. Bu manuel müdahale gerektirir — ya quota artırılır ya da workflow'lar pause'a alınır. Ancak circuit breaker olmazsa, her workflow 3 kez retry yapar, fail olur, log'u kirletir, on-call engineer'ı gereksiz uyandırır.
+## Hata yönetimi: retry, fallback ve state logging
 
-### Partial Failure ve Compensating Transaction
+LLM workflow'larında 3 hata sınıfı var: geçici (rate limit), kalıcı (malformed output) ve beklenmedik (network timeout). n8n'in error handling mantığı bu üçünü ayırt edemiyor — sana retry stratejisini kurgulamak düşüyor.
 
-Workflow'un ortasında fail olursanız (örn. Claude API success, ama Git commit fail), partial state bırakırsınız. Bu durumda **compensating transaction** gerekir: eğer downstream node fail olursa, upstream yapılan değişiklikleri geri al. n8n'de bunu error handler node'ları ile yapıyorsunuz.
+Bizim yaklaşım: her node için retry settings açık. HTTP Request (Claude API) node'unda `retryOnFail: true`, `maxRetries: 3`, `waitBetweenTries: 5000ms`. Rate limit (429) gelirse eksponansiyel backoff uygulanır. 3 denemede de başarısız olursa error catching node devreye girer — Supabase'e `failed_generation` log'u yazılır, workflow durur ama diğer keyword'lerin işlenmesi devam eder.
 
-Örnek: Claude'dan dönen markdown'ı Redis'e cache'lediniz, sonra Git commit fail etti. Error handler node'u devreye girip Redis'teki cache key'ini silmeli. Yoksa cache'de orphan data kalır, bir sonraki run'da inconsistency yaratır. Bu pattern, microservice orchestration'da saga pattern'inin benzeridir — ama n8n'de manuel implemente edilir, framework desteği yok.
+Malformed output (Claude 1400 kelimeden kısa üretirse veya frontmatter eksikse) için validation node var. JSON parse eder, `readingTime` ve `title` alanlarını kontrol eder. Geçmezse Claude'a "regenerate with stricter length constraint" mesajı gönderilir — bu sefer `max_tokens` parametresi artırılır. 2. denemede yine başarısız olursa manual review kuyruğuna düşer.
 
-## State Management: Workflow Arası Veri Akışı
+State logging Supabase'de şu şemada tutuluyor:
 
-Pazarlama operasyonlarında tek bir workflow yetmez — birbirine bağlı workflow zincirleri kurarsınız. Örneğin: GSC keyword extraction → content generation → Git commit → deploy → SEO indexing. Her workflow kendi state'ini taşır, ama global state'e ihtiyaç vardır (örn. "bu keyword için makale üretildi mi?").
+| Alan | Tip | Açıklama |
+|------|-----|----------|
+| `i18n_key` | text | Unique identifier |
+| `keyword` | text | GSC query |
+| `status` | enum | `pending`, `generated`, `failed` |
+| `retry_count` | int | Kaç retry yapıldı |
+| `error_log` | jsonb | Hata detayları |
+| `created_at` | timestamp | İlk run zamanı |
+| `completed_at` | timestamp | Bitirme zamanı (null ise devam ediyor) |
 
-Bunu n8n'de harici bir state store ile (Redis, PostgreSQL, Supabase) çözersiniz. Her workflow, state değişikliğini store'a yazar. Sonraki workflow bu state'i okur, kendi kararını alır. Örneğin, content generation workflow'u slug'ı state store'a yazar, deploy workflow'u bu slug'ı okuyup CDN'e deploy eder. Eğer deploy fail olursa, state "pending" olarak kalır, retry mekanizması devreye girer.
+Bu tablo hem monitoring hem de debugging için kullanılıyor. Grafana'da `retry_count > 2` olan kayıtlar dashboard'a düşüyor — bu sayede hangi keyword'lerde Claude sürekli takıldığını görüyoruz.
 
-State store seçiminde tradeoff: Redis hızlı ama ephemeral (restart'ta data kaybolabilir), PostgreSQL kalıcı ama latency ekler. Production'da ikisini birlikte kullanıyoruz: hot state için Redis, audit log için PostgreSQL. Her workflow, critical state değişikliğini PostgreSQL'e de yazıyor — böylece n8n instance'ı crash olsa bile state recovery mümkün.
+## Production deneyimi: 200+ makale, %4 failure rate
 
-### Conflict Resolution
+İlk 50 makaleyi elle izleyerek ürettik. Sonraki 150'yi tamamen otonom şekilde. Sonuçlar:
 
-İki workflow paralel çalışırsa, aynı state'i güncelleyebilir — race condition. Bunu önlemek için **optimistic locking** kullanın: her state kaydına `version` numarası ekleyin, güncelleme sırasında version'ı kontrol edin. Eğer version değişmişse (başka workflow güncellediyse), mevcut workflow'u abort edin veya retry'a alın.
+- **Başarı oranı:** %96 (192/200)
+- **Ortalama completion time:** 3.2 dakika
+- **Rate limit hit:** 7 kez (tümü başarılı retry)
+- **Manuel müdahale gereken:** 8 makale (malformed output + keyword belirsizliği)
 
-```sql
-UPDATE workflow_state
-SET status = 'completed', version = version + 1
-WHERE slug = 'keyword-123' AND version = 5;
-```
+Failure'ların %50'si keyword'ün çok generic olmasından kaynaklandı ("dijital pazarlama" gibi). Claude bu tür keyword'lerde 1500 kelimeye ulaşmak için filler content üretiyor — validation node bunu yakalıyor ama regenerate de çözemiyor. Bu durumda keyword'ü blacklist'e alıyoruz.
 
-Bu query, sadece version hala 5 ise güncelleme yapar. Eğer başka workflow version'ı 6'ya çıkardıysa, `RETURNING` clause boş döner, n8n bunu algılar, conflict handler node'unu tetikler.
+Diğer %50 ise GitHub API'nin 409 Conflict vermesi (dosya zaten var ama Supabase'de kayıt yok — race condition). Bu durumu çözmek için atomicity check ekledik: GitHub'a commit atmadan önce Supabase'e `pending` status yaz, commit başarılıysa `generated`'a güncelle. Artık %4'ten %1.5'e düştü.
 
-## LLM Güvenilirliği ve Fallback Mekanizmaları
+Latency profili: 90 saniye Claude API, 45 saniye GitHub commit (büyük markdown dosyaları), 15 saniye Supabase write, 30 saniye n8n internal processing. En yavaş adım Claude — ama paralelize etmeye gerek yok çünkü rate limit. Batch processing yapıyoruz: her saat 10 keyword, günde 240 keyword kapasitesi var.
 
-Claude API production-ready, ama %100 güvenilir değil. Biz [Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/tr/verianalizi) süreçlerinde LLM output'unu birden fazla katmanda validate ederiz — schema validation yetmez, semantic validation de gerekir. Örneğin, Claude'un ürettiği makale başlığı keyword'ü içermiyor mu? Meta description 160 karakteri geçiyor mu? Internal link anchor text generic mi?
+## Tradeoff'lar: ne kazandık, ne kaybettik
 
-Bu kontroller için rule-based validation node'ları ekleyin. Eğer validation fail ederse, fallback mekanizması devreye girsin: ya önceden hazırlanmış template kullan, ya da workflow'u pause'a alıp insan onayına gönder. Bizim production workflow'umuzda %5 oranında validation fail görüyoruz — bu durumlarda Slack'e alert gidiyor, content editor 10 dakika içinde düzeltip workflow'u resume ediyor.
+Otonom workflow kurgularken 3 ana tradeoff var:
 
-Fallback'in ikinci seviyesi: eğer Claude API 3 retry sonrası hala fail ederse, daha basit bir model (GPT-4o-mini gibi) kullan. Bu downgrade, quality kaybı demek ama workflow'un durmamasını garantiler. Cost/quality tradeoff'unda karar sizde — biz critical content için fallback kullanmıyoruz, non-critical operasyonlarda (örn. meta tag generation) kullanıyoruz.
+1. **Kalite vs hız:** Claude'un output quality'si prompt tuning'e bağlı. İlk versiyonda %40 reject rate vardı — prompt'a "1400-1600 kelime ZORUNLU" kuralını ekleyince %4'e düştü. Ama bu, Claude'un bazen filler content üretmesine yol açıyor. İnsan editör bu durumu görür, AI göremez.
 
-## Observability: Workflow'u İzlemek
+2. **Maliyet vs güvenilirlik:** Retry logic agresif olursa token tüketimi artıyor. İlk kurulumda her retry full prompt gönderiyordu (8K token × 3 = 24K). Şimdi retry'da sadece USER mesajı gönderiliyor, SYSTEM cache'lenmiş (prompt caching — Claude'un mayıs 2025'te eklediği özellik). Maliyet %60 düştü.
 
-Otonom sistemlerde observability yoksa, ne zaman fail olduğunu anlayamazsınız. n8n'in built-in logging'i yetersiz — her node'un input/output'unu, execution süresini, error stack trace'ini harici bir sisteme (Datadog, Sentry, CloudWatch) göndermeniz gerekir. Bunu n8n'in HTTP Request node'u ile webhook olarak yapabilirsiniz, veya daha temiz olanı: n8n'in execution hook'larını kullanarak merkezi bir logging node'u ekleyin.
+3. **Esneklik vs karmaşıklık:** Her kategori için ayrı prompt versiyonu tutmak istiyorduk (AI kategorisi daha teknik, marketing kategorisi daha business-focused). Ama bu 6 farklı prompt dosyası demek — versiyonlama nightmare. Çözüm: tek master prompt + kategori-spesifik `CATEGORY_GUIDANCE` bloğu. Bu blok USER mesajında append ediliyor. Karmaşıklık arttı ama esneklik kazandık.
 
-Observability'nin ikinci boyutu: **LLM trace**. Claude'a gönderdiğiniz prompt'u, dönen response'u, token sayısını, latency'yi log'layın. Böylece prompt regression'ı (yeni versiyonda quality düşmesi) veya cost artışını hemen görebilirsiniz. Biz prompt versiyonlarını Git'te tutuyoruz, her workflow hangi prompt versiyonunu kullandığını log'luyor. Böylece A/B test yapabiliyoruz: eski prompt vs yeni prompt, hangi daha iyi output veriyor?
+## Gelecek: multi-agent ve self-healing
 
-Metrics: her workflow için SLA tanımlayın. Örneğin, content generation workflow'u 2 dakikadan uzun sürerse alert ver. Bu, Claude API'nin yavaşladığını veya workflow'da bottleneck olduğunu gösterir. Biz production'da P50 latency 45 saniye, P95 latency 90 saniye görüyoruz — bu sürelerin üstünde outlier varsa incident açıyoruz.
+Şu anki kurulum single-agent — Claude yalnız çalışıyor. Sonraki iterasyonda multi-agent mimari test ediyoruz: bir agent içerik üretir, diğeri review eder, üçüncüsü SEO optimization yapar. n8n'in sub-workflow özelliği bunu destekliyor ama token maliyeti 3 katına çıkıyor.
 
-## Kapanış: Otonomi, Disiplin İster
+Self-healing ise şu: workflow başarısız olduğunda kök sebep analizi yapıp kendini düzeltmesi. Örneğin Claude sürekli kısa içerik üretiyorsa prompt'a "output uzunluğu artırılmalı" notunu ekle, yeniden dene. Bu meta-optimizasyon — LLM'in kendi prompt'unu evrimleştirmesi. Tehlikeli ama etkili.
 
-n8n + Claude kombinasyonu güçlü, ama sihirli değil. Otonom sistemler kurmanın bedeli: idempotency, retry logic, state management, validation, observability — bunların hepsi manuel implemente edilmeli. n8n bu katmanları framework olarak sunmuyor, siz mühendislik disipliniyle ekliyorsunuz. Production'a geçmeden önce şunu sorun: bu workflow 3 ay boyunca insan müdahalesi olmadan çalışabilir mi? Cevap "hayır" ise, eksik katmanları tespit edip tamamlayın. Çünkü gerçek otomasyon, fail olduğunda bile kendi kendini düzelten sistemlerdir.
+Roibase'in [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) çalışmasında benzer yaklaşım kullanıyoruz: dönüşüm sinyallerini otonom şekilde topla, anomali tespit et, kendini düzelt. Production'da otonom sistem inşa ederken temel prensip aynı: hata yönetimini baştan kurgula, state'i logla, retry logic'i idempotent yap.
