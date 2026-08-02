@@ -40,7 +40,7 @@ Chi-square test sonucu p-value < 0.05 çıkmazsa, uplift %15 olsa bile istatisti
 
 Creative test sırasında değiştirebileceğin element'ler: icon, screenshot sırası, screenshot içeriği, app preview video, promo text (Play Store'da). Her element'in IPM üzerindeki etkisi farklı. Icon değişikliği %30-50 uplift getirebilir ama risk yüksek — yeni icon brand recognition'ı zedeler, mevcut kullanıcı tabanı uygulamayı bulamaz. Screenshot sırası değişikliği düşük riskli, orta etkili (%5-15 uplift). Screenshot içeriği yüksek etkili (%20-40 uplift) ama tasarım maliyeti yüksek.
 
-Oyun türüne göre etkili screenshot temaları: RPG'de character progression + loot showcase, strategy'de resource management + base building, casual puzzle'da level difficulty curve. F2P oyunlarında "gameplay + meta progression" kombinasyonu çoğunlukla kazanır — kullanıcı hem ne oynayacağını hem ne kazanacağını görüyor. Hardcore PvP oyunlarında competitive element'i öne çıkarmak (leaderboard, tournament, rank badge) conversion'ı artırır.
+Oyun türüne göre etkili screenshot temaları: RPG'de character progression + loot showcase, strategy'de resource management + base building, casual puzzle'da level difficulty curve. F2P oyunlarında "gameplay + meta progression" kombinasyonu çoğunlukta kazanır — kullanıcı hem ne oynayacağını hem ne kazanacağını görüyor. Hardcore PvP oyunlarında competitive element'i öne çıkarmak (leaderboard, tournament, rank badge) conversion'ı artırır.
 
 ## Attribution ve Post-Install Cohort Analizi
 
@@ -60,7 +60,7 @@ Varyant 2 IPM'de kazanıyor ama D7 retention düşük — bu kullanıcılar bekl
 
 ## Roibase ASO Metodolojisi ve PPO Döngüsü
 
-Roibase'in [App Store Optimization](https://www.roibase.com.tr/tr/aso) hizmeti, creative testing'i attribution model'iyle entegre ederek PPO (Product Page Optimization) döngüsünü kurar. 6 haftalık sprint'lerde keyword research + creative test + post-install cohort analizi döngüsünü işletiyoruz. Mobile F2P oyunlarında bu döngü Tier-1 market'lerde (US, UK, JP) ve emerging market'lerde (TR, BR, IN) farklı parametrelerle çalışır — örneğin TR'de icon'da Türkçe text kullanımı IPM'yi %18 artırabiliyor, ABD'de sıfır etki.
+Roibase'in [App Store Optimization](https://www.roibase.com.tr/fr/aso) hizmeti, creative testing'i attribution model'iyle entegre ederek PPO (Product Page Optimization) döngüsünü kurar. 6 haftalık sprint'lerde keyword research + creative test + post-install cohort analizi döngüsünü işletiyoruz. Mobile F2P oyunlarında bu döngü Tier-1 market'lerde (US, UK, JP) ve emerging market'lerde (TR, BR, IN) farklı parametrelerle çalışır — örneğin TR'de icon'da Türkçe text kullanımı IPM'yi %18 artırabiliyor, ABD'de sıfır etki.
 
 PPO döngüsü şu adımlardan oluşur: (1) GSC + App Store Connect'ten keyword intent analizi, (2) intent'e göre creative hipotezi kurma, (3) CPP/Play Experiments ile A/B split test, (4) istatistiksel anlamlılık kontrolü, (5) kazanan varyantı baseline yapıp bir sonraki element'i test etme. Bu döngü continuous optimization mantığıyla çalışır — test hiçbir zaman bitmez, her zaman bir sonraki %5-10 uplift fırsatı vardır.
 
