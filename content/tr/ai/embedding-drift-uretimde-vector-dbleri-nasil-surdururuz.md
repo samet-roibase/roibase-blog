@@ -1,75 +1,78 @@
 ---
 title: "Embedding Drift: Üretimde Vector DB'leri Nasıl Sürdürürüz"
-description: "Re-indexing maliyetleri, model migration stratejileri ve semantic search performansını korumak için production'da izlenmesi gereken metrikler."
-publishedAt: 2026-07-16
-modifiedAt: 2026-07-16
+description: "Production'da embedding model değişince vektör indeksler çöker. Re-indexing, hybrid search ve cost tradeoff stratejileri — mühendislik gerçeği."
+publishedAt: 2026-08-03
+modifiedAt: 2026-08-03
 category: ai
-i18nKey: ai-006-2026-07
-tags: [vector-database, embedding-drift, mlops, semantic-search, re-indexing]
+i18nKey: ai-006-2026-08
+tags: [embedding-drift, vector-database, mlops, retrieval-augmented-generation, ai-infrastructure]
 readingTime: 8
 author: Roibase
 ---
 
-Semantic search production'a geçtiğinde asıl zorluk başlar. Embedding modeli güncellenir, veri hacmi büyür, query pattern'leri kayar — vector DB'nizdeki 10 milyon satır çok hızlı eskir. Hergün yeniden index alamazsınız, ama üç ay sonra recall %15 düşer. Embedding drift — model versiyonu ile DB arasındaki alignment kaybı — pazarlama arama sistemlerinde kullanıcının yanlış içeriğe yönelmesi, RAG pipeline'da yanlış context çekilmesi, AI agent'ların kör noktalar oluşturması demek. Bu yazıda drift'i nasıl izlediğimizi, re-indexing'i nasıl planladığımızı, hangi migration pattern'leri işe yaradığını somut metriklerle gösteriyoruz.
+Embedding model'inizi değiştirdiğinizde — daha yeni bir versiyon, farklı bir vendor, fine-tune edilmiş bir alternatif — mevcut vektör indeksiniz çöpe gider. Drift başlar. Cosine similarity skorları anlamını yitirdiği için retrieval kalitesi düşer, kullanıcı sorguları yanlış dokümanlara eşlenir, RAG pipeline'ınız hallüsinasyon üretir. Production'da embedding drift'i yönetmek, model performansı ile operasyonel maliyet arasındaki tradeoff'u kabul etmektir. Bu yazıda re-indexing stratejilerini, hybrid search yaklaşımlarını ve cost-benefit hesaplamalarını production perspektifinden değerlendiriyoruz.
 
-## Embedding Drift'i Üretimde Görmezden Gelmek
+## Drift'in Kökeni: Embedding Uzayları Karşılaştırılamaz
 
-Embedding drift iki durumda ortaya çıkar: model değişikliği ve veri distribution shift. İlk durumda OpenAI `text-embedding-3-small`'dan `text-embedding-3-large`'a geçersiniz, boyut 1536'dan 3072'ye çıkar — query embedding'leri yeni modelden gelir, DB'deki vektörler eski modelden. Cosine similarity hesabı mantıksal olarak çalışır ama semantic space farklı, recall bozulur. İkinci durumda model sabit ama corpus değişir: 6 ay önce e-ticaret ürün katalog'unu index'lediniz, şimdi blog içeriği ve PDF'ler eklendi. Query embedding modeli aynı olsa da yeni dokümanların embedding distribution'ı eski corpus'tan farklı — outlier'lar kNN search'te rank kaymalarına yol açar.
+Embedding drift, farklı modellerin aynı içeriği farklı vektör uzaylarına haritalamalarından kaynaklanır. `text-embedding-ada-002` ile encode ettiğiniz 1536-boyutlu bir vektör, `text-embedding-3-large` ile encode edilmiş 3072-boyutlu (veya dimension reduction ile 1536'ya sıkıştırılmış) bir vektörle **karşılaştırılamaz**. Cosine similarity hesaplamak matematiksel olarak mümkün, ama sonuç semantik anlam taşımaz. Model değiştirdiğinizde eski embeddingler üretim dışı kalır.
 
-Drift'in etkisi recall metriğiyle ölçülür. Production'da `top-k` retrieval yapıyorsunuz, drift başladığında ground truth ile overlap %85'ten %70'e düşer. Kullanıcı "kampanya stratejisi" arıyor, alakalı makale DB'de var ama 15. sırada çıkıyor — k=10 yapılandırmasıyla görünmez. Bu durum RAG pipeline'larda LLM'in hallucination oranını artırır çünkü context eksik gelir.
+Bu sorun yalnızca vendor değişiminde değil, aynı vendor'ın yeni model versiyonunda da ortaya çıkar. OpenAI'nin `ada-002`'den `3-small`'a geçişinde dimension sayısı değişmese bile, vektör uzayı eğitim verisi ve mimarisi yüzünden farklıdır. Pinecone, Weaviate veya Qdrant üzerindeki indeksinizde 10 milyon belge varsa ve sorgu embeddingleri yeni modelden geliyorsa, retrieval accuracy %60-70 seviyelerine düşebilir (2024 RAG benchmarkları). Production'da bu, customer support chatbot'unuzun yanlış makale önermesi veya e-ticaret ürün arama sisteminin alakasız sonuç göstermesi anlamına gelir.
 
-Drift izlemek için offline test set tutmak gerekiyor. Production'a geçmeden önce 500 query-document pair'i (relevance label'lı) saklayın, her hafta bu set üzerinde recall@10, MRR (mean reciprocal rank), nDCG metriklerini hesaplayın. Metrik %10 düşerse re-indexing tetikleyicisi haline getirin. Burada dikkat edilmesi gereken nokta test set'in güncel corpus'u yansıtması — eğer yeni doküman türleri eklendiyse test set'i de genişletmek gerekir.
+Embedding drift'i tespit etmek için evaluation pipeline'ınızda retrieval recall ve precision metriklerini sürekli izlemelisiniz. Örneğin her gün 1000 sorgu için top-10 retrieved dokümanın insan etiketli relevance skoru ile karşılaştırılması gerekir. Ortalama recall %85'in altına düştüğünde, model değişimini veya indeks bozulmasını şüphelenmek için kritik eşik budur (LangChain monitoring best practice).
 
-## Re-indexing Stratejileri: Full vs Incremental vs Hybrid
+## Re-Indexing: Full vs Incremental Stratejileri
 
-Re-indexing'in üç deseni var: full reindex, incremental update, hybrid blue-green. Full reindex tüm corpus'u baştan embedding'leyip yeni DB index'i yaratır. Maliyet yüksek ama garantili alignment. 10 milyon doküman × 0.13$/1M token (OpenAI `text-embedding-3-large` fiyat) = ~25$ direct cost, işlem süresi 6-8 saat (paralelize ederseniz). Buna Pinecone/Weaviate/Qdrant index build maliyeti eklenir — Pinecone p1 pod'da 1M vektör 0.096$/saat, build sırasında geçici pod skalası gerekir.
+Embedding model değiştiğinde tek kesin çözüm full re-indexing'dir. Tüm doküman korpusu yeni modelle yeniden encode edilir ve vector database'e yazılır. 10 milyon belge için bu işlem zaman ve parayla orantılıdır: OpenAI `text-embedding-3-large` fiyatı token başına $0.00013 (2025 fiyat listesi) — ortalama 500 token/doküman varsayarsak 10M doküman = 5 milyar token = $650 embedding cost. Voyager indeks rebuilding (HNSW algoritması) Pinecone'da p2.x8 pod'unda ~6 saat sürer (Pinecone benchmark).
 
-Incremental update sadece yeni/değişen dokümanları re-embed eder. Modeli değiştirmediyseniz ve corpus büyümesi varsa mantıklı. Ama model değişirse işe yaramaz çünkü eski embedding'lerle yeni embedding'ler semantic space'de uyumsuz. Hybrid pattern'de blue-green deployment kullanırsınız: yeni index paralel kurarsınız, traffic'i kademeli kaydırırsınız, eski index'i 2 hafta backup tutar sonra silersiniz. Downtime olmaması için en güvenli yöntem bu — ama çift kapasite maliyeti gerektirir (örn: Pinecone'da 2 pod 2 hafta = +15$ geçici maliyet).
+Full re-indexing downtime yaratıyorsa **blue-green deployment** yaklaşımı uygulayabilirsiniz: yeni embedding model'le paralel bir indeks oluşturur, production traffic'i eski indekse yönlendirirken yeni indeks arka planda build olur. İndeks hazır olduğunda DNS/load balancer switch ile trafik yeni indekse geçer. Bu strateji 2x storage cost getirir (geçiş süresince iki indeks yaşar), ama zero-downtime gereksinimi olan SaaS uygulamalarında tek yoldur.
 
-| Strateji | Maliyet | Downtime | Model değişikliğinde | Veri shift'inde |
-|----------|---------|----------|----------------------|-----------------|
-| Full reindex | Yüksek | Var (4-8 saat) | Gerekli | Gerekli |
-| Incremental | Düşük | Yok | Çalışmaz | Yeterli |
-| Blue-green | Orta | Yok | Uygun | Uygun |
+Incremental re-indexing, dokümanları öncelik sırasına göre yeniden encode etmektir. Hangi dokümanlar daha sık sorgulanıyor? Analytics'ten çektiğiniz "top 10% most-queried documents" listesini önce yeniden indexleyip geri kalanını zamanla güncelleme yaparsınız. Bu hibrit bir geçiş periyodu yaratır: bazı embeddingler yeni model, bazıları eski. Retrieval sırasında similarity skorlarının anlamı karışık olduğu için **metadata filtering** eklemek zorunludur — örneğin `embedding_model_version` field'ı ile sorguyu sınırlandırırsınız. Bu yaklaşım cost'u spread eder ama retrieval quality inconsistent olur.
 
-Bizim deneyimimizde quarterly full reindex + weekly incremental çalışıyor: her çeyrekte model değişikliği veya büyük corpus güncellemesi bekliyorsak full reindex, ara dönemde yeni dokümanlar incremental ekleniyor. Hybrid deployment'ı critical pipeline'lar için tercih ediyoruz (örn: GEO için AI citation retrieval sistemi — [Generative Engine Optimization](https://www.roibase.com.tr/tr/geo) mimarisinde search downtime müşteri referanslarının kaybolması demek).
+## Hybrid Search: BM25 + Vector Fusion
 
-## Model Migration: Version Lock ve Backward Compatibility
+Embedding drift riskini azaltmanın başka yolu, retrieval pipeline'ını tamamen vektör arama üzerine kurmamaktır. Hybrid search, keyword-based (BM25, Elasticsearch) ve vector-based arama sonuçlarını birleştirir. Weaviate'in `hybrid` query mode'u alpha parametresiyle iki sonuç setini fusion eder: `alpha=0.5` dengeli karışım, `alpha=0.8` vektöre daha fazla ağırlık (Weaviate 1.24 doc).
 
-Embedding model değişikliği planlamak deployment kadar kritik. OpenAI yeni model yayınladığında (`text-embedding-3-large` → hypothetical `text-embedding-4` gibi) hemen geçiş yapmak yerine 2 hafta A/B test yapın. Test ortamında eski model embedding'leriyle yeni model query'leri karşılaştırın — recall düşüyorsa migration masraflı demektir. Eğer yeni model dimension artırıyorsa (1536 → 3072), vector DB storage maliyeti ikiye katlanır.
+Bu yaklaşım embedding model değiştiğinde dayanıklılık sağlar. BM25 token-level exact match'e dayandığı için model-agnostic'tir. Model değişse bile keyword retrieval anchor görevi görür ve drift'in etkisini sınırlar. Ancak hybrid search latency ekler: her query için hem inverted index hem HNSW traversal gerekir. Pinecone'da p95 latency 45ms'den 80ms'ye çıkabilir (2025 benchmark).
 
-Version lock için model ID + date tuple saklayın. Her embedding'in metadata'sında `{"model": "text-embedding-3-large", "version": "2025-01-15"}` gibi alan tutun. Query zamanında hangi model kullanıldığını loglayın. Migration sırasında DB'de eski/yeni model mix'i olabilir — bu durumda query router gerekir: query embedding'in model versiyonuna göre ilgili index partition'a yönlendirir.
+Hybrid search'ün başka avantajı **domain-specific terminology**'de performansıdır. Embedding modelleri genel corpus üzerinde eğitildiği için niş jargonu (örneğin medikal terim veya hukuk terminolojisi) iyi encode edemez. Bu durumlarda BM25 component exact match sağlayarak retrieval quality'yi yükseltir. E-ticaret'te ürün kodu (SKU) aramaları için vector search yetersizdir; keyword bileşeni zorunludur.
 
-Backward compatibility için fallback mekanizması kurun. Yeni modelle re-index bittikten sonra 1 hafta eski index'i tutun, traffic split yapın (%80 yeni, %20 eski). Yeni index'te recall düşerse hızla geri dönebilirsiniz. Bu pattern blue-green deployment'ın genişletilmiş hali — Kubernetes'te iki ReplicaSet çalıştırıp Istio ile traffic weight ayarlayarak yapılır.
+## Model Migration Cost-Benefit Hesabı
 
-### Model Freeze ve Checkpoint Yönetimi
+Yeni embedding model'e geçmek her zaman daha iyi retrieval garantilemez. Cost-benefit analizini şu metriklerle yapmalısınız:
 
-Production'da model versiyonu freeze edin — API provider'ın "latest" endpoint'ini kullanmayın. OpenAI `/v1/embeddings` endpoint'i model parametresini zorunlu kılar, bunu config'de sabit tutun. Model değişikliği için dedicated migration pipeline çalıştırın, canlıya geçişi manuel onaylayın. Otomatik güncelleme CI/CD'de embedding drift'i tetikler.
+| Metrik | Eski Model | Yeni Model | Delta |
+|--------|-----------|-----------|-------|
+| Recall@10 | %82 | %88 | +6pp |
+| Latency (p95) | 35ms | 50ms | +43% |
+| Embedding cost ($/M token) | $0.10 | $0.13 | +30% |
+| Re-indexing cost (10M doc) | - | $650 | - |
+| Storage (dimension) | 1536 | 3072 | 2x |
 
-Checkpoint yönetimi için quarterly snapshot alın. Her reindex sonrası DB'nin full dump'ını S3/GCS'ye yazın (Parquet formatında — Pinecone export API kullanılabilir). Snapshot'larda model version metadata'sı saklayın. Disaster recovery'de veya A/B test'te eski checkpoint'i restore edebilirsiniz. 10M vektör × 1536 dim × 4 byte (float32) = ~60GB — sıkıştırılmış halde 20GB, quarterly 4 checkpoint = 80GB storage maliyeti minimal.
+Bu örnekte recall +6pp iyileşme sağlıyor, ama latency %43 artıyor ve storage double oluyor. E-ticaret arama sisteminde latency kritikse bu tradeoff kabul edilemez. Chatbot için retrieval accuracy öncelikli ise kabul edilebilir.
 
-## Cost Tradeoff: Re-indexing vs Drift Toleransı
+Re-indexing'i amortize etmek için geçiş planını şöyle yapılandırabilirsiniz: ilk 3 ay eski model ile devam, yeni model paralel test ortamında eval edilir. Recall delta %10'un üzerindeyse re-indexing approve edilir. Bu yaklaşım [Veri Analizi & İçgörü Mühendisliği](https://www.roibase.com.tr/tr/verianalizi) sürecine benzer: önce data-driven karar, sonra infrastructure investment.
 
-Re-indexing her zaman optimal değil. Eğer semantic search'ünüz düşük precision toleransına sahipse (örn: blog içeriği öneri sistemi) hafif drift kabul edilebilir. Ama yüksek güvenilirlik gerektiren use case'lerde (legal doküman retrieval, AI agent knowledge base) drift %5 bile kritik. Tradeoff'u iş metriğiyle ölçün: drift yüzünden kullanıcı yanlış içerik bulursa (churn riski, support ticket artışı) vs re-indexing maliyeti (direct token cost + engineering time).
+Başka bir cost optimization: **dimension reduction**. `text-embedding-3-large` 3072 dimension üretir, ama OpenAI API'sinde `dimensions=1536` parametresiyle yarıya indirilebilir. Matryoshka embedding yaklaşımı (2024 research) performans kaybını %2-3 ile sınırlar. Bu storage ve indexing süresini yarıya indirir.
 
-Örnek hesap: 5M doküman corpus, monthly 10% büyüme. Full reindex quarterly yapılırsa yıllık 4 kez, her seferinde 12.5$ embedding + 10$ index build = 90$. Incremental monthly update ise 500K doküman × 0.13$/1M = 0.65$ × 12 = 7.8$. Fark 82$ — ama drift yüzünden recall %15 düşerse RAG pipeline hallucination oranı %8'den %20'ye çıkabilir. Eğer bu kullanıcı şikayeti artışı demekse (örn: 100 support ticket × 5$ manual handling = 500$), 90$ yıllık re-indexing maliyeti justify olur.
+## Versiyonlama ve Rollback Stratejisi
 
-Drift toleransı için baseline metric belirleyin: `recall@10 >= 0.85`, `MRR >= 0.7`. Bu eşiklerin altına düşünce otomatik re-indexing tetikleyici kurabilirsiniz. MLOps pipeline'ında Airflow DAG ile haftalık metric hesaplama yapın, threshold aşımında Slack alert + otomatik ticket oluşturun. Böylece reactive değil proactive re-indexing yaparsınız.
+Production'da embedding model değişimi geri alınamaz değildir. Blue-green deployment sırasında eski indeksi 30 gün tutmak, rollback opsiyonu sağlar. Yeni model beklenmedik retrieval hataları üretiyorsa (örneğin belirli bir query pattern'inde hallüsinasyon artışı) traffic hızlıca eski indekse dönebilir.
 
-## Üretimde İzleme: Metric Pipeline ve Alarm Eşikleri
+Embedding versiyonlamasını metadata olarak saklamak debug ve monitoring için kritik. Pinecone'da her vektöre `{"embedding_model": "text-embedding-3-large", "indexed_at": "2026-08-01"}` metadata eklerseniz, retrieval sorunlarını model versiyonuna göre filtreleyip analiz edebilirsiniz. Bu approach MLOps best practice'e uygun: her artifact versiyonlanmalı ve traceable olmalı.
 
-Embedding drift'i gerçek zamanlı yakalayamassanız, recall düşüşü production'da 2-3 hafta geçtikten sonra fark edilir. Bu yüzden metric pipeline kritik. Bizim kurduğumuz yapı şöyle: her query log'unda retrieved document ID'leri + user feedback (click, bookmark, bounce) saklanır. Offline'da bu log'lar ground truth pair'e dönüştürülür (clicked doc = relevant). Haftalık batch job bu dataset üzerinde `recall@k`, `nDCG@k`, `MRR` hesaplar, time-series grafik çizer (Grafana + Prometheus).
+Rollback planı yoksa model migration riski artar. Production'da **canary deployment** kullanılmalı: yeni model ile %10 traffic test edilir, 48 saat boyunca error rate ve latency izlenir. Metrikler baseline'ı geçerse trafik kademeli olarak %100'e çıkar. Bu yaklaşım SRE prensiplerinden gelir: incremental rollout, observe, mitigate.
 
-Alarm eşikleri:
-- `recall@10 < 0.80` → warning (1 hafta içinde investigate)
-- `recall@10 < 0.75` → critical (re-index plan başlat)
-- `nDCG@10` 2 hafta üst üste düşüyorsa → model drift suspect
-- Query latency p99 > 200ms → index fragmentation veya shard imbalance
+## Drift İzleme ve Otomasyon
 
-Latency drift de önemli: vector DB'de doküman sayısı artınca kNN search yavaşlar. Pinecone'da pod count artırarak scale edersiniz ama maliyet artar. Eğer query latency drift görüyorsanız (p99 100ms'den 250ms'e çıktıysa) re-indexing ile index optimize edilir — HNSW graph'ı yeniden build edince fragmentation düşer.
+Embedding drift'i manuel tespit etmek sürdürülebilir değildir. Otomatik monitoring pipeline'ı şu bileşenleri içermeli:
 
-[First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) kapsamında user interaction data'yı Snowflake'e pipe ediyorsak, embedding metric'leri de aynı warehouse'a yazmak mantıklı. Böylece cross-analysis yapabilirsiniz: conversion rate düşüşü ile embedding recall düşüşü korelasyonunu görebilirsiniz. Örneğin recall %10 düşünce checkout rate %3 düştüyse, retrieval quality'nin revenue impact'i kanıtlanmış olur — re-indexing ROI'si net çıkar.
+1. **Evaluation dataset:** 500-1000 sorgu + altın standart (insan etiketli) relevant doküman çiftleri
+2. **Daily batch eval:** Her gün production embedding model ile bu dataset üzerinde retrieval yapılır, recall/precision hesaplanır
+3. **Alerting:** Recall %85'in altına düşerse Slack/PagerDuty alert
+4. **Drift quantification:** Yeni model ile eski model embedding'lerinin cosine similarity dağılımı (eğer anlamlıysa) — ortalama similarity <0.7 ise uzaylar çok farklı
 
----
+Otomasyon için [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) yaklaşımı gerekir: evaluation sonuçları BigQuery'ye yazılır, Looker Studio dashboard'unda izlenir, anomaly detection (z-score >3) alert tetikler. Bu feedback loop olmadan model migration blind flight olur.
 
-Embedding drift'i görmezden gelmek 3 ay sonra semantic search sisteminizin sessizce bozulması demek. Re-indexing'i reactive değil proactive yapmak — quarterly checkpoint, weekly metric monitoring, model freeze — production'da güvenilir retrieval'ın temelidir. Maliyet tradeoff'u basit: drift toleransınızı iş metriğiyle ölçün, threshold'ları sıkı tutun, otomatik alarm kurun. Vector DB'niz büyüdükçe bu süreçler engineering disiplinine dönüşür — tahmin yerine metric, manuel müdahale yerine otomation.
+Embedding drift yönetimi reactive değil proactive olmalı. Yeni model release'lerini takip edin (OpenAI changelog, vendor roadmap), önce staging ortamında test edin, production'a geçmeden 2 hafta eval sonuçlarını toplayın. Acele geçiş, downtime ve kullanıcı deneyimi bozulmasına yol açar.
+
+Production'da vector database sürdürülebilirliği mühendislik disiplinini gerektirir: cost-benefit hesabı, incremental rollout, rollback stratejisi, otomatik monitoring. Model değişimi kaçınılmaz — RAG sistemlerinin uzun vadeli başarısı, drift'i kabul edip yönetmek. Re-indexing maliyetini amortize etmek, hybrid search ile dayanıklılık artırmak ve evaluation pipeline'ını otomatikleştirmek, AI infrastructure'ın olgunluk göstergesidir. Embedding drift'e hazırlıksız yakalanan organizasyonlar retrieval quality düşüşüne maruz kalır; hazırlıklı olanlar model evrimini competitive advantage'a çevirir.
