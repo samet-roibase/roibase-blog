@@ -1,197 +1,166 @@
 ---
 title: "Headless E-Ticaret: Migration Roadmap ve Risk Yönetimi"
-description: "Phased rollout ile SEO'yu koruyarak headless'e geçiş stratejisi. ATC abandonment analizi, performans migration testi ve risk azaltma yöntemleri."
-publishedAt: 2026-07-16
-modifiedAt: 2026-07-16
+description: "Phased rollout stratejisi, SEO koruma teknikleri ve ATC abandon analizi ile headless e-ticaret geçişini güvenli hale getirin."
+publishedAt: 2026-08-04
+modifiedAt: 2026-08-04
 category: tech
-i18nKey: tech-006-2026-07
-tags: [headless-commerce, migration-strategy, seo-preservation, performance-testing, risk-management]
+i18nKey: tech-006-2026-08
+tags: [headless-commerce, migration-strategy, seo-preservation, risk-management, composable-architecture]
 readingTime: 8
 author: Roibase
 ---
 
-Headless e-ticaret migration'ı 2026'da artık "yapılır mı, yapılmaz mı" sorusu değil. Soru "nasıl yapılır ki site çökmez, SEO 40% kayıp vermez, checkout abandonment %18'den %32'ye zıplamaz". Shopify Hydrogen, Remix, Next.js Commerce gibi framework'lerin olgunlaşması teknik riski düşürdü ama operasyonel risk hâlâ yüksek. Bir e-ticaret sitesini monolithic'ten headless'e geçirmek database migration'ı değil, canlı kalp ameliyatı. Bu yazı phased rollout stratejisi, SEO preservation testing ve sepet abandon spike'larını önleme yöntemlerini ele alıyor.
+Headless e-ticaret geçişi, 2026'da artık "yapılacak mı" değil "nasıl yapılacak" sorusu haline geldi. Ancak her büyük mimari dönüşümde olduğu gibi, bu geçiş sürecinde yanlış bir adım revenue'yu %12-18 oranında düşürebiliyor (Forrester 2025 verisi). Sepete ekleme davranışlarındaki gizli sinyaller kaybolur, SEO otoriteleri sıfırlanır, conversion funnel'daki mikro-optimizasyonlar buharlaşır. Bu yazıda, headless geçişini fazlı bir mühendislik projesi olarak ele alıp riski nasıl yöneteceğinizi göstereceğiz.
 
-## Phased Rollout Stratejisi: Domainler Arası Canary Deployment
+## Monolitik Kaosa Karşı Fazlı Rollout
 
-Big-bang migration yok. Tüm site aynı anda headless frontend'e geçmez çünkü bir metrik bozulduğunda rollback maliyeti çok yüksek. Bizim tercih ettiğimiz yapı: **URL path-based routing** ile progressive rollout.
+Headless geçişin klasik hatası: "büyük patlama" yaklaşımı. Tüm siteyi bir gecede yeni stack'e taşımak, revenue'nun riske atılması demektir. Fazlı rollout, trafiğin kontrollü dilimlerini yeni mimariye yönlendirerek gerçek kullanıcı davranışı üzerinden öğrenme fırsatı sunar.
 
-İlk aşama `/kategori/yeni-gelenler` gibi trafik yoğunluğu düşük, SKU sayısı az (50-100 ürün) bir path seçmek. CDN'de (Cloudflare, Fastly) path-based routing kuralı: `/kategori/yeni-gelenler/*` trafiği headless origin'e, geri kalanı legacy Shopify Liquid'e.
+**Route-based phasing:** İlk faz kategori sayfaları veya PDP'ler olabilir — homepage ve checkout sonraya kalır. Örnek bir 6 haftalık plan:
+
+| Hafta | Scope | Trafik | Risk Metriği |
+|---|---|---|---|
+| 1-2 | `/collections/{slug}` | %5 | ATC rate, exit rate |
+| 3-4 | `/products/{slug}` | %10 | Conversion rate, scroll depth |
+| 5 | Homepage | %25 | Bounce rate, session duration |
+| 6 | Full rollout | %100 | Revenue impact |
+
+Bu yaklaşımla, kritik hata çıktığında rollback maliyeti minimum kalır — %5 trafik kaybı yerine %100'ü kurtarırsınız.
+
+**Feature flag mimarisi:** LaunchDarkly, Statsig veya Unleash ile yeni frontend'i feature flag arkasında çalıştırın. Örnek Node.js snippet (Unleash):
 
 ```javascript
-// Cloudflare Workers — path routing
-addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  
-  if (url.pathname.startsWith('/kategori/yeni-gelenler')) {
-    return event.respondWith(fetch(event.request, {
-      backend: 'headless-origin' // Hydrogen app on Cloudflare Pages
-    }));
+const unleash = require('unleash-client');
+
+unleash.on('ready', () => {
+  const isHeadlessEnabled = unleash.isEnabled('headless-pdp', {
+    userId: user.id,
+    sessionId: req.sessionID
+  });
+
+  if (isHeadlessEnabled) {
+    res.render('pdp-headless'); // Next.js, Nuxt veya Remix
+  } else {
+    res.render('pdp-legacy'); // Liquid, Blade vb
   }
-  
-  return event.respondWith(fetch(event.request, {
-    backend: 'legacy-shopify'
-  }));
 });
 ```
 
-Bu yapıyla 2-3 hafta boyunca Core Web Vitals, conversion rate, ATC (add-to-cart) funnel metriği izlenir. LCP hedefi <2.5s, CLS <0.1, ATC→checkout geçiş oranı legacy ile ±2% sapma bandında kalmalı. Eğer `yeni-gelenler` kategorisinde sepet abandon oranı %18'den %24'e çıkarsa, headless render logic'inde performans sorunu var demektir — örneğin client-side hydration TBT (Total Blocking Time) 800ms'yi geçiyordur.
+Bu kod, kullanıcı bazında frontend'i değiştirmenize olanak tanır. Aynı session'da eski/yeni deneyimi A/B test edip conversion delta'sını gerçek zamanlı okuyabilirsiniz.
 
-**İkinci faz:** Ana kategori sayfaları (`/kategori/erkek`, `/kategori/kadin`). Burada trafik 10x fazla, SKU 2000+. Hydration stratejisi değişir: partial hydration (Astro Islands benzeri) veya progressive enhancement (HTML-first render, interactivity lazy).
+## SEO Otoritesini Korumak: URL Parity ve Redirect Disiplini
 
-**Üçüncü faz:** Product detail pages (PDP). SEO trafiğinin %60'ı PDP'den geliyorsa bu aşamada title/meta/structured data parity testi yapılır (sonraki bölümde detay).
+Headless geçişte en büyük gizli maliyet SEO erozyonudur. Yeni stack URL yapısını değiştiriyorsa, Google'ın o URL için biriktirdiği backlink gücü, crawl budget'ı ve tarihsel trafik verisini kaybedersiniz.
 
-**Son faz:** Homepage ve checkout. Checkout headless'e en son geçer çünkü ödeme entegrasyonları (iyzico, PayTR) ve 3D Secure akışı native Shopify'da battle-test'li, headless'te yeni. Shopify Checkout API kullanılsa bile frontend render hatası sipariş kaybı demek.
+**URL parity zorunluluğu:** Eski ve yeni sistem aynı slug yapısını korumalı. Örneğin, Shopify'dan Hydrogen'a geçerken:
 
-## SEO Preservation: Title/Meta/Structured Data Parity Testing
-
-Headless migration'da en büyük kayıp SEO'dan gelir çünkü Google yeni render'ı re-crawl edip ranking'i güncellemeye 4-6 hafta sürebilir. Bu sürede eski URL'lerin title/meta/structured data'sı farklılaşırsa (örneğin dinamik product price `og:price` tag'inde güncellenmiyorsa), CTR düşer.
-
-**Parity test süreci:**
-
-1. Legacy Shopify'dan sample URL listesi çek (GSC'den top 500 organic landing page).
-2. Headless frontend'te aynı URL'leri render et, HTML snapshot al.
-3. Diff tool ile (`htmldiff`, `cheerio` ile custom script) karşılaştır:
-
-```javascript
-// headless-seo-parity.js
-import fetch from 'node-fetch';
-import * as cheerio from 'cheerio';
-
-async function compareSEO(url) {
-  const [legacyHTML, headlessHTML] = await Promise.all([
-    fetch(`https://legacy.example.com${url}`).then(r => r.text()),
-    fetch(`https://headless.example.com${url}`).then(r => r.text())
-  ]);
-  
-  const legacy$ = cheerio.load(legacyHTML);
-  const headless$ = cheerio.load(headlessHTML);
-  
-  const diffs = {
-    title: legacy$('title').text() !== headless$('title').text(),
-    metaDesc: legacy$('meta[name="description"]').attr('content') !== 
-              headless$('meta[name="description"]').attr('content'),
-    canonical: legacy$('link[rel="canonical"]').attr('href') !== 
-               headless$('link[rel="canonical"]').attr('href'),
-    jsonLD: legacy$('script[type="application/ld+json"]').html() !== 
-            headless$('script[type="application/ld+json"]').html()
-  };
-  
-  return { url, diffs };
-}
-
-// Run for top 500 URLs
-const results = await Promise.all(topUrls.map(compareSEO));
-const failures = results.filter(r => Object.values(r.diffs).some(d => d));
-console.log(`${failures.length} URL'de SEO meta uyuşmazlığı`);
+```
+Eski: /products/erkek-sneaker-beyaz
+Yeni: /products/erkek-sneaker-beyaz
 ```
 
-Eğer %5'ten fazla URL'de diff varsa migration'ı durdur. Örneğin Shopify metafield'larından çekilen dinamik meta description'lar headless GraphQL query'sinde eksikse, bu 500 sayfa organik trafiğini %12-18 arası kaybettirebilir (Search Console 2025 verileri).
+Slug üretim logic'i değişse bile, output aynı olmalı. Bunu garanti altına almak için migration öncesi:
 
-**Canonical URL testi:** Headless'te genellikle `/products/{handle}` yerine `/p/{id}` gibi path yapısı tercih edilir (routing performansı için). Bu durumda eski URL'lere 301 redirect + canonical tag kombinasyonu zorunlu. Test: `curl -I https://headless.example.com/old-path` → `301 → /new-path` ve `<link rel="canonical" href="/new-path">` olmalı.
+1. Eski sistemden tüm URL'leri dump edin (CSV, 30 gün traffic verisi ile birleştirin)
+2. Yeni sistemde aynı URL'leri canary route ile test edin
+3. Diff'i sıfırlayın — tek fark bile SEO kayıp demektir
 
-## Add-to-Cart Abandonment Spike Analizi
+**301 vs 302 tradeoffu:** Geçici redirectler (302) Google'a "bu URL geçici olarak başka yerde" sinyali verir, kalıcı redirectler (301) "bu URL artık burada" der. Fazlı rollout sırasında 302 kullanmak mantıklıdır — tam rollout'ta 301'e geçersiniz. Ancak 302'yi 4 haftadan uzun kullanırsanız, Google yine de kalıcı kabul edebilir (John Mueller, 2024).
 
-Headless migration sonrası en yaygın sorun: kullanıcı "Sepete Ekle" butonuna tıklıyor, hiçbir şey olmuyor veya loading spinner 3 saniye dönüp timeout veriyor. Bu genellikle Shopify Storefront API rate limit'inden kaynaklanır (saniyede 50 request default, burst'te 100).
+**Canonical tag disiplini:** Yeni frontend server-side render ediyorsa, `<link rel="canonical">` tag'ini eski URL'yi işaret eder şekilde ayarlayın. Bu, Google'a "asıl otorite hâlâ eski domain" mesajını verir. Örnek Next.js:
 
-**Monitoring setup:**
-
-```javascript
-// ATC event tracking — headless app
-async function addToCart(variantId, quantity) {
-  const startTime = performance.now();
-  
-  try {
-    const response = await fetch('/api/cart/add', {
-      method: 'POST',
-      body: JSON.stringify({ variantId, quantity })
-    });
-    
-    const duration = performance.now() - startTime;
-    
-    // RUM beacon
-    navigator.sendBeacon('/analytics/atc', JSON.stringify({
-      success: response.ok,
-      duration,
-      variantId,
-      timestamp: Date.now()
-    }));
-    
-    if (!response.ok) {
-      // Hata durumunda fallback UI göster
-      showErrorToast('Sepet güncelleme hatası, lütfen tekrar deneyin');
+```jsx
+// pages/products/[slug].jsx
+export async function generateMetadata({ params }) {
+  return {
+    alternates: {
+      canonical: `https://legacy.site.com/products/${params.slug}`
     }
-  } catch (err) {
-    // Network timeout — critical
-    reportError('ATC_TIMEOUT', { variantId, error: err.message });
-  }
+  };
 }
 ```
 
-**Analiz:** Grafana/Datadog dashboard'unda `atc_duration_p95` metriği 2000ms'yi geçerse problem var. Olası sebepler:
+Full rollout'ta bu tag'i kaldırıp yeni domain'e çekersiniz.
 
-- **API latency:** Shopify Storefront API response time >800ms. Çözüm: cart state'i client-side cache'le (optimistic UI update, background sync).
-- **Hydration delay:** React hydration tamamlanmadan button tıklanırsa event handler attach olmamış. Çözüm: SSR + progressive enhancement, button'a `onLoad` ile immediate interactivity ver.
-- **Network queue:** 3G kullanıcılar için bundle size çok büyük (>500kb), JS parse blokluyor. Çözüm: code splitting, critical CSS inline.
+## Add-to-Cart Abandon Analizi: Gizli Sürtünme Noktalarını Yakalamak
 
-Bizim bir migration'da ATC success rate %96'dan %89'a düşmüştü. RUM data analysis: mobil kullanıcılarda hydration 4.2 saniye sürüyordu çünkü Hydrogen app 780kb JS yüklüyordu. Lazy load + route-based splitting ile 210kb'ye düşürünce success rate %95'e geri döndü.
+Headless geçişte conversion rate düşüşü genelde checkout'ta değil, sepete ekleme öncesinde başlar. Kullanıcı eski sistemde 3 tıkla sepete ekliyorsa, yeni sistemde 4 tık veya 1 saniye daha uzun load time yeterli sebeptir.
 
-## Risk Azaltma: Feature Flag ve Instant Rollback
+**Kritik metrikler:**
+- **ATC rate:** Ürün sayfası ziyaret / sepete ekleme oranı
+- **Click-to-ATC latency:** Butona tıklama ile confirmation arasındaki süre (hedef <600ms)
+- **Exit rate on PDP:** ATC öncesi çıkış (yeni frontend'te %12'den yüksekse alarm)
 
-Headless migration'da feature flag sistemi olmadan ilerleme yok. LaunchDarkly, Statsig veya custom Redis-backed flag service ile her kullanıcı grubu için headless render açık/kapalı kontrol edilir.
+Bu metrikleri hem eski hem yeni sistemde paralel toplayın. BigQuery + GA4 ile:
+
+```sql
+SELECT
+  page_location,
+  event_name,
+  COUNTIF(event_name = 'add_to_cart') / COUNT(*) AS atc_rate,
+  AVG(TIMESTAMP_DIFF(atc_timestamp, page_view_timestamp, MILLISECOND)) AS click_latency_ms
+FROM `project.dataset.events_*`
+WHERE _TABLE_SUFFIX BETWEEN '20260701' AND '20260731'
+  AND event_name IN ('page_view', 'add_to_cart')
+GROUP BY page_location
+HAVING atc_rate < 0.08 -- %8'in altı kritik
+ORDER BY click_latency_ms DESC;
+```
+
+Bu sorgu, hangi ürün kategorilerinde ATC rate'in düştüğünü ve latency'nin arttığını gösterir. Örneğin, "beyaz ayakkabı" kategorisinde yeni frontend'te latency 1200ms ise, bundle size veya API call overhead'ini inceleyin.
+
+**Session replay tradeoffu:** Hotjar, LogRocket gibi araçlar her pixel'i kaydeder ancak kullanıcı gizliliği riski taşır. Alternatif: FullStory'nin "frustration signal" API'si — sadece hızlı tıklama, hata mesajı, boş alan tıklama gibi anomalileri yakalar, tüm session'u kaydetmez.
+
+## Composable Mimaride Rollback Stratejisi
+
+Headless stack genellikle birden fazla bileşenden oluşur: frontend (Next.js, Nuxt), CMS (Contentful, Sanity), commerce engine (Shopify, commercetools), search (Algolia, Typesense). Bu parçalardan biri çökerse, rollback planı net olmalı.
+
+**Circuit breaker pattern:** Her third-party servise timeout + retry limiti koyun. Örnek, Shopify Storefront API için:
 
 ```javascript
-// Feature flag check — edge middleware
-export async function middleware(request) {
-  const userId = request.cookies.get('user_id');
-  const country = request.geo.country;
-  
-  const headlessEnabled = await checkFlag('headless-rollout', {
-    userId,
-    country,
-    trafficPercentage: 10 // İlk %10 trafik
-  });
-  
-  if (headlessEnabled) {
-    return NextResponse.rewrite('/headless-app');
+const fetchProduct = async (handle) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000); // 3s timeout
+
+  try {
+    const response = await fetch(`https://shop.myshopify.com/api/2024-01/graphql.json`, {
+      method: 'POST',
+      headers: { 'X-Shopify-Storefront-Access-Token': token },
+      body: JSON.stringify({ query: productQuery, variables: { handle } }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    return response.json();
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      // Timeout: fallback to cached data or legacy API
+      return fetchFromLegacySystem(handle);
+    }
+    throw err;
   }
-  
-  return NextResponse.rewrite('/legacy-shopify');
-}
+};
 ```
 
-**Instant rollback stratejisi:** Eğer 5 dakikalık sliding window'da ATC error rate %3'ü geçerse, otomatik rollback tetiklenir (PagerDuty alert + flag toggle).
+Bu kod, Shopify API 3 saniyede yanıt vermezse eski sisteme fallback eder. Kullanıcı deneyimi kesintisiz kalır.
+
+**Automated rollback tetikleyicisi:** Prometheus + Alertmanager ile error rate %2'yi geçerse otomatik rollback:
 
 ```yaml
-# rollback-policy.yaml
-thresholds:
-  atc_error_rate: 3.0  # percent
-  lcp_p75: 3500        # milliseconds
-  revenue_drop: 5.0    # percent vs last week same hour
-
-actions:
-  - type: flag_override
-    target: headless-rollout
-    value: false
-  - type: alert
-    channel: slack-ops
-    message: "Headless rollback triggered: ATC error spike"
+groups:
+  - name: headless_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{job="headless-frontend",status=~"5.."}[5m]) > 0.02
+        for: 2m
+        actions:
+          - trigger_rollback: true
+            target_version: "legacy-stable"
 ```
 
-Bu yapıyla migration 8 hafta sürer ama revenue kaybı <2% kalır. Headless'in asıl kazancı (LCP 4.8s → 1.9s, conversion rate +12%) ancak tüm site geçtikten sonra realize olur ama süreçte hiçbir nokta "kriz" haline gelmez.
+Bu YAML, error rate 2 dakika boyunca %2'nin üstündeyse feature flag'i kapatıp trafiği eski sisteme yönlendirir.
 
-## Performans Migration Test Senaryoları
+## Kapanış: Risk Yönetimi Bir Süreç, Tek Seferlik Proje Değil
 
-Headless'e geçerken sadece "yeni site hızlı mı" değil, "eski kullanıcı davranışları migration sonrası bozuluyor mu" da test edilmeli. Synthetic test + real user monitoring kombinasyonu:
+Headless geçiş, migration sonrası 90 gün boyunca aktif izleme gerektirir. Core Web Vitals (LCP, CLS, FID), conversion funnel metrikleri ve server-side error rate'leri haftalık dashboard'larda takip edilmeli. İlk 30 günde sorun çıkmazsa bile, trafik seasonality'si (örneğin Black Friday) yeni yük patternleri ortaya çıkarabilir.
 
-**Synthetic:**
-- Lighthouse CI pipeline — her deploy'da PDP, PLP, homepage için LCP/TBT/CLS check
-- WebPageTest scripted test: "kategori sayfasında 3. ürüne tıkla, sepete ekle, checkout'a git" akışı 10 farklı coğrafyadan (İstanbul, Berlin, New York)
-
-**RUM:**
-- Her sayfa view için `performance.getEntriesByType('navigation')` data toplanır, BigQuery'ye stream edilir
-- Cohort karşılaştırması: eski frontend kullanan son 10K kullanıcı vs yeni frontend kullanan ilk 10K kullanıcı → median session duration, pages per session, bounce rate
-
-[Headless Commerce](https://www.roibase.com.tr/tr/headless) altyapısında Nuxt 3 + Cloudflare Pages kombinasyonunu tercih ediyoruz çünkü edge SSR latency'si <50ms kalıyor ve phased rollout için Workers routing native destekli.
-
-Headless migration roadmap'in en kritik parçası "geri adım atabilme yeteneği". Her faz bağımsız deploy edilebilir, flag-controlled, metrik-driven olmalı. SEO preservation testi otomasyonla yapılmazsa, manuel QA 500 URL'yi kontrol edemez ve Google ranking kaybı 6 hafta sonra fark edilir — o noktada rollback zaten geç. ATC abandonment analizi real-time olmalı, 24 saat gecikmeli dashboard değil. Bu disiplinle headless migration bir risk değil, ölçülebilir bir optimizasyon sürecine dönüşür.
+[Headless Commerce](https://www.roibase.com.tr/tr/headless) yaklaşımı, doğru fazlı rollout ve metrik disiplini ile e-ticaret altyapınızı güvenli şekilde dönüştürmenize olanak tanır. Süreç boyunca sürtünme noktalarını yakalamak, SEO otoritesini korumak ve rollback planını hazır tutmak, headless'in vaat ettiği hız ve esnekliği gerçek revenue artışına çevirir.
