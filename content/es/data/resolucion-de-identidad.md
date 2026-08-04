@@ -1,144 +1,133 @@
 ---
-title: "Resolución de Identidad: De 6 Señales a una Identidad de Cliente Única"
-description: "Hash matching, probabilistic linking y household clustering: cómo unificar touchpoints dispersos en una identidad de cliente única. La arquitectura de production identity graph."
-publishedAt: 2026-07-03
-modifiedAt: 2026-07-03
+title: "Resolución de Identidad: De 6 Señales a una Sola Identidad de Cliente"
+description: "Hash matching, vinculación probabilística e identidad del hogar para unificar señales fragmentadas y conectar datos de marketing a tu mecanismo de decisión."
+publishedAt: 2026-08-04
+modifiedAt: 2026-08-04
 category: data
-i18nKey: data-003-2026-07
-tags: [resolucion-de-identidad, data-engineering, cdp, first-party-data, customer-identity]
-readingTime: 8
+i18nKey: data-003-2026-08
+tags: [resolucion-de-identidad, hash-matching, vinculacion-probabilistica, cdp, first-party-data]
+readingTime: 9
 author: Roibase
 ---
 
-Las cookies desaparecieron, las tasas de login están en 8%, cada dispositivo genera un ID diferente, cada canal produce otra señal. El usuario promedio de e-commerce deja 6 touchpoints distintos en su viaje de compra, pero las plataformas los registran como 6 personas diferentes. El problema más grande en datos de marketing es este: la identidad digital de una misma persona fragmentada en 6 piezas. Resolución de identidad es la disciplina de ingeniería que une esas piezas mediante hash matching, probabilistic linking y household clustering. Construir un identity graph que funcione en producción no es solo un reto técnico—es equilibrar privacy + rendimiento + precisión.
+Un usuario navega anónimamente en la web, inicia sesión en una app móvil, se registra en tu newsletter con otro correo, paga en tienda con tarjeta de crédito. Cada punto de contacto es una señal distinta — pero para optimizar tu presupuesto de marketing tienes que vincularlas todas a una sola identidad de cliente. En 2026, las cookies desaparecieron, el número de dispositivos se multiplica, la tasa de consentimiento ronda el 40-60% — la resolución de identidad ya no es un nice-to-have, es el pilar fundamental de tu arquitectura de medición.
 
-## Qué es Resolución de Identidad y Por Qué es Crítica Ahora
+## Hash Matching: Convertir Email y Teléfono en Grafo de Identidad
 
-Resolución de identidad es el proceso de unificar fragmentos de señales de múltiples fuentes (email hash, device ID, browser fingerprint, IP, session cookie) bajo un único perfil de cliente. En 2026, tras la eliminación completa de third-party cookies de Google Chrome, los límites de storage de Safari en ITP 2.3 (7 días), y con las tasas de opt-in de IDFA post-iOS 14.5 rondando 15%, el cross-device tracking ya no puede resolverse con tecnologías dependientes de plataforma.
+Hash matching es el método por el que hasheabas datos PII del usuario (email, teléfono) con SHA-256 y los enviabas a grafos de plataforma (Google PAIR, Meta Advanced Matching, LiveRamp). El PII crudo nunca cae al navegador — se hashea en GTM server-side o en tu CDP y se envía a través del Measurement Protocol.
 
-El análisis de Roibase en clientes Shopify Plus durante Q4 2025 mostró que el mismo usuario genera en promedio 3.2 IDs anónimos diferentes entre web mobile, desktop y app. Cuando este usuario llega al checkout e ingresa su email, recién entonces ocurre la "unificación". Pero si no puedes ligar los 4-5 touchpoints previos a la misma persona, tu modelo de atribución colapsa—el último clic gana, el journey real desaparece. Por esto la resolución de identidad es la capa de infraestructura del marketing de medición moderno. Combinando métodos determinísticos (email exacto, teléfono) + probabilísticos (combinación IP+user-agent+timezone) se alcanzan %85+ de match accuracy.
+Flujo de ejemplo: el usuario ingresa `[email protected]` en el formulario de checkout. En tu contenedor server-side, JavaScript genera `sha256('jane.doe@example.com')` → `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`, ese hash se agrega al parámetro `user_id` de Google Analytics 4. Google compara ese hash con su propio grafo de identidad — si el usuario inició sesión previamente en Google Ads, el match ocurre y entra en la cadena de atribución cross-device.
 
-Llevar esta disciplina a producción requiere una arquitectura de 3 capas: recolección de señales (raw event stream), identity stitching (graph engine), unificación de perfil (CDP layer). En cada capa se equilibra compliance de privacy (TCF 2.2, KVKK consent) y performance (real-time vs batch resolution tradeoff).
+SHA-256 es unidireccional, pero sin salt es vulnerable a tablas arcoíris. En producción, usa `sha256(email + pepper)` (pepper: una clave secreta global, mantenla en variables de entorno). En Meta Advanced Matching, la combinación hash + código de país aumenta la tasa de match del 12-18% (benchmark Meta 2025). El límite del hash matching es el consentimiento — bajo GDPR, si el usuario no marcó la casilla "consiento el procesamiento", ni siquiera puedes enviar el hash.
 
-## Hash Matching: El Núcleo de la Identidad Determinística
-
-Hash matching es el método más confiable de resolución de identidad: tomas el email o teléfono del usuario, lo hasheas con SHA256 y lo comparas con hashes en otros sistemas. La precisión es cercana a 100% porque el riesgo de colisión es despreciable—mismo hash = mismo email. Pero tiene 3 condiciones críticas: (1) debes haber recolectado el PII del usuario (formularios, login), (2) necesitas consentimiento (GDPR 6(1)(a) o interés legítimo), (3) el estándar de hash debe ser consistente entre sistemas (lowercase + trim + UTF-8 encoding).
-
-En proyectos de [CDP y retention engineering](https://www.roibase.com.tr/es/retention-engineering-cdp) en Roibase usamos este pipeline:
+### Ejemplo de Pipeline de Hash Matching en BigQuery
 
 ```sql
--- Estandarización de email hash en BigQuery
-CREATE OR REPLACE FUNCTION `project.dataset.hash_email`(email STRING)
-RETURNS STRING AS (
-  TO_HEX(SHA256(LOWER(TRIM(email))))
-);
-
--- Enriquecimiento de email hash en tabla de eventos
-SELECT
-  event_timestamp,
-  user_pseudo_id,
-  `project.dataset.hash_email`(user_properties.email) AS email_hash,
-  device.category,
-  traffic_source.medium
-FROM `analytics_123456789.events_*`
-WHERE _TABLE_SUFFIX BETWEEN '20260601' AND '20260630'
-  AND user_properties.email IS NOT NULL;
-```
-
-Si escribes este hash en una CDP como Segment o mParticle, los eventos de diferentes dispositivos se unifican bajo el mismo `email_hash`. Escenario de ejemplo: lunes en desktop el usuario se suscribe a newsletter (capturas email), miércoles en mobile navega anónimamente, jueves vuelve a desktop, ingresa y compra. Sin email hash verías 3 user_ids diferentes; con hash matching, 1 perfil, 3 sesiones, journey coherente.
-
-**Tradeoff:** Hash matching solo funciona con usuarios autenticados. En e-commerce, las tasas de login están en 8-12%, así que 88-92% del traffic permanece anónimo. Aquí entran en juego los métodos probabilísticos.
-
-## Probabilistic Linking: Comparar Señales Estadísticamente
-
-Resolución de identidad probabilística usa combinaciones de señales para calcular un score "probablemente la misma persona". Combinas IP + user-agent + timezone + patrones de comportamiento de sesión y aceptas matches con confidence >80%. No es tan precisa como determinística (false positive %5-10) pero cubre traffic anónimo.
-
-La lógica: cada señal lleva un weight. Si la IP es estable en red de hogar/oficina: +0.3. Si la combinación user-agent+timezone es rara: +0.25. Si el patrón de comportamiento en sesión (orden de páginas, scroll depth, timing) se alinea en 90% con perfil anterior: +0.4. Si el score total >0.8, unes las dos sesiones bajo el mismo nodo de identidad. Esto no ocurre en real-time—el job batch ejecuta diariamente 1-2 veces recalculando el graph.
-
-El pipeline probabilístico que Roibase usa en gaming vertical funciona así:
-
-```sql
--- Creación de fingerprint (simplificado)
-WITH fingerprints AS (
+-- dbt model: hash_user_pii.sql
+WITH raw_signups AS (
   SELECT
-    user_pseudo_id,
-    event_date,
-    NET.IP_TO_STRING(NET.SAFE_IP_FROM_STRING(user_first_touch_timestamp)) AS ip_prefix,
-    device.operating_system,
-    device.browser,
-    geo.country,
-    ARRAY_AGG(page_location ORDER BY event_timestamp LIMIT 5) AS page_sequence
-  FROM `analytics_123456789.events_*`
-  WHERE _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', CURRENT_DATE())
-  GROUP BY 1,2,3,4,5,6
+    user_id,
+    LOWER(TRIM(email)) AS email_normalized,
+    REGEXP_REPLACE(phone, r'[^\d]', '') AS phone_normalized,
+    created_at
+  FROM {{ ref('raw_user_signups') }}
 )
 SELECT
-  a.user_pseudo_id AS user_a,
-  b.user_pseudo_id AS user_b,
-  -- Jaccard similarity en secuencia de páginas
-  (SELECT COUNT(*) FROM UNNEST(a.page_sequence) AS p WHERE p IN UNNEST(b.page_sequence)) 
-    / (ARRAY_LENGTH(a.page_sequence) + ARRAY_LENGTH(b.page_sequence)) AS similarity_score
-FROM fingerprints a
-JOIN fingerprints b
-  ON a.ip_prefix = b.ip_prefix
-  AND a.operating_system = b.operating_system
-  AND a.user_pseudo_id != b.user_pseudo_id
-WHERE similarity_score > 0.75;
+  user_id,
+  TO_HEX(SHA256(CONCAT(email_normalized, '{{env_var("HASH_PEPPER")}}'))) AS email_hash,
+  TO_HEX(SHA256(CONCAT(phone_normalized, '{{env_var("HASH_PEPPER")}}'))) AS phone_hash,
+  created_at
+FROM raw_signups
+WHERE email_normalized IS NOT NULL
+  AND LENGTH(phone_normalized) >= 10
 ```
 
-Esta consulta matchea usuarios en la misma combinación IP+OS donde la secuencia de páginas es >75% similar. En producción, escribes este score en una graph database (Neo4j o BigQuery graph table) como edge weight.
+Este modelo se parametriza en dbt, el pepper se guarda en variables de entorno, y downstream se agrega a eventos de sGTM en el objeto `user_data`. Sin salt, el hash de PII es reversible — pepper es obligatorio en producción.
 
-**Riesgo:** IPs compartidas (cafeterías, oficinas) o user-agents genéricos (iPhone 15 + Safari) generan alto false positive. Por eso la resolución a nivel de hogar se maneja en una capa separada.
+## Vinculación Probabilística: Fingerprint y Grafo de Comportamiento
 
-## Household Identity: Distinguir Diferentes Personas en la Misma Red
+Cuando no hay un match determinístico (email/teléfono), la vinculación probabilística entra en juego. Usas fingerprint de dispositivo (User-Agent, IP, resolución de pantalla, zona horaria), patrones de secuencia de eventos y duración de sesión para clusterizar usuarios. Si el confidence score cae por debajo del 60%, detén la vinculación — un falso positivo impacta directamente en tu presupuesto de marketing.
 
-Household clustering es el problema de identificar varios individuos que comparten la misma IP/red de dispositivos. En una casa, papá, mamá e hijo usan el mismo Wi-Fi; probabilistic matching podría unirlos en un perfil. Para evitarlo, miras señales de divergencia conductual: preferencia de categoría de producto, timing de sesión (10am vs 11pm), velocidad de scroll, patrón de tipeo (biometría pero sensible en GDPR).
+Escenario de ejemplo: dos dispositivos diferentes (iPhone Safari, MacBook Chrome) ingresan desde la misma IP con 30 minutos de diferencia, ambos ven las mismas categorías de productos, abandonan en checkout. El motor probabilístico etiqueta ambas sesiones como "same user household" con 78% de confianza. Si más tarde el iPhone completa la compra, el confidence sube a 95%, se fusionan en el grafo de identidad.
 
-El modelo que Roibase desarrolló en telecom funciona así:
+Soluciones como LiveRamp IdentityLink y The Trade Desk Unified ID 2.0 usan un híbrido probabilístico + determinístico. En el framework UID2, el hash de email + señales de bidstream se combinan y generan un score (UID2 spec 2025). Si construyes el tuyo, prueba DBscan o clustering jerárquico — pero en producción, la interpretabilidad es crítica; prefiere scoring basado en reglas en lugar de modelos ML de caja negra.
 
-1. **Clustering a nivel IP:** Agrupa todas las sesiones de la misma IP bajo un "nodo household".
-2. **Segmentación comportamental:** Convierte cada sesión en feature vector (product_category, avg_session_duration, bounce_rate, hour_of_day).
-3. **K-means clustering:** Crea 2-3 clusters dentro del household—cada uno es una "sub-identidad".
-4. **Validación:** Cuando llega email hash, confirmas la sub-identidad o redistribuyes.
+| Tipo de Señal | Match Confidence | Riesgo de Privacidad | Caso de Uso |
+|---|---|---|---|
+| Email hash (SHA-256 + pepper) | 92-98% | Bajo (requiere consentimiento) | GA4 cross-device, Meta CAPI |
+| Phone hash (SHA-256 + pepper) | 88-94% | Medio (consentimiento explícito) | Sync CRM → ad platform |
+| IP + User-Agent | 55-70% | Alto (fingerprinting) | Detección de fraude, filtrado de bots |
+| Behavioral sequence (event pattern) | 60-80% | Bajo (anonimizado) | Session stitching, journey analytics |
 
-Estructura de tabla ejemplo:
+Si haces vinculación probabilística en la capa [CDP & Retention Engineering](https://www.roibase.com.tr/es/retention-engineering-cdp), puedes mantener un grafo de identidad anonimizado en tu data lake — compliance KVKK también se simplifica con esta arquitectura.
 
-| household_id | sub_identity | feature_vector | last_seen | email_hash |
-|--------------|--------------|----------------|-----------|------------|
-| hh_abc123 | sub_1 | [moda, 18min, 0900-1200] | 2026-07-02 | hash_x |
-| hh_abc123 | sub_2 | [gaming, 45min, 2100-2400] | 2026-07-02 | NULL |
+## Identidad del Hogar: Identidad Basada en Ubicación, No en Dispositivo
 
-Así mantienes 2 personas distintas en el mismo hogar como perfiles separados. Cuando llega email hash (hijo ingresa), `sub_2` se confirma, pero `sub_1` permanece probabilístico.
+Agrupar todos los dispositivos en un hogar (smart TV, tablet, teléfono, laptop) bajo un único household ID es crítico, especialmente en FMCG, telecomunicaciones y finanzas. No defines a un usuario individual, sino a la "unidad familiar" con poder de compra.
 
-**Tradeoff:** El costo computacional de clustering es alto (reprocesar cada household diariamente). Corremos el job batch en 4-6 horas—no es real-time, los perfiles se actualizan T+1 día.
+El protocolo PAIR de Google (Publisher Advertiser Identity Reconciliation) soporta household graph — dispositivos conectados a la misma red Wi-Fi (match de IP + location + timezone) se agregan y se convierten en señal publicitaria. Sin embargo, PAIR es basado en consentimiento: si el usuario no otorgó "ad_storage=granted" en Consent Mode v2, no se crea household ID.
 
-## Arquitectura de Production Identity Graph
+Ejemplo práctico de identidad del hogar: una familia tiene suscripción a Netflix, madre y padre ven perfiles diferentes, los niños ven dibujos animados en el TV. La plataforma de publicidad OTT (Roku, Samsung Ads) asigna un único household ID a estos tres perfiles y aplica frequency capping a nivel household, no dispositivo. El mismo anuncio de 30 segundos se muestra un máximo de 5 veces por semana al household — aunque haya 15 impressiones en total entre dispositivos.
 
-La integración de los 3 métodos anteriores forma una arquitectura de producción así:
+### Ejemplo de Pipeline de Regla de Household ID
 
-**1. Event ingestion layer (sGTM):** Recolecta raw event stream mediante Server-side Google Tag Manager—GA4, Segment, Klaviyo, Conversion API side-server. Cada evento lleva `user_pseudo_id` + `session_id` + `client_id`. Si hay email/teléfono, agregas hash.
+```sql
+-- dbt model: household_identity_graph.sql
+WITH device_sessions AS (
+  SELECT
+    device_id,
+    ip_address,
+    timezone,
+    CAST(TIMESTAMP_TRUNC(session_start, HOUR) AS STRING) AS session_hour,
+    user_agent
+  FROM {{ ref('raw_sessions') }}
+  WHERE session_start >= CURRENT_DATE() - 7
+),
+household_candidates AS (
+  SELECT
+    ip_address,
+    timezone,
+    session_hour,
+    ARRAY_AGG(DISTINCT device_id) AS devices
+  FROM device_sessions
+  GROUP BY ip_address, timezone, session_hour
+  HAVING COUNT(DISTINCT device_id) > 1
+)
+SELECT
+  FARM_FINGERPRINT(CONCAT(ip_address, timezone)) AS household_id,
+  devices,
+  ARRAY_LENGTH(devices) AS device_count
+FROM household_candidates
+```
 
-**2. Identity stitching engine (BigQuery + dbt):** Job batch diario que:
-- Matchea determinísticamente (email_hash matches)
-- Calcula scores probabilísticos (IP+UA+behavior similarity)
-- Clustering de hogar (K-means o DBSCAN)
+Este modelo agrupa dispositivos que provienen de la misma combinación IP + timezone en una ventana de 1 hora. En producción, usa una ventana de 4 horas en lugar de `session_hour` (mayor probabilidad de que dispositivos en el hogar estén activos simultáneamente). Para riesgo de fraude, filtra household_count > 10.
 
-Output: tabla `identity_graph` (node = identidad única, edge = confidence score).
+## Sincronización de Grafo de Identidad: Del Data Lake a la Plataforma Publicitaria
 
-**3. Profile unification (CDP):** Para cada node del graph creas un perfil unificado—todos los touchpoints, atributos, segmentos se fusionan. Este perfil se sincroniza a plataformas de activación como Klaviyo/Braze.
+Mantienes tu grafo de identidad en BigQuery gracias al hash matching y la vinculación probabilística, pero plataformas como Google Ads, Meta y Klaviyo tienen sus propios sistemas de identidad. Sin una capa de sincronización, la resolución de identidad queda como datos muertos.
 
-**4. Real-time lookup:** Cuando llega un evento nuevo, buscas en el graph—si hay match, lo añades al perfil existente; sino, abres un nuevo node (el job batch de mañana lo unificará).
+Flujo de orquestación: cada noche a las 02:00, tu DAG de Airflow ejecuta, extrae de BigQuery registros modificados en los últimos 7 días de la tabla `identity_graph`, envía hashes de email a la API de Google Ads Customer Match, hashes de teléfono a la API de Meta Conversions. El control de rate limit es obligatorio — Google Customer Match permite 500K filas diarias, Meta CAPI 1M eventos (estándar tier 2025).
 
-En el stack Shopify Plus de Roibase, esta arquitectura cuesta ~$800/mes en GCP (BigQuery + Cloud Functions + sGTM container). Para 50M events/mes con 4-5 horas de batch runtime. ROI: attribution accuracy sube 18%, CAC es 22% más estable (separas 3 sesiones del mismo usuario mejor).
+Para Google Ads Customer Match necesitas un mínimo de 1.000 usuarios matched (umbral de audiencia). Cuando subes hashes de email, Google los compara con su propio grafo; la tasa de match ronda el 40-70% (depende de la calidad del email proporcionado). Los hashes no matched no entran al sistema — por eso tienes que garantizar calidad de datos desde el inicio en tu capa de [First-Party Data & Medición Architecture](https://www.roibase.com.tr/es/firstparty).
 
-## Privacy, Consentimiento y Cumplimiento KVKK
+En Meta Conversions API, además de hash matching, puedes enviar `fbc` (Facebook Click ID) y `fbp` (Facebook Browser ID). Si el usuario hizo clic en un anuncio de Meta y llegó a tu sitio, el parámetro `fbc` está en la URL (`fbclid=`); captura ese parámetro server-side e inclúyelo en el evento CAPI — la ventana de atribución se extiende a 28 días y la tasa de match sube del 18-25% (benchmark interno Meta 2025).
 
-Resolución de identidad se fundamenta legalmente en GDPR 6(1)(f) "interés legítimo" o 6(1)(a) "consentimiento explícito". En Turquía, KVKK exige consentimiento explícito—debes obtener del usuario la declaración "unificaré tus datos personales entre dispositivos basándome en tu comportamiento". Esto se gestiona con Consent Management Platform (CMP): en estándar TCF 2.2 necesitas purpose 2 (device identification) y purpose 7 (cross-device linking) checkboxes.
+## Privacidad + Cumplimiento: Los Límites de la Resolución de Identidad
 
-Hashear es "pseudonymization" en términos GDPR, no anonimización completa—GDPR 4(5) aún lo clasifica como dato personal. Así que tablas con hashes requieren encryption at rest + access control. En proyectos Roibase encriptamos datasets de BigQuery con customer-managed encryption key (CMEK), restringimos acceso vía IAM policy + VPC Service Controls.
+Si no alineas tu resolución de identidad con KVKK, GDPR y CCPA, tu pipeline de datos carga riesgo legal. La regla principal: no puedes hashear ni un email sin consentimiento explícito del usuario (KVKK artículo 5). La integración con una Plataforma de Gestión de Consentimiento (OneTrust, Cookiebot) es obligatoria.
 
-**Retention policy:** Debes eliminar el identity graph según KVKK artículo 7 cuando la finalidad de procesamiento termine. En e-commerce típicamente 2 años—24 meses post última compra y el perfil inactiva, 30 días más sin actividad se elimina (right to erasure).
+En Consent Mode v2, si el usuario elige "ad_storage=denied", no tienes permiso de enviar PII a Google ni hacer hashing. En tu GTM server-side, escucha el evento `consent`; no ejecutes la función `sha256()` si el consentimiento no está granted. La misma regla aplica a Meta CAPI — coloca el parámetro `data_processing_options` en modo "LDU" (Limited Data Use).
 
-## Qué Hacer Ahora
+Bajo CCPA, si recibes una señal "Do Not Sell", elimina al usuario del grafo de identidad y borra su PII hasheado de las APIs de plataforma. Google Customer Match y Meta Custom Audience ofrecen APIs de eliminación — dentro de 48 horas, removerán el hash de sus sistemas (SLA de compliance CCPA). Mantén una tabla `user_deletion_requests` en BigQuery y limpia tu grafo de identidad cada noche según esta tabla.
 
-Construir resolución de identidad desde cero es un proyecto data engineering de 8-12 semanas. Si no tienes CDP, primero construye [arquitectura de datos first-party](https://www.roibase.com.tr/es/firstparty)—event collection server-side, BigQuery data warehouse, pipeline dbt. Sobre esa base añades el motor de probabilistic matching. Si ya tienes stack, pilotea el módulo de probabilistic matching en 1-2 segmentos (ej: clientes high-value), mide accuracy y false positive rate, calibra confidence threshold. Antes de producción, valida consent flow y retention policy con legal. Identity resolution es el fundamento de marketing data—attribution, segmentation, LTV modeling dependen de que sea sólida. Si no es sólida, todas las métricas de arriba pierden validez.
+## Trazabilidad: Debuggear tu Resolución de Identidad
+
+Una vez que el grafo de identidad va a producción, la pregunta más difícil es "¿por qué estos dos dispositivos no se fusionaron?". Sin una tabla de monitoreo, es imposible debuggear.
+
+Crea una tabla `identity_resolution_log` en BigQuery que registre los metadatos de cada operación de merge: qué señales se usaron (email_hash, phone_hash, ip_fingerprint), cuál fue el confidence score, en qué fecha se ejecutó el merge, a qué plataforma downstream se sincronizó. Usa dbt tests para controlar la calidad — por ejemplo, si un único `household_id` tiene más de 50 dispositivos, dispara una alerta (posible tráfico de bots o servidor proxy).
+
+En Google Analytics 4, abre el reporte de User-ID y monitorea el número de usuarios cross-device. Si tu pipeline de resolución de identidad funciona, el metric "users (cross-device)" debe ser 15-30% menor que "total users" (el número real de personas es menor que el device count). Si esta brecha no se cierra, hay un leak en tu capa de hash matching o vinculación probabilística — revisa tus eventos de consentimiento y el pepper del hash.
+
+---
+
+Construye la resolución de identidad no como un proyecto único, sino como un pipeline de datos continuo que requiere optimización constante. Combina hash matching + vinculación probabilística + identidad del hogar para unificar tus señales fragmentadas, pero diseña cumplimiento desde el inicio — de lo contrario, tu data lake se convierte en un depósito de riesgo legal. El primer paso: crea la tabla `identity_graph` en BigQuery, construye tu pipeline de hash con dbt, sincroniza con Google Ads Customer Match mediante Airflow. El siguiente: ajusta el threshold de confidence score al 70%, mide la tasa de falsos positivos, luego expande a Meta y Klaviyo. Si no haces resolución de identidad, el 22-35% de tu presupuesto de marketing se va a atribución incorrecta (Forrester 2025) — construye tu grafo ahora.
