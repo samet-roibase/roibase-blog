@@ -1,76 +1,119 @@
 ---
 title: "Cross-Channel Orkestrasyon: Paid + Email + Push Atribüsyon"
-description: "Identity graph ile kullanıcı yolculuğunu birleştirin. Lifecycle event mapping + hold-out gruplar ile her kanalın gerçek katkısını ölçün."
-publishedAt: 2026-07-18
-modifiedAt: 2026-07-18
+description: "Identity graph, lifecycle event mapping ve hold-out gruplarla kanallararası performans ölçümünü mühendislik disiplinine bağlamak."
+publishedAt: 2026-08-06
+modifiedAt: 2026-08-06
 category: marketing
-i18nKey: marketing-007-2026-07
-tags: [cross-channel-attribution, identity-graph, lifecycle-marketing, incrementality, holdout-test]
+i18nKey: marketing-007-2026-08
+tags: [cross-channel-attribution, identity-graph, lifecycle-marketing, hold-out-testing, incrementality]
 readingTime: 8
 author: Roibase
 ---
 
-Pazarlamacılar 2026'da artık kanal-bazlı düşünmüyor. Bir kullanıcı Instagram Story'den gelir, e-posta ile yeniden devreye girer, push notification ile satın alır. Hangi kanal "son tıklama"yı aldıysa ona bütçe gider — bu oyun bitti. Cross-channel orkestrasyon, her kanalın gerçek katkısını ölçmek ve lifecycle event'leri birleştirerek müşteri yolculuğunu tek bir kimlik üzerinden izlemek demektir. Identity graph, hold-out gruplar ve lifecycle event mapping olmadan çok kanallı pazarlama sadece bir maliyet yığını haline gelir.
+Paid media bütçesinin yarısı email'e, email'in yarısı push'a kanıyor — ama hangi yarı? Cross-channel orkestrasyon sorunu 2026'da artık kanal performans raporu okumakla çözülmüyor. Google Ads dashboard'u ROAS 4.2 gösterirken, email ekibi son kampanyadan %18 conversion artışı raporluyor. Aynı kullanıcı her iki kanala da maruz kaldıysa, hangisi tetikleyici? Bu soruya "last-touch" veya "multi-touch modeli" diyerek yaklaşmak artık yeterli değil. Identity graph üzerine kurulu, lifecycle event mapping ve hold-out gruplarla doğrulanmış bir atribüsyon altyapısı gerekiyor.
 
-## Identity Graph Neden Orkestrasyonun Temelidir
+## Identity Graph: Kanal Değil Kişi Odağı
 
-Cross-channel atribüsyon yapmak için önce "kim" sorusuna cevap vermek gerekir. Bir kullanıcı anonim olarak siteye gelir, e-posta bültenine kaydolur, mobil uygulamayı indirir, push notification izni verir, Facebook'ta reklama tıklar — bunların hepsini **aynı kişi** olarak bağlamak identity graph'ın işidir. Graph olmadan her kanal ayrı bir kullanıcı gibi görünür, atribüsyon çöker.
+Cross-channel orkestrasyon için önce "kim" sorusunu çözmek zorundasın. Paid mediadaki `GCLID`, email'deki `user_id`, push notification'daki `device_token` — her kanal farklı identifier üretiyor. Identity graph bu parçaları tek bir kişiye birleştiren veri yapısı. BigQuery veya Snowflake üzerinde düğüm-tabanlı tablo tasarımı: bir düğüm kullanıcı, kenarlar tanımlayıcılar arası ilişki.
 
-Identity graph üç katmanlı çalışır: deterministik (e-posta, telefon, kullanıcı ID), probabilistik (cihaz parmak izi, IP + user-agent kombinasyonları) ve behavioral (gezinme paterni benzerliği). 2026'da GDPR + iOS privacy kısıtları nedeniyle deterministik sinyaller azaldı — ama first-party login, newsletter kayıt, uygulama indirme gibi momentler hâlâ güçlü bağlantı noktası. Bir e-ticaret markası e-posta adresini merkeze alarak web + app + CRM ID'sini birleştirdiğinde graph %78 çözünürlüğe ulaşabiliyor (Segment 2025 benchmark).
-
-Graph'ı yalnızca customer data platform (CDP) değil, warehouse-native kimlik çözümleri (dbt + Hightouch gibi) de kurabilir. Önemli olan lifecycle event'lerin tek bir ID spine üzerinde toplanması. Örneğin: kullanıcı 12 Temmuz'da Meta'dan geldi (`utm_source=facebook`), 14 Temmuz'da e-posta açtı (`event=email_open`), 16 Temmuz'da push notification'a tıkladı (`event=push_click`), 18 Temmuz'da satın aldı (`event=purchase`). Bu zinciri görmek için her event'te aynı `user_id` gerekir — graph işte bunu sağlar.
-
-## Lifecycle Event Mapping ile Yolculuğu Modellemek
-
-Cross-channel orkestrasyon statik segmentlerle değil, **lifecycle event**'leriyle çalışır. Kullanıcı hangi aşamada (awareness, consideration, conversion, retention) ve hangi event'i tetikledi (app_install, cart_abandon, email_open, ad_click) — bunu bilmeden doğru mesajı doğru kanalda vermek imkansız.
-
-Event mapping şöyle kurulur: her kanaldan gelen interaksiyon bir event olarak data warehouse'a yazılır (örneğin BigQuery). Paid media click → `utm_campaign + gclid` ile etiketlenir, e-posta tıklamaları `email_id + user_id` ile, push notification açılışları `push_campaign_id + device_id` ile. Bu event'leri lifecycle stage'e bağlamak için bir state machine tanımlanır: örneğin "consideration" stage'i son 7 gün içinde ürün sayfasını 2+ kez ziyaret etti ama sepete eklemedi koşuluyla aktif olur.
-
-Mapping'in değeri şurada: aynı kullanıcı farklı kanallarda farklı mesaj alır. E-posta ile "sepetinde unuttuğun ürün" hatırlatması gelir, aynı anda Meta'da o ürünün indirim reklamı gösterilir, mobil uygulamada push notification "stoklarda azalma" uyarısı yapar. Bu üç kanal **orchestrated** çalışıyor — yani lifecycle event'e göre koordine ediliyor. Eğer kullanıcı herhangi birinde satın alırsa diğer kanallar otomatik kapanır (frequency capping across channels). 2024'te bu seviyede orkestrasyon kuran markalar e-posta + paid media sinerji lift'i %34 ölçtü (Iterable 2024 study).
-
-### Event Prioritization
-
-Her event eşit değildir. Bazı event'ler dönüşüme 2x daha yakındır: örneğin `cart_add` event'i `product_view`'dan daha yüksek intent sinyali verir. Event prioritization için geriye dönük conversion rate analizi yapın: son 90 günde hangi event'ten sonra satın alma olasılığı ne kadar arttı? BigQuery'de basit bir cohort analizi bu sayıyı verir:
+Tipik bir graph yapısı şöyle: `user_123` düğümüne `email:user@domain.com`, `device_token:abc123`, `gclid:xyz789` kenarları bağlı. Bu yapıyı kurmak için oturum bazlı identifier merge gerekiyor. Kullanıcı email giriş yaptığında `user_id` + `device_token` eşleşmesi yazılır. Paid mediadaki tıklama `GCLID`'yi session cookie'ye taşırsan, conversion event'i bu üçlüyü birleştirir. CDP (Customer Data Platform) kullanıyorsan Segment veya mParticle bu merge işlemini native yapıyor. Kendi stack'in varsa dbt üzerinde daily snapshot model'i yeterli:
 
 ```sql
-SELECT
-  event_name,
-  COUNT(DISTINCT user_id) AS users,
-  COUNTIF(converted_within_7d) / COUNT(DISTINCT user_id) AS conversion_rate
-FROM events
-WHERE event_timestamp >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
-GROUP BY event_name
-ORDER BY conversion_rate DESC;
+WITH user_edges AS (
+  SELECT user_id, email, device_token, gclid, session_timestamp
+  FROM events
+  WHERE user_id IS NOT NULL AND (email IS NOT NULL OR device_token IS NOT NULL)
+),
+merged_graph AS (
+  SELECT DISTINCT user_id,
+         FIRST_VALUE(email) OVER (PARTITION BY user_id ORDER BY session_timestamp) AS primary_email,
+         FIRST_VALUE(device_token) OVER (PARTITION BY user_id ORDER BY session_timestamp DESC) AS latest_device
+  FROM user_edges
+)
+SELECT * FROM merged_graph;
 ```
 
-Bu çıktıya göre event'leri 1-5 arası priority skoru ile etiketleyin. Priority 5 olan event'ler (örneğin `checkout_started`) hem paid retargeting hem e-posta hem push'a girsin, priority 2 olanlar sadece e-posta ile yetinsin.
+Bu graph'ı production'a atmadan önce deduplication hata oranını ölç. Eğer %5'in üzerinde çakışma varsa (aynı device_token iki farklı user_id'ye bağlanıyorsa), identifier kaliteni gözden geçir. Identity resolution %95 accuracy altındaysa atribüsyon sonuçları güvenilmez.
 
-## Hold-Out Gruplar ile Incrementality Ölçümü
+## Lifecycle Event Mapping: Kanal Sırası ve Zamanlama
 
-Cross-channel orkestrasyonun en riskli yanı: her kanal "ben dönüştürdüm" der ama gerçekte kullanıcı zaten alacaktı. **Incrementality**, bir kanalın organik olmayan katkısını ölçer — yani o kanal olmasaydı satın alma gerçekleşir miydi? Bunu ölçmek için hold-out grup testi gerekir.
+Identity graph kim olduğunu söyler, lifecycle event mapping ne zaman hangi kanalda ne olduğunu söyler. Cross-channel atribüsyon için kullanıcının journey'sindeki her touchpoint'i zaman damgalı event olarak kaydet. Örnek event tablosu:
 
-Hold-out test şöyle kurulur: kullanıcı tabanını rastgele %90 exposed + %10 hold-out diye ikiye ayırın. Exposed grup tüm kanallarda mesaj alır (paid + email + push), hold-out hiçbir şey almaz. 14-30 gün sonra iki grubun conversion rate'ini karşılaştırın. Fark = incrementality. Örneğin exposed grup %5.2 dönüşüm yapar, hold-out %4.8 yapar → net lift %0.4 → bu %8.3 incrementality demektir (0.4/4.8).
+| user_id | event_type | channel | timestamp | campaign_id | revenue |
+|---------|------------|---------|-----------|-------------|---------|
+| user_123 | ad_click | google_ads | 2026-08-01 10:15 | camp_A | null |
+| user_123 | email_open | klaviyo | 2026-08-02 09:00 | email_B | null |
+| user_123 | push_click | onesignal | 2026-08-03 14:30 | push_C | null |
+| user_123 | purchase | web | 2026-08-03 15:00 | null | 120 |
 
-2026'da hold-out testini sadece paid media'ya değil, **tüm kanallara birden** uygulamak kritik. Bazı markalar sadece Facebook'u hold-out eder ama e-posta ve push açık kalır — bu yanlış bir test. Çünkü Facebook'un katkısını ölçerken e-posta'nın hâlâ devrede olması "net incrementality" göstermez. Doğru yöntem: tüm marketing touch point'lerini kapatmak (true control) veya her kanalı sırayla kapatarak bağımsız lift'lerini ölçmek (sequential holdout).
+Bu tabloyu oluşturmak için server-side tracking zorunlu. Client-side pixel'ler third-party cookie kaybıyla % 40-60 event kaybına yol açıyor (Chrome Privacy Sandbox raporlarına göre 2025'te ortalama %52). [Dijital Pazarlama](https://www.roibase.com.tr/tr/dijitalpazarlama) altyapısında server-side GTM + first-party cookie ile event loss %5'in altına düşer.
 
-Hold-out testini her quarter yapın. Çünkü kanalların incrementality'si mevsimsel ve rekabet koşullarına göre değişir. Q4'te paid media incrementality'si düşer (herkes alışveriş yapacak zaten), Q1'de yükselir (soğuk hedef kitleye ulaşmak gerekir).
+Lifecycle event mapping ile şu analizleri yaparsın:
 
-## Atribüsyon Modeli: Data-Driven + Shapley
+1. **Time-to-conversion by channel sequence:** "Google Ads → Email → Purchase" path'i ortalama 48 saat sürüyorsa, "Email → Push → Purchase" 12 saatte tamamlanıyorsa, push'ın conversion hızlandırma rolü var.
 
-Cross-channel orkestrasyonda son tıklama modeli çöp, ilk tıklama modeli çöp, lineer model de çöp. **Data-driven attribution** (DDA) veya **Shapley value** kullanın. DDA Google Analytics 4'te mevcut ama sadece Google Ads + GA4 eventlerini görür — e-posta, push, organic social, affiliate gibi kanalları kapsamaz. Bu yüzden kendi DDA modelinizi warehouse üzerinde kurmak gerekir.
+2. **Channel overlap matrix:** Kaç kullanıcı aynı gün hem paid ad hem email'e maruz kalıyor? Overlap %30'u geçiyorsa, kampanya timing koordinasyonu gerekiyor.
 
-Shapley value oyun teorisinden gelir: her kanalın marjinal katkısını hesaplar. Örneğin bir kullanıcı şu yolculuğu yaptı: Facebook → Email → Push → Satın Alma. Shapley her kanalın tüm permütasyonlardaki katkısını ortalar. Eğer Facebook + Email birlikte %60 conversion rate, yalnız Facebook %30, yalnız Email %35 veriyorsa Shapley Email'e daha fazla kredi atar (çünkü Email olmadan düşüş daha büyük). Python'da `shapley` kütüphanesi veya SQL'de recursive CTE ile hesaplanabilir.
+3. **Drop-off noktası analizi:** Email'den push'a geçişte %60 drop-off varsa, push permission rate'i düşük demektir.
 
-DDA veya Shapley çıktısı her kanalın "weighted credit" skorudur. Bu skoru bütçe dağılımına bağlayın: eğer paid media Shapley credit'i %45 ise toplam pazarlama bütçesinin %45'i paid'e gitsin. Ama dikkat: Shapley geçmişe bakar, gelecek tahmin etmez — incrementality testi ile validate edin. Bazı markalar Shapley %60 kredi verdiği bir kanalı hold-out ettiğinde lift sadece %10 çıkıyor — demek ki kanal "görünür" ama "gerekli" değil.
+Bu analizleri Python pandas veya SQL window function'larıyla yap. BigQuery'de `LAG()` function ile bir önceki event'i aynı satıra getirip channel transition matrisini çıkarabilirsin.
 
-## Orkestrasyonu Operasyonel Hale Getirmek
+## Hold-Out Gruplar: İncrementality Kanıtı
 
-Cross-channel orkestrasyon teoride basit, pratikte karmaşık. Identity graph güncelliğini korumak, event mapping'i her yeni kampanyada revize etmek, hold-out testini iş ekibine izah etmek (çünkü "neden bu kullanıcılara reklam göstermiyoruz?" sorusu gelir) operasyonel disiplin ister.
+Cross-channel atribüsyon modelinin söylediği ile gerçek incrementality arasında fark vardır. Model "paid media son 7 gün içindeki conversion'ların %40'ına katkıda bulundu" diyebilir — ama o kullanıcılar paid medya olmasaydı da satın alır mıydı? Bu soruyu cevaplamak için hold-out grup testi gerekiyor.
 
-Önce **signal pipeline** kurun: her kanaldan event'ler canlı olarak warehouse'a akmalı (latency < 5 dakika). Batch ETL yeterli değil — çünkü aynı gün içinde bir kullanıcı Facebook'tan gelip e-posta açabilir, bu iki event'i birleştirmek real-time identity resolution gerektirir. Reverse ETL ile warehouse'daki lifecycle segment'lerini Meta, Google, Braze, Iterable gibi platformlara geri yazın.
+Hold-out tasarımı: Toplam audience'i rastgele ikiye böl. Bir grup (treatment) tüm kanallara maruz kalır, diğer grup (hold-out) belirli bir kanaldan hariç tutulur. Örneğin paid media incrementality'sini test ediyorsan, hold-out grubu Google Ads remarketing listesinden çıkar, email ve push'u normal yolla al. 14-30 gün sonra iki grup arasındaki conversion rate farkı senin gerçek lift'in.
 
-İkinci adım **campaign taxonomy**: her kampanya `{channel}_{stage}_{audience}_{date}` formatında isimlendirilsin (örneğin `meta_consideration_cart_abandoners_2026_07`). Bu taxonomy olmadan event'leri lifecycle'a bağlamak mümkün değil. Roibase'in [Dijital Pazarlama](https://www.roibase.com.tr/tr/dijitalpazarlama) servisi bu taxonomy + signal pipeline altyapısını kuruyor.
+Tipik bir test kurulumu:
 
-Üçüncü adım **reporting dashboard**: her kanal için son tıklama revenue + Shapley credit + incrementality lift metriklerini yan yana gösterin. Eğer bir kanal son tıklama revenue'de %50 ama Shapley'de %20, incrementality'de %10 ise o kanal overvalued demektir — bütçe kısın veya stratejisini değiştirin.
+- **Treatment grubu:** 50,000 kullanıcı, paid + email + push
+- **Hold-out grubu:** 50,000 kullanıcı, email + push (paid hariç)
+- **Süre:** 21 gün
+- **Ölçülen metrik:** Conversion rate, revenue per user
 
-Cross-channel orkestrasyon bir kez kuruldu mu sürekli evrilir. Her quarter yeni bir lifecycle stage ekleyin (örneğin "churn risk" segment'i), her ay hold-out testini farklı bir kanala uygulayın, her hafta identity graph çözünürlüğünü izleyin. 2026'da pazarlama bu seviyede mühendislik disiplini talep ediyor — yoksa çok kanallı harcama sadece maliyeti çoğaltır, dönüşümü çoğaltmaz.
+Eğer treatment conversion rate %3.2, hold-out %2.8 ise, paid media gerçek lift'i %0.4 puan (14% relative lift). Atribüsyon modelin paid'e %40 kredi veriyorsa ama gerçek lift %14 ise, model overestimate ediyor demektir.
+
+Hold-out testinin başarısı için:
+
+- **Rastgele atama zorunlu:** User ID'nin son basamağına göre bölme gibi deterministik yöntemler sampling bias yaratır.
+- **Sample size yeterli olmalı:** A/B test calculator'da %95 confidence, %80 power için minimum 10,000 kullanıcı/grup gerekir.
+- **Test süresini sezonalite ile hizala:** Black Friday öncesi başlatırsan sonuçlar왜곡enir.
+
+## Orkestrasyon Engine: Karar Mekanizması
+
+Identity graph + lifecycle event + hold-out sonuçlarını birleştirince ortada bir karar motoru kurmak kalıyor. Bu motor "kullanıcı X şu an hangi kanaldan mesaj almalı?" sorusunu cevaplıyor. Basit bir rule-based engine bile büyük fark yaratır:
+
+```python
+def next_channel(user_id, event_history):
+    last_event = event_history[-1]
+    hours_since_last = (now - last_event.timestamp).hours
+    
+    if last_event.channel == 'google_ads' and hours_since_last < 24:
+        return 'email'  # Paid'den sonra email ile sıcak tutma
+    elif last_event.channel == 'email' and last_event.event_type == 'open' and hours_since_last < 6:
+        return 'push'  # Email açan kullanıcıya hızlı push
+    elif hours_since_last > 72:
+        return 'paid'  # 3 gün aktivite yok, remarketing
+    else:
+        return None  # Bekle
+```
+
+Production sistemlerde bu logic Airflow DAG'i veya real-time event processor (Kafka + Flink) olarak çalışır. Kullanıcı bir event tetiklediğinde sistem son 7 günlük event history'yi çeker, incrementality skorunu ekler (hold-out testinden gelen channel efficiency), sonraki en optimal kanalı seçer.
+
+Gelişmiş orkestrasyon için machine learning modeli entegre edebilirsin: LightGBM ile "kullanıcı X'e Y kanalından Z zamanında mesaj gönderince conversion olasılığı nedir?" tahmini yap. Feature'lar: user segment, last_interaction_channel, days_since_signup, average_order_value, channel_overlap_count. Model çıktısı channel priority score olur, en yüksek skoru seç.
+
+## Trade-Off: Koordinasyon ile Hız
+
+Cross-channel orkestrasyon tam otomatikleştiğinde bir yan etki ortaya çıkar: kanal takımları özerk karar veremez hale gelir. Email ekibi "yarın kampanya gönderelim" dediğinde orkestrasyon engine "hayır, bu kullanıcılar 2 gün önce paid medyaya maruz kaldı, 48 saat bekle" diyebilir. Bu koordinasyon theorik olarak doğru ama operasyonel esnekliği kırar.
+
+Trade-off'u yönetmek için:
+
+1. **Kanal takımlarına override yetkisi ver:** Kritik kampanyalarda (product launch, flash sale) manual override ile orkestrasyon kuralını ezer.
+2. **Test window'ları tanımla:** Her ayın ilk haftası "free-for-all" yap, takımlar bağımsız test yapsın. Geri kalan 3 hafta orkestrasyon devrede.
+3. **Incrementality dashboard'u paylaş:** Kanal sahipleri kendi contribution'ını canlı görsün, güven oluşsun.
+
+Koordinasyon maliyeti de hesaba kat. Orkestrasyon engine kurulumu ortalama 8-12 hafta (identity graph + event pipeline + hold-out infra + karar motoru). Küçük ekiplerde bu yatırım return süresi 6-9 ay. Eğer yıllık pazarlama bütçen $500K altındaysa, tam orkestrasyon yerine basit channel sequencing (paid → email → push sıralaması) yeterli olabilir.
+
+---
+
+Cross-channel orkestrasyon artık opsiyonel değil. Identity graph'ı kurmazsan aynı kullanıcıyı 3 kez farklı kanalda sayıyor, efficiency yanılsamasına düşüyorsun. Lifecycle event mapping olmadan hangi sıranın çalıştığını bilemiyorsun. Hold-out grupları koşmadan atribüsyon modelinin overestimate ettiğini fark edemiyorsun. 2026'da kanal siled'i kırıp kişi-bazlı orkestrasyona geçen ekipler CAC'i %20-30 düşürüyor, LTV %15-25 artırıyor. Senin stack'in hazır mı?
