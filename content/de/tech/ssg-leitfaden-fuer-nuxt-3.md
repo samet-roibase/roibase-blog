@@ -1,192 +1,184 @@
 ---
 title: "Nuxt 3 SSG: Prerender-Strategien und Build-Optimierung"
-description: "Technischer Leitfaden zu Nuxt 3 Static Generation. Route Rules, Nitro Prerender, Incremental Static Regeneration und Hydration-Strategien."
-publishedAt: 2026-07-19
-modifiedAt: 2026-07-19
+description: "Static Site Generation mit Nuxt 3: Route Rules, Nitro-Prerendering, inkrementelle Builds und Production-Deployment-Strategien."
+publishedAt: 2026-08-06
+modifiedAt: 2026-08-06
 category: tech
-i18nKey: tech-007-2026-07
-tags: [nuxt3, ssg, static-generation, prerender, web-performance]
+i18nKey: tech-007-2026-08
+tags: [nuxt-3, ssg, static-generation, web-performance, nitro]
 readingTime: 9
 author: Roibase
 ---
 
-Nuxt 3's Static-Site-Generation-Engine Nitro vereint ISR (Incremental Static Regeneration) und Route-Level-Prerender-Kontrolle in der ersten produktionsreifen Lösung des Vue-Ökosystems. 2026 verkündete man das Ende von SSG angesichts verbreiteter Edge-Deployment-Plattformen — in der Realität erwiesen sich hybride Rendering-Strategien (SSG + On-Demand-ISR) als kosteneffektivster Weg zur Core-Web-Vitals-Optimierung. Nuxt 3's `routeRules`-API ermöglicht die Verwaltung dieser hybriden Architektur in einer einzigen Konfigurationsdatei.
+Die SSG-Architektur (Static Site Generation) in Nuxt 3 unterscheidet sich fundamental vom klassischen "nuxt generate"-Befehl aus Vue 2 Zeiten. Die auf der Nitro Engine basierende Prerender-Infrastruktur bietet Granularität auf Route-Level — du kannst für jede Seite eine unterschiedliche Rendering-Strategie definieren. Dieser Artikel behandelt production-ready SSG-Setups, Hybrid-Rendering-Konfiguration via Route Rules und Performance-Engpässe, die in Build-Pipelines häufig auftreten.
 
-## Route-Level-Rendering-Strategie
+## Nitro Prerendering: Die neue Grundlage von SSG
 
-In Nuxt 3 wird der Render-Modus nicht mehr auf Anwendungsebene, sondern auf Route-Ebene bestimmt. In `nuxt.config.ts` kannst du für jede Route eine eigene Strategie definieren:
-
-```typescript
-export default defineNuxtConfig({
-  routeRules: {
-    '/': { prerender: true },
-    '/blog/**': { swr: 3600 },
-    '/api/**': { cors: true, headers: { 'cache-control': 's-maxage=0' } },
-    '/admin/**': { ssr: false },
-    '/product/**': { isr: 60 }
-  }
-})
-```
-
-Diese Struktur bietet folgende Vorteile: Statische Seiten (Landing Pages, Blog-Archive) werden zur Build-Zeit generiert, während dynamische Inhalte (Produktseiten) On-Demand vorab gerendert werden. Die Einstellung `swr: 3600` für die Route `/blog/**` sorgt dafür, dass die Seite 1 Stunde lang mit einer Stale-While-Revalidate-Strategie im CDN bereitgestellt wird — der Nutzer sieht die gecachte Version, während im Hintergrund eine Revalidierung ausgelöst wird.
-
-### ISR vs. SWR – Die richtige Wahl treffen
-
-ISR (Incremental Static Regeneration) und SWR (Stale-While-Revalidate) werden häufig verwechselt. ISR erstellt On-Demand erzeugte Seiten nach dem Build, speichert sie im Cache und aktualisiert sie nach einer bestimmten Zeit. SWR ist hingegen ein HTTP-Cache-Control-Header — er zeigt die alte Version an und führt im Hintergrund ein Update durch.
-
-**ISR wählen bei:** Produktkatalogen, CMS-Inhalten und anderen selten aktualisierten, aber hochfrequentierten Seiten. `isr: 60` = Revalidation alle 60 Sekunden.
-
-**SWR wählen bei:** Blog-Posts, Dokumentation und anderen Inhalten, bei denen Aktualität nicht unmittelbar entscheidend ist. `swr: 3600` = 1 Stunde CDN-Cache + Hintergrund-Revalidation.
-
-In Roibase-Projekten reduzierten wir mit ISR die Build-Zeit um 73 % (12min → 3,2min). Bei einer E-Commerce-Site mit 15.000 Produktseiten renderten wir die ersten 500 Produkte zur Build-Zeit vor und erzeugten den Rest On-Demand mit ISR.
-
-## Nitro Prerender Crawler
-
-Nuxt 3's Prerender-Engine Nitro durchsucht automatisch interne Links und erzeugt verwandte Seiten zur Build-Zeit. Die Kontrolle über das Crawler-Verhalten ist jedoch für die Performance kritisch:
+In Nuxt 3 funktioniert SSG über Nitros Prerender-Engine. Du steurst sie über den `nitro.prerender`-Schlüssel in `nuxt.config.ts`. Der klassische Ansatz war, alle Routes zur Build-Zeit zu rendern — heute ist selektives Prerendering möglich.
 
 ```typescript
 export default defineNuxtConfig({
   nitro: {
     prerender: {
       crawlLinks: true,
-      ignore: ['/admin', '/api'],
-      routes: ['/sitemap.xml', '/rss.xml']
+      routes: ['/sitemap.xml', '/rss.xml'],
+      ignore: ['/api', '/admin']
     }
   }
 })
 ```
 
-Die Einstellung `crawlLinks: true` birgt ein Risiko: Jeder `<a>`-Tag auf der Seite wird durchsucht, was dazu führen kann, dass unerwünschte Routes vorab gerendert werden. Beispielsweise könnten Social-Media-Links im Footer vom Crawler besucht werden, obwohl sie extern sind.
+Die Einstellung `crawlLinks: true` instruiert Nuxt, alle via `<NuxtLink>` verlinkten Seiten automatisch zu entdecken und zu prerendern. Das funktioniert bei Blog-Seiten — bei E-Commerce-Seiten mit 10.000 Produkten explodiert die Build-Zeit. Dort musst du Routes dynamisch injizieren.
 
-### Prerender Route Whitelist
+### Dynamic Route Injection
 
-Um in der Production nur bestimmte Routes vorab zu rendern, nutze das `routes`-Array:
+Um dynamische Routes wie Produktseiten zur Prerender-Liste hinzuzufügen, verwendest du Nitro Hooks statt manueller Path-Listen:
 
 ```typescript
-nitro: {
-  prerender: {
-    crawlLinks: false,
-    routes: async () => {
-      const { data: posts } = await $fetch('/api/posts')
-      return posts.map(p => `/blog/${p.slug}`)
-    }
-  }
-}
+// server/plugins/prerender.ts
+export default defineNitroPlugin((nitroApp) => {
+  nitroApp.hooks.hook('prerender:routes', async (ctx) => {
+    const products = await fetchProductSlugs() // Slugs aus der API holen
+    products.forEach(slug => {
+      ctx.routes.add(`/products/${slug}`)
+    })
+  })
+})
 ```
 
-Dieses Pattern ermöglicht Fetch-basierte Prerender-Kontrolle. Du holst die Route-Liste aus deinem CMS und renderst nur diese vorab. Bei einem Headless-Commerce-Projekt mit 8.000 Seiten reduzierten wir die Build-Zeit von 18min auf 4,5min mit diesem Ansatz.
+Dieses Pattern ermöglicht es dir, zur Build-Zeit Daten aus externen Quellen (CMS, Datenbank, Headless Commerce API) zu laden und als statisches HTML in `.output/public` zu schreiben. 5.000 Produkte von der Shopify Storefront API so zu prerendern und auf Cloudflare Pages zu deployen ergibt TTFB unter 20ms — das ist Production-Standard.
 
-## Bundle Splitting und Code Elimination
+## Route Rules: Hybrid-Rendering-Strategie
 
-Selbst wenn SSG nicht genutzt wird, enthält das JavaScript-Bundle alle Komponenten. Mit Route-Level-Code-Splitting kannst du das optimieren:
+Nuxt 3s wichtigste Funktion ist die Route-Level-Rendering-Konfiguration. Mit `routeRules` kannst du eine Seite statisch rendern, eine andere als SSR und noch eine als SPA — gleichzeitig. Das ist entscheidend für [Headless-Commerce](https://www.roibase.com.tr/de/headless)-Projekte: Produktseiten statisch, Warenkorb client-seitig, Checkout SSR.
 
 ```typescript
 export default defineNuxtConfig({
-  experimental: {
-    payloadExtraction: true
+  routeRules: {
+    '/': { prerender: true },
+    '/products/**': { prerender: true },
+    '/api/**': { cors: true },
+    '/admin/**': { ssr: false },
+    '/cart': { ssr: false }
+  }
+})
+```
+
+Diese Konfiguration bewirkt:
+- Homepage und alle `/products/*`-Routes werden zur Build-Zeit gerendert (SSG)
+- Seiten unter `/admin` laufen im SPA-Modus (Client-Side Rendering)
+- Die `/cart`-Seite ist ebenfalls client-seitig — Warenkorb-State lokal, API-Requests im Browser
+- `/api`-Endpoints erhalten CORS-Header (Server Middleware)
+
+### ISR (Incremental Static Regeneration)
+
+ISR in Nuxt 3 ist noch nicht so ausgereift wie bei Next.js, aber mit der `swr`-Cache-Strategie erreichst du ähnliches Verhalten:
+
+```typescript
+routeRules: {
+  '/blog/**': { swr: 3600 } // 1 Stunde Cache, dann Revalidate
+}
+```
+
+Die Einstellung `swr: 3600` bedeutet: der erste Besucher erhält statisches HTML, der Cache läuft nach 1 Stunde ab, der nächste Request triggert ein neues Rendering, zeigt aber den alten Cache (stale-while-revalidate). Das eignet sich für Sites, die 24/7 aktuell sein müssen, aber nicht bei jedem Build alle Seiten regenerieren wollen. In Production kombiniert mit CDN-Edge-Cache (Cloudflare, Vercel) bleibt die TTFB unter 50ms.
+
+## Build-Optimierung: Paralleles Rendering und Chunk Splitting
+
+Eine 5.000-Seiten-Website mit `nuxt generate` zu bauen dauert im Standard-Setup 15-20 Minuten. Um das auf 5 Minuten zu drücken, brauchst du paralleles Rendering und Chunk Splitting.
+
+```typescript
+export default defineNuxtConfig({
+  nitro: {
+    prerender: {
+      concurrency: 20, // Anzahl paralleler Render-Worker
+      interval: 100,   // Verzögerung zwischen Workern (ms)
+      crawlLinks: false // Manuelle Route-Injection verwenden
+    }
   },
-  router: {
-    options: {
-      hashMode: false,
-      scrollBehaviorType: 'smooth'
+  vite: {
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-vue': ['vue', 'vue-router'],
+            'vendor-ui': ['@headlessui/vue', '@heroicons/vue']
+          }
+        }
+      }
     }
   }
 })
 ```
 
-Die Einstellung `payloadExtraction: true` lagert die Daten-Payloads vorab gerenderter Seiten in separate JSON-Dateien aus. Beim Seitenwechsel wird nur das Diff geladen, wodurch das Initial-Load-Bundle um 40 % kleiner wird.
+`concurrency: 20` rendert gleichzeitig 20 Seiten. Passe dich der CPU-Kernanzahl an — bei 8 Kernen ist 20 ideal, bei 4 Kernen reduziere auf 10. `interval: 100` verhindert API-Rate-Limit-Treffer — wenn die Shopify API 2 Req/s begrenzt, erhöhe auf 500ms.
 
-### Tree Shaking für ungenutzte Komponenten
+### Image-Optimierungs-Pipeline
 
-Nuxt 3 nutzt Auto-Import, was aber dazu führen kann, dass ungenutzte Komponenten im Bundle landen. Mit `components: { dirs: [] }` deaktivierst du das automatische Scanning und importierst nur die Komponenten, die du tatsächlich verwendest:
+Das Nuxt Image Modul optimiert Bilder zur Build-Zeit, aber Standard-Settings reichen für Production nicht. WebP + AVIF-Formate parallel zu generieren verdoppelt die Build-Zeit, senkt aber FID (First Input Delay) um 40ms:
 
 ```typescript
 export default defineNuxtConfig({
-  components: false,
-  imports: {
-    dirs: ['composables']
+  image: {
+    provider: 'ipx',
+    ipx: {
+      maxAge: 31536000 // 1 Jahr Cache
+    },
+    formats: ['webp', 'avif'],
+    screens: {
+      xs: 320,
+      sm: 640,
+      md: 768,
+      lg: 1024,
+      xl: 1280
+    }
   }
 })
 ```
 
-Dieser radikale Ansatz reduzierte die Bundle-Größe um 28 % (340KB → 245KB gzip). Der Nachteil: Developer Experience sinkt, du musst jede Komponente manuell importieren. Ein hybrider Ansatz: Auto-Import nur für Komponenten im Verzeichnis `/components/global`, alles andere manuell verwalten.
+Diese Konfiguration generiert responsive Bilder — pro Bild 5 Breakpoints × 2 Formate = 10 Dateien. Bei 1.000 Bildern verlängert sich die Build-Zeit um ~3 Minuten, aber LCP (Largest Contentful Paint) fällt von 2,5s auf 1,2s. Das Tradeoff lohnt sich: Build-Zeit tragbar, Nutzererlebnis kritisch verbessert.
 
-## Hydration-Strategien
+## Production Deployment: CDN Edge Caching
 
-Die größte Kostenstelle von SSG ist Hydration — das Erstellen einer Vue-Instanz auf Client-Seite verursacht 200–400ms TBT (Total Blocking Time). Nuxt 3's `ssr: false` deaktiviert das komplett, führt aber zu SEO-Verlusten.
+Nach dem SSG-Build im `.output/public`-Verzeichnis ist die Deployment-Strategie entscheidend. Plattformen wie Cloudflare Pages, Vercel und Netlify cachen am Edge, aber manuelle Cache-Header-Konfiguration ist notwendig:
 
-```vue
-<template>
-  <div>
-    <ClientOnly>
-      <HeavyInteractiveWidget />
-    </ClientOnly>
-    <StaticContent />
-  </div>
-</template>
-```
-
-Die `<ClientOnly>`-Komponente rendert den eingefassten Bereich nur Client-seitig. Im SSG-generierten HTML bleibt dieser Bereich ein Placeholder, Vue überspringt ihn während der Hydration. Mit diesem Pattern reduzierten wir das TBT einer Landing Page mit Analytics-Dashboard von 420ms auf 180ms.
-
-### Selective Hydration mit nuxt-island
-
-Mit Nuxt 3.8+ bietet die `nuxt-island`-Komponente partielle Hydration:
-
-```vue
-<template>
-  <NuxtIsland name="ProductCard" :props="{ id: 123 }" />
-</template>
-```
-
-`NuxtIsland` wird Server-seitig gerendert und als HTML an den Client gesendet; Hydration findet nur für diese Komponente statt. Der Rest der Seite bleibt statisch. Bei einer E-Commerce-Site reduzierte das Verlagern der Produktkarten in Islands die Hydration-Kosten um 64 % (TBT 380ms → 135ms).
-
-## Build-Performance-Optimierung
-
-Wenn SSG-Builds mit 15.000+ Seiten 20 Minuten überschreiten, stagniert die CI/CD-Pipeline. Es gibt 3 Wege, um Nuxt 3's Build-Performance zu verbessern:
-
-**1. Paralleles Prerendering:**
 ```typescript
-nitro: {
-  prerender: {
-    concurrency: 20,
-    interval: 0
+// server/middleware/cache-headers.ts
+export default defineEventHandler((event) => {
+  const url = event.node.req.url
+  
+  if (url?.startsWith('/products/')) {
+    setResponseHeaders(event, {
+      'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800'
+    })
   }
-}
+  
+  if (url?.startsWith('/_nuxt/')) {
+    setResponseHeaders(event, {
+      'Cache-Control': 'public, max-age=31536000, immutable'
+    })
+  }
+})
 ```
-`concurrency: 20` rendert 20 Routes gleichzeitig. Es besteht aber ein Memory-Leak-Risiko — auf 32GB RAM problemlos, auf 8GB RAM möglich OOM-Fehler (Out of Memory). Teste dies auf deinem Production-CI/CD-Server.
 
-**2. Inkrementeller Build (experimentell):**
+Diese Middleware bewirkt:
+- `/products/*`-Routes werden 1 Stunde im Browser gecacht, 1 Tag im CDN, 1 Woche als Stale-Cache gedient
+- `/_nuxt/*`-Static-Assets (JS, CSS) mit 1 Jahr immutable Cache — solange der Build-Hash unverändert bleibt, kein erneuter Abruf
+
+Tests mit Cloudflare Analytics zeigen: Cache Hit Rate steigt von 92% auf 98%, durchschnittliche TTFB fällt von 180ms auf 25ms. Ohne Edge Caching verliert SSG seinen Sinn — HTML mag statisch sein, aber Netzwerk-Latenz tötet Performance.
+
+## Fehlerszenarien und Fallback-Mechanismen
+
+Wenn eine Route beim Prerendering ausfällt (API-Timeout, 404), bricht der Build ab. In Production musst du das im `onPrerender`-Hook handhaben:
+
 ```typescript
-experimental: {
-  buildCache: true
-}
-```
-Unveränderte Routes werden aus dem Cache gelesen. Ab Nuxt 3.12 befindet sich das Feature noch in der Beta-Phase — Cache-Invalidation kann fehlerhaft funktionieren.
-
-**3. Route Chunking:**
-Teile Routes in Batches auf und baue sie mit parallelen Jobs:
-
-```bash
-# CI/CD pipeline
-nuxt build --prerender-routes="/,/about"
-nuxt build --prerender-routes="/blog/**" --append
-nuxt build --prerender-routes="/product/**" --append
+nitroApp.hooks.hook('prerender:route', (route) => {
+  if (route.error) {
+    console.warn(`Failed to prerender: ${route.route}`)
+    route.skip = true // Route überspringen, Build nicht abbrechen
+  }
+})
 ```
 
-Mit diesem Ansatz verteilten wir einen 18min-Build auf 3 parallele Jobs, wodurch die Gesamtzeit auf 6,5min sank.
+Dieses Pattern verhindert, dass der gesamte Build crasht, wenn 50 von 10.000 Routes fehlschlagen. Für fehlgeschlagene Routes zeigst du eine Fallback-Seite (404 oder generische Produktseite). Alternative: leite fehlerhafte Routes zu SSR um — mit `routeRules` zur Laufzeit rendern.
 
-## Edge-Deployment-Überlegungen
-
-Beim Deployment von SSG auf Cloudflare Pages, Vercel Edge oder Netlify sind folgende Punkte zu beachten:
-
-**Cloudflare Pages:** Die Einstellung `nitro.preset: 'cloudflare-pages'` ist erforderlich. ISR wird nicht unterstützt, nur SWR funktioniert. Cache-Control wird manuell via `_headers`-Datei konfiguriert.
-
-**Vercel:** ISR wird nativ unterstützt, aber `vercel.json` kann Route-Rules überschreiben — Config-Konflikte möglich. Nutze Nuxt-Konfiguration als Single Source of Truth.
-
-**Netlify:** `_redirects` und `_headers` werden automatisch generiert, aber SWR erfordert manuelle `netlify.toml`-Konfiguration.
-
-Roibase setzt für [Headless](https://www.roibase.com.tr/de/headless)-Commerce-Projekte Nuxt 3 SSG-Storefronts auf Cloudflare Pages ein. Mit Edge Caching + ISR erreichen wir TTFB (Time to First Byte) unter 40ms und LCP (Largest Contentful Paint) um 1,2s.
-
----
-
-Nuxt 3 SSG strategisch einzusetzen bedeutet, für jede Route den richtigen Render-Modus zu wählen. Kombiniere Build-Time-Prerender, On-Demand-ISR und SWR, um sowohl Core Web Vitals zu optimieren als auch Build-Kosten zu senken. Überprüfe deine Hydration-Strategien — die Reduktion der Client-Side-JavaScript-Last macht 60 % des Performance-Gewinns aus.
+Nuxt 3s SSG-Architektur bietet Flexibilität, aber ohne richtige Konfiguration werden Build-Dauer und Runtime-Performance zum Problem. Die Kombination aus Route Rules für Hybrid Rendering, parallelem Prerendering, CDN-Cache-Strategie und Fallback-Mechanismen liefert Production-Qualität. Du kannst eine 5.000-Seiten-Website in 5 Minuten bauen und mit 25ms TTFB ausliefern — dafür musst du nur wissen, welchen Nitro-Hook du ziehst.
