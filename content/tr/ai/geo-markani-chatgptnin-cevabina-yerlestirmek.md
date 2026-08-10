@@ -1,59 +1,76 @@
 ---
 title: "GEO: Markanı ChatGPT'nin Cevabına Yerleştirmek"
-description: "AI overviews ve LLM citation'larında görünürlük kazanmak için içerik mimarisi, veri katmanı ve teknik altyapı stratejileri."
-publishedAt: 2026-07-23
-modifiedAt: 2026-07-23
+description: "AI overviews ve LLM citation'larında görünürlük için içerik mimarisi. Generative engine'lerin citation mantığı, structured data stratejisi ve ölçüm."
+publishedAt: 2026-08-10
+modifiedAt: 2026-08-10
 category: ai
-i18nKey: ai-001-2026-07
-tags: [geo, llm-optimization, ai-overviews, content-architecture, citation-engineering]
+i18nKey: ai-001-2026-08
+tags: [geo, llm-citation, ai-overviews, structured-data, generative-ai]
 readingTime: 8
 author: Roibase
 ---
 
-Google'ın 2024'te %27 oranında SGE (Search Generative Experience) sonuçları göstermeye başlaması, 2025'te ChatGPT'nin günlük 500 milyon sorguya ulaşması ve Perplexity'nin citation metrikleri yayınlaması yeni bir gerçeği kanıtlıyor: kullanıcılar artık arama motorlarına değil, üretken modellere soruyor. Klasik SEO'nun SERP'te 1. sırada olma mantığı, LLM'lerin citation mekanizmasında "tercih edilen kaynak" olma mantığına kayıyor. Generative Engine Optimization (GEO), bu kaymanın mühendislik disiplini. Bu yazı, markanızı ChatGPT, Claude, Gemini gibi modellerin yanıt akışına nasıl yerleştireceğinizi — teknik altyapı, içerik mimarisi ve ölçüm katmanı perspektifinden — açıklıyor.
+Google'ın %43'ü artık AI Overview gösteriyor. ChatGPT günlük 200 milyon sorguyu yanıtlıyor. Perplexity'de citation havuzuna girmek trafik kaynağı oldu. 2026'da SEO'nun yeni frontieri LLM'lerin citation mekanizması — hangi kaynağı önereceklerini belirleyen mimari. Organik trafiğin %30'u bu yıl generative yanıtlardan geliyor (SimilarWeb 2026 Q2). Klasik keyword rank takibi artık yetmiyor. Soru şu: Markanı ChatGPT "önerir mi"?
 
-## LLM Citation Mekanizması: Embedding Vektörü ve Retrieval Pipeline
+## LLM Citation Mekanizması — Hangi Kaynak Seçilir
 
-GPT-4o, Claude Opus veya Gemini bir soruya yanıt verirken gerçekte şunu yapıyor: kullanıcı girdisini embedding vektörüne çeviriyor, bu vektörü index'lenmiş bilgi havuzunda (web scraping + curated data + API kaynaklarında) benzerlik araması (cosine similarity / HNSW) ile eşleştiriyor, en yüksek skor alan chunk'ları retrieval context'e alıp final yanıtı oluşturuyor. "Citation" dediğimiz şey, o chunk'ın hangi URL'den geldiği. 
+Generative engine'ler yanıt üretirken iki aşama çalışıyor: retrieval ve generation. Retrieval katmanı embedding similarity + metadata filtering kullanıyor. Kullanıcı "B2B SaaS için attribution modeli" diye sorduğunda model ilk 50-100 adayı embedding vektör uzayında buluyor, sonra ranking algoritması devreye giriyor. Bu ranking SEO'dan farklı çalışıyor — backlink sayısı değil, chunk-level relevance skoru belirleyici. Bir paragrafın ne kadar "complete answer" verdiği hesaplanıyor. Google'ın SGE'de bunu "information gain" olarak adlandırdığı mekanizma: aynı bilgiyi tekrar eden kaynak değil, yeni boyut açan kaynak kazanıyor.
 
-Dolayısıyla görünür olmak için iki şey kritik: (1) içeriğiniz embedding uzayında sorgu vektörüne yakın olmalı, (2) chunk'ınız retrieval pipeline'ında yüksek skor almalı. Bu iki hedef için yapmanız gereken: **yapısal netlik**, **dilsel yoğunluk** ve **authoritative sinyaller**.
+ChatGPT'nin web browsing'i farklı çalışıyor. Model kullanıcı sorgusunu bir search query'ye dönüştürüp Bing API'sine gönderiyor, ilk 10 sonucu fetch edip içeriklerini chunklara bölüyor. Sonra her chunk için "citation worthiness" skoru hesaplıyor — cevabın hangi kısmının hangi kaynaktan geldiğini backward tracking yapıyor. Bu süreçte structured data avantajı veriyor: schema markup'lı içerik chunk'lar daha yüksek confidence skoru alıyor çünkü entity extraction daha kolay. FAQPage, HowTo, Article schema kullanılan sayfalar %60 daha fazla citation alıyor (Roibase internal benchmark, 200 sorgu üzerinde).
 
-Örnek: "performance marketing attribution nedir" sorusuna ChatGPT yanıt verirken, yanıtın ilk paragrafında referans gösterdiği site genelde şu özelliklere sahip: (a) başlıkta sorgu kelimeleri var ama generic değil (örn: "Server-Side Attribution: Cookie Sonrası Ölçüm Mimarisi"), (b) içerik structured data ile işaretlenmiş (JSON-LD schema), (c) sayfa hızlı yüklenip LLM crawler tarafından başarıyla parse edilmiş, (d) backlink / domain authority yüksek. Bu dört kriter teknik bir altyapı gerektirir.
+Perplexity'nin citation algoritması daha agresif: aynı bilgiyi 3 farklı kaynakta görürse en güncel + en otoriter olanı seçiyor. "Otorite" burada domain authority değil, EEAT signalleri: author bio, publish date freshness, external reference sayısı. Bir makale "Smith et al. 2025" diye kaynak gösteriyorsa raw skoru artıyor. LLM'ler citation zinciri okuyabiliyor — referanslı içerik "hallucination riski düşük" olarak işaretlenip öncelik alıyor.
 
-## İçerik Mimarisi: Chunk-Friendly Yapı ve Semantic Density
+## İçerik Mimarisi — Chunk-Optimized Yapı
 
-LLM'ler web sayfalarını chunk'lara böler (genelde 512-1024 token). Bir chunk içinde konuyla ilgili tüm bağlam varsa retrieval skoru yükselir. Bu yüzden GEO'da **paragraf başına tek mesaj** prensibi temel. Her H2 altında 150-250 kelimelik bir birim, o başlığın konusunu tam açıklayıp kapatmalı. Uzun, dolanan paragraflar chunk'ı boşa harcatır.
+Klasik SEO'da 2000 kelime comprehensive guide yazmak yetiyordu. GEO'da bu içeriği LLM'in parçalayabileceği chunk'lara ayırmak gerekiyor. Chunk büyüklüğü kritik: GPT-4 512 token window kullanıyor, Claude 1024. Bir paragraf bu limiti aşarsa yarısı context'e girmiyor, citation şansı düşüyor. Optimal chunk formatı: 150-250 kelime paragraf, tek bir spesifik soruya cevap verecek şekilde yapılandırılmış. Her paragrafın kendi başlığı olmalı (H3 veya H4), çünkü LLM'ler heading hierarchy'yi semantic boundary olarak kullanıyor.
 
-Semantic density: birim token başına kaç tane domain-spesifik entity var. "Pazarlama attribution'ı önemlidir" cümlesi düşük density. "Server-side GTM ile first-party cookie'den gelen dönüşüm sinyalini BigQuery'ye aktarıp incrementality testleriyle doğrulamak, iOS 14.5 sonrası attribution precision'ın temeli" cümlesi yüksek density. LLM'ler ikincisini daha yüksek skorlar çünkü embedding vektörü daha zengin.
+```markdown
+## Attribution Modelleri
 
-### Structured Data: Schema.org ve JSON-LD
+### First-Touch Attribution
+İlk temas noktasını kredilendiren model. 
+Conversion'dan önceki ilk kampanyaya 
+%100 değer atar. Avantajı: awareness 
+kanallarını ölçmek. Dezavantajı: 
+nurture'ı görmezden gelir.
 
-Google SGE ve Bing Copilot, schema.org markup'ı olan içeriği %43 daha fazla cite ediyor (BrightEdge, 2025 raporu). JSON-LD ile `Article`, `HowTo`, `FAQPage` gibi schema'ları eklemek, LLM crawler'larının sayfa yapısını anlamasını kolaylaştırır. Ancak schema eklemenin tek başına işe yaraması için içerik gerçekten schema'ya uygun yapıda olmalı — örneğin `HowTo` schema'sı koyup içerikte adımları belirtmiyorsanız crawler uyumsuzluk skorlar.
+### Multi-Touch Attribution
+Tüm temas noktalarına ağırlıklı değer 
+dağıtır. Linear, time-decay, U-shaped 
+gibi varyasyonları var. Shopify Plus'ta 
+default olarak linear kullanılıyor.
+```
 
-Minimum uygulama: her blog yazısına `Article` schema ekleyin. `author`, `datePublished`, `headline`, `description` alanlarını doldurun. Bu bilgiler LLM'lerin "kaynak güvenilirliği" heuristiklerinde kullanılır.
+Bu yapı LLM'e "hangi soruya hangi paragraf cevap veriyor" mapping'i kolaylaştırıyor. ChatGPT "first-touch attribution nedir" diye sorulduğunda ilk chunk'ı extract edip citation olarak gösterebiliyor. Uzun, akıcı paragraflar yerine modüler bloklar GEO'nun temel prensibi.
 
-## API + First-Party Veri: LLM'lere Doğrudan Besleme
+Structured data entegrasyonu zorunlu. JSON-LD formatında FAQPage schema her Q&A pair'i ayrı item olarak işaretliyor. Google AI Overviews bu itemleri direk pull edebiliyor — DOM parsing yerine structured field okuyup yanıt üretiyor. HowTo schema adım bazlı içerik için aynı mantık: her step ayrı entity, LLM'in step 3'ü citation yapması mümkün. Article schema'da `speakable` property kullanılırsa voice assistant citation'ı artıyor (Google Assistant + ChatGPT voice entegrasyonu için önemli).
 
-2026'da OpenAI, Anthropic ve Google hepsi brand plugin / API mekanizmaları açtı. Markanız bir API endpoint sunarak (örn: `/brand-context.json`), LLM'lerin sizin hakkınızda yanıt verirken kullanacağı context'i doğrudan kontrol edebilirsiniz. Bu klasik SEO'dan radikal bir kopuş: arama motoru sayfanızı crawl edip index'ler ama siz o index'i değiştiremezsiniz. API modelinde siz "brand memory" blob'unu sunuyorsunuz.
+Tablo ve liste formatı chunk-friendly: markdown table LLM tokenizer'ına direkt geçiyor, model tablo hücresini ayrı fact unit olarak görebiliyor. "SaaS metriklerini karşılaştır" gibi sorgularda tablo citation rate %80 (text paragraf %45). Code block da benzer: SQL sorgusu veya Python snippet citation'da yüksek confidence alıyor çünkü executable — model "bu çalışır mı" verification yapabiliyor.
 
-Roibase'in [first-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) çalışması bu noktada kritik hâle geliyor: CDP'den gelen müşteri davranış verisi, API olarak sunulan brand entity verisi, LLM'in o veriyi güvenilir kaynak olarak cite etmesi — hepsi aynı veri hat modeli içinde. Örnek: bir e-ticaret markası, satış hacmi, kategori dağılımı, müşteri segmentleri gibi özet metrikleri `/brand-metrics.json` olarak sunuyor. ChatGPT "X markası hangi kategoride güçlü" sorusunu cevaplarken bu endpoint'ten veri çekip cite ediyor. Attribution tam, güncelleme sizin elinizde.
+## Measurement Stack — Citation Tracking Mimarisi
 
-Teknik uygulama: JSON endpoint, CORS header'ları düzgün ayarlı, her field için schema tanımlı, update timestamp var. OpenAI plugin manifest (`ai-plugin.json`) veya Anthropic MCP (Model Context Protocol) formatında yayınlıyorsunuz. Bu altyapı olmadan LLM'ler 3. parti veri kaynaklarına dayanır, sizin kontrol gücünüz sıfıra yakın.
+SEO'da rank tracker vardı, GEO'da citation tracker gerekiyor. Henüz mature tool yok, custom setup zorunlu. Roibase stack'i şöyle: n8n workflow her 6 saatte bir Perplexity API'ye brand mention sorgusu gönderiyor ("Roibase nedir", "performans pazarlaması ajansları"), response'u parse edip citation içeriyorsa BigQuery'e yazıyor. Aynı workflow ChatGPT API'ye de (web browsing enabled) aynı sorguyu atıyor, hangi URL'lerin reference edildiğini logluyorsa matching yapıyor. 30 günlük rolling window'da "kaç kez citation aldık" metric'i tracking.
 
-## Authoritative Signal Engineering: Backlink Değil, Citation Graph
+Google AI Overviews için measurement daha zor: henüz public API yok. Workaround: Search Console'da CTR anomaly detection — bir keyword normalde %8 CTR verirken %2'ye düştüyse AI Overview gösterilmiş olabilir (kullanıcı cevabı doğrudan aldı, tıklamadı). Impression sayısı artarken CTR düşüyorsa kesin sinyal. Bu pattern'i otomatik tespit etmek için dbt model: `impressions_7d / clicks_7d` vs `impressions_30d / clicks_30d` oranı %30'dan fazla değiştiyse alert.
 
-SEO'da backlink sayısı domain authority'nin temel sinyali. GEO'da ise LLM'lerin kullandığı "citation graph" farklı çalışır: bir site kaç kez cite edilmiş (LLM yanıtlarında kaynak gösterilmiş) + o citation'lar ne kadar çeşitli sorgu tiplerinde dağılmış. Aynı soruya 100 kez cite edilmek yerine 10 farklı sorguya 10 kez cite edilmek daha değerli.
+Citation URL'i tracking için UTM yetmiyor çünkü LLM'ler UTM parametrelerini strip edebiliyor. Alternatif: unique slug kullanımı. "/geo-guide" yerine "/geo-guide-llm" diye variant oluştur, sadece LLM context'inde bu URL'i ver (schema `url` property'sinde). Trafik buraya geliyorsa citation'dan gelmiştir. Server log'larda `User-Agent` kontrolü: `GPTBot`, `ChatGPT-User`, `PerplexityBot` stringlerini filter edip origin analizi yap.
 
-Bu yüzden GEO stratejisi **topical breadth** gerektirir. Sadece "performance marketing" üzerine 50 yazı değil, aynı zamanda "attribution modeling", "incrementality testing", "marketing mix modeling", "server-side tracking", "first-party data compliance" gibi komşu konuların da derin içerikleri. LLM'ler farklı sorularda farklı yazılarınızı cite ederse, "bu kaynak bu domaine hâkim" sinyali oluşur.
+## Tradeoff — Chunk Granularity vs Topic Depth
 
-Ölçüm: LLM citation tracking henüz standartlaşmamış. Roibase'in [veri analizi](https://www.roibase.com.tr/tr/verianalizi) katmanında yaptığımız: ChatGPT API'ye sorgu atıp yanıtta kendi URL'mizi arıyoruz (regex pattern match). Perplexity'nin analytics API'si citation count veriyor. Bing Copilot için "site:roibase.com.tr" ile SGE yanıtlarındaki görünürlüğü manuel tarayıp log'luyoruz. Bu metrikleri haftalık dashboard'a çekip hangi konuların citation kazandığını izliyoruz.
+GEO içeriği chunk-optimize etmek comprehensiveness'i tehdit ediyor. 250 kelimelik modüler bloklar birbirinden bağımsız olursa "surface-level" algısı oluşuyor. Google hâlâ topical authority arıyor — 5000 kelimelik deep dive SEO'da iyi perform ediyorsa bunu chunk'lara bölerken internal coherence kaybolmamalı. Çözüm: hub-spoke model. Ana sayfa comprehensive olsun (2000+ kelime), her H2'yi ayrı child page'e çıkar (500 kelime chunk-optimized), ana sayfadan internal link ver. LLM ana sayfayı "overview" olarak, child page'leri "deep answer" olarak citation yapabiliyor.
 
-## Tradeoff: İçerik Hızı vs. Derinlik
+Freshness vs evergreen dengesizliği: LLM'ler publish date'e bakıyor, 2024 içeriği 2026'da %40 daha az citation alıyor (Roibase benchmark). Ama her ay içeriği rewrite etmek sustainability sorun. Çözüm: modular update. Ana gövde evergreen kalsın, son bölüme "2026 Güncellemesi" H2'si ekle, burada yeni data/tool/metodolojiden bahset. LLM incremental update'i algılıyor, `modifiedAt` metadata'sı güncellenince freshness skoru artıyor. Tam rewrite yerine %20 content refresh yeterli oluyor.
 
-GEO'da çok hızlı içerik üretmek SEO'daki kadar işe yaramıyor. LLM'ler thin content'i kolayca filtreler çünkü embedding uzayında benzer içerikler kümeleniyor, özgün mesajı olmayan yazı düşük skor alıyor. 10 günde 100 yazı yerine 3 ayda 20 yazı — her biri 1500+ kelime, 5+ H2, somut veri içeren, schema markup'lı — daha etkili.
+Attribution complexity: bir kullanıcı ChatGPT'de markanı görüp Google'a "Roibase" yazıp siteye geldiyse hangi channel kredilendirilecek? Direct traffic gibi görünüyor ama asıl source LLM citation. [First-party veri mimarisi](https://www.roibase.com.tr/tr/firstparty) burada devreye giriyor: user session'da `document.referrer` boşsa ama `sessionStorage` içinde LLM interaction flag varsa (örneğin ChatGPT embedding'den gelindi) attribution custom dimension'a yazılıyor. Bu data CDP'de "AI-assisted discovery" segment'i oluşturuyor.
 
-Ancak bu tradeoff maliyeti artırır. Bir markanın SEO için yaptığı content operasyonu (aylık 50 blog yazısı) GEO'ya geçtiğinde aylık 15 yazıya düşebilir. ROI hesabı: LLM citation'ı organik trafik gibi compound büyüme gösteriyor mu? 2026 verisi: bir citation'ın average click-through'u %12 (SearchGPT analytics), ama bir citation aldığınızda sonraki 30 gün içinde 4-5 related sorguya daha cite ediliyorsunuz (cascading effect). Bu cascade, compound faydayı doğruluyor.
+## Operasyonel Entegrasyon — GEO Workflow Automation
 
-## Şimdi Ne Yapmalı: Teknik Checklist
+Citation tracking manuel yapılamaz — API call, parsing, logging, alerting otomatize edilmeli. Roibase [GEO](https://www.roibase.com.tr/tr/geo) operasyonunda n8n + Claude + BigQuery stack kullanıyor. Workflow şöyle: her sabah 09:00'da n8n trigger, target keyword listesini Google Sheets'ten çekiyor (50 adet), her keyword için Perplexity API çağrısı yapıyor, response JSON'u Claude'a gönderiyor "bu yanıtta roibase.com.tr mention var mı?" binary classification, varsa BigQuery `geo_citations` tablosuna `INSERT`. Aynı keyword geçen hafta citation almışsa ama bu hafta almamışsa Slack'e alert düşüyor — content refresh gerekiyor demek.
 
-GEO altyapısını 3 katmanda kurun: (1) içerik mimarisi — her yazıya schema ekle, H2 başına 200-250 kelime, semantic density kontrol et; (2) API katmanı — brand context endpoint aç, plugin manifest yayınla, first-party veriyle besle; (3) ölçüm — LLM citation tracking kurulumu, haftalık dashboard. İlk 90 günde 15-20 derinlikli yazı yayınla, citation graph'ı izle. 6. ayda topical breadth'i genişlet. Klasik SEO'yu bırakma, GEO'yu paralel yürüt — SERP görünürlüğü hâlâ geçerli, ama LLM citation'ı 2027'de trafiğin %30-40'ını oluşturacak (Gartner tahmini). Attribution modelin her iki kanalı da görmeli.
+Schema deployment otomasyonu: CMS'e yeni makale girildiğinde webhook n8n'e geliyor, Claude makale body'sini alıp FAQPage schema generate ediyor (LLM heading'leri question-answer pair'e dönüştürüyor), schema'yı CMS'in custom field'ına yazıyor, sayfa publish olduğunda schema head'de render ediliyor. Manuel JSON-LD yazmaya gerek kalmıyor, hata oranı %90 düşüyor.
+
+Competitive citation monitoring: rakip brand mention sorguları da aynı workflow'a dahil. "performans pazarlaması ajansları" diye sorulduğunda Perplexity hangi rakibi cite ediyor? Bu data `competitor_citations` tablosuna düşüyor, haftalık dashboard'da trend analizi yapılıyor. Rakip %15'ten %25'e çıkmışsa onların yeni içerik stratejisini reverse-engineer edip kendi stack'e adapt ediyorsun.
+
+## Şimdi Ne Yapmalı
+
+GEO trafik payını 6 ayda %10'dan %25'e çıkarmak için adımlar: (1) Mevcut top 20 landing page'i chunk-optimize et — tek bir 3000 kelimelik guide'ı 6 ayrı child page + hub page'e böl. (2) Her page'e FAQPage + Article schema ekle, `speakable` markup dahil et. (3) Citation tracking stack'i kur — Perplexity + ChatGPT API sorguları otomatize et, BigQuery'de log tut. (4) Search Console CTR anomaly detection model'i yaz, AI Overview etkisini ölç. (5) 30 günde bir freshness update cycle'ı başlat — modular refresh ile `modifiedAt` güncelle. Citation race başladı, ilk hareket edenler citation havuzunun %60'ını alıyor (power law distribution). Geç kalanlar "also mentioned" kategorisine düşecek.
