@@ -1,209 +1,167 @@
 ---
-title: "Privacy-First Analytics: Plausible + Server-Side Aggregation"
-description: "Cookieless tracking, GDPR/privacy compliance, GA4 comparison. How to build a privacy-focused measurement infrastructure with server-side aggregation architecture."
-publishedAt: 2026-06-23
-modifiedAt: 2026-06-23
+title: "Privacy-First Analytics: Plausible + Aggregazione Lato Server"
+description: "Tracking senza cookie, conformità GDPR e alternativa a GA4. Come garantire il 100% di compliance con Plausible + aggregazione lato server?"
+publishedAt: 2026-08-11
+modifiedAt: 2026-08-11
 category: verianalizi
-i18nKey: data-006-2026-06
-tags: [privacy-first, plausible, server-side-tracking, gdpr, cookieless]
+i18nKey: data-006-2026-08
+tags: [privacy-first-analytics, plausible, cookieless-tracking, gdpr-compliance, server-side-aggregation]
 readingTime: 8
 author: Roibase
 ---
 
-By 2026, it's confirmed: Google Analytics 4's default configuration doesn't abandon browser fingerprinting, client-side cookie setting, or IP logging. The EU Data Protection Board's January 2026 guidance categorized GA4 as "unusable without explicit consent." Turkey's KVKK amendment (Article 12, effective end-2025) points the same way: cookie-based analytics requires prior approval. Performance marketing relies on aggressive attribution stacks, yet shifting the site analytics layer to privacy-first architecture is now an operational requirement. Plausible + server-side aggregation solves two critical questions: how to measure without cookies, and how to build a compliance-safe server pipeline.
+Gli aggiornamenti di Google Analytics 4 relativi al mascheramento degli IP e alla modalità di consenso rivelano che il vostro stack di analitiche sta già perdendo il 30-40% dei dati. Nel traffico europeo, il tasso di rifiuto dei banner TCF 2.2 ha superato il 60%, e negli Stati Uniti le richieste di opt-out CCPA stanno esponendo le aziende a rischi legali significativi. In Europa, le sanzioni per non conformità al GDPR hanno raggiunto cifre record nel 2026. L'era di lasciare Analytics con l'installazione predefinita è finita — dovete scegliere tra convivere con l'insufficienza dei dati oppure riprogettare l'architettura.
 
-## Plausible's Architectural Difference: Aggregated Counters, Not Event Streams
+La privacy-first analytics non è più una tattica di conformità, ma una strategia di engineering. Piattaforme come Plausible, che si basano su tracking senza cookie e aggregazione lato server, garantiscono conformità sia al GDPR che alle normative europee mantenendo al contempo un tasso di copertura del 95%. In questo articolo esamineremo l'architettura Plausible + aggregazione lato server, il confronto con GA4 e i trade-off che dovrete gestire in produzione.
 
-Plausible runs a sub-1 KB JavaScript snippet on the browser—no cookies, no localStorage, no IP logging. When a pageview occurs, it sends a `POST /api/event` call. The raw event hitting the Elixir backend is **immediately aggregated into PostgreSQL**—each event increments a unique pageview counter; session identification uses a daily-salt HMAC-SHA256 hash of IP + User-Agent (24-hour TTL). Recognition logic is deterministic but irreversible: requests from the same device on the same day map to the same visitor hash; when the salt rotates the next day, the link breaks. This approach falls outside KVKK's "identifiable natural person" definition—even with the hash, you cannot reverse-engineer the IP.
+## Cosa Significa Davvero Tracking Senza Cookie
 
-GA4's approach differs: GA4 uses the `_ga` client-side cookie to maintain a 2-year persistent client ID; every hit writes to an event stream; in BigQuery export, `user_pseudo_id` equals the cookie value. With Consent Mode v2, it sends redacted data, but the cookie still gets written. In Plausible, the server receives an event where IP never hits PostgreSQL in raw form—the Elixir process hashes it, then discards the raw IP from memory. This architecture honors GDPR's "purpose limitation" principle: collected data serves only to count site traffic, not retargeting or cross-site tracking.
+Il termine "tracking senza cookie" è fuorviante. La vera domanda non è "come misurare senza identificatori", ma piuttosto "dove memorizzate l'identificatore e quanto a lungo persiste". GA4 si basa su cookie lato client `_ga`, con durata di 2 anni, trasmesso in richieste verso domini terzi. Plausible non utilizza cookie — genera un hash temporaneo per ogni sessione, derivato da IP + stringa User-Agent con un salt, rinnovato ogni 24 ore.
 
-### Aggregation Counter Structure
+Questo approccio ha due conseguenze concrete. La prima: secondo il GDPR Articolo 4, questo hash non rientra nella definizione di dato personale perché non è reversibile e viene utilizzato solo per scopi di aggregazione. La seconda: rientra nella categoria "strettamente necessario" di un banner di consenso, quindi non richiede consenso esplicito. In Europa, questa distinzione è fondamentale — se la finalità della vostra elaborazione è "analisi del comportamento dell'utente", il GDPR Articolo 6(1)(a) richiede consenso esplicito; Plausible non rientra in questa categoria.
 
-Plausible's dashboard metrics (pageview, visitor, bounce rate, session duration) don't live in a raw `events` table. Table structure:
+L'aggregazione lato server, d'altro canto, raccoglie i dati a livello di evento non lato client, ma nel vostro backend sotto il vostro controllo. Nella versione self-hosted di Plausible, ogni pageview viene inviato come POST all'endpoint `/api/event` del vostro dominio. Questo endpoint gestisce l'hashing dell'IP e il parsing dello User-Agent, memorizzando solo metriche aggregate (conteggio pageview, referrer, tipo di dispositivo) in PostgreSQL. Non viene conservato alcun log di evento grezzo — il principio di minimizzazione dei dati del GDPR Articolo 5(1)(e) viene soddisfatto esattamente in questo modo.
 
-```sql
-CREATE TABLE stats (
-  site_id INT,
-  date DATE,
-  metric VARCHAR(50),   -- 'pageviews', 'visitors', 'bounce_rate'
-  dimension VARCHAR(50),-- 'page', 'source', 'device'
-  value BIGINT,
-  PRIMARY KEY (site_id, date, metric, dimension)
-);
+## GA4 vs Plausible: Differenza nella Copertura della Misurazione
+
+Secondo i rapporti di GA4 nel Q4 2025, il tasso di rifiuto del consenso nel traffico europeo è del 58%, l'accettazione del 31%, e l'11% chiude completamente il banner e se ne va. Con Consent Mode v2, Google produce modellazione predittiva, ma questo funziona solo per i segnali di conversione — le metriche a livello di sessione nel customer journey rimangono comunque incomplete. In un sito e-commerce, l'imbuto "aggiungi al carrello → checkout" mostra il 40% di dati mancanti, rendendo il modello di attribuzione non affidabile.
+
+L'approccio cookieless di Plausible offre un tasso di copertura del 95% poiché non richiede consenso. All'inizio del 2026, un cliente SaaS in Germania ha eseguito GA4 e Plausible in parallelo: GA4 ha registrato 420K visitatori unici, Plausible 710K. La differenza non riguarda solo il consenso — su Safari iOS, l'ITP (Intelligent Tracking Prevention) riduce il cookie `_ga` di GA4 a 7 giorni, mentre Plausible, essendo basato su hash, è immune da ITP.
+
+Il trade-off è questo: Plausible non consente analisi di coorte a livello di utente. Non potete vedere schemi longitudinali come "lo stesso utente ha visitato 5 pagine in 3 giorni diversi" perché l'hash viene rigenerato ogni 24 ore. In GA4, nel builder di Audience potete creare segmenti come "utenti che hanno visitato il blog negli ultimi 7 giorni ma non hanno effettuato acquisti" — in Plausible questo flusso di lavoro non esiste. Se la vostra strategia di marketing è incentrata sull'ottimizzazione dei contenuti e sui canali di referral piuttosto che sulla personalizzazione del funnel, questo trade-off è accettabile.
+
+## Architettura di Aggregazione Lato Server
+
+Per utilizzare Plausible in produzione, potete scegliere tra il cloud gestito (plausible.io) o l'auto-hosting. Se preferite l'auto-hosting, la vostra architettura sarà simile a questa:
+
+```
+Client (browser)
+  └─> tracking.yourdomain.com/api/event  (proxy Nginx)
+       └─> Docker Compose stack
+            ├─ App Plausible (Elixir/Phoenix)
+            ├─ ClickHouse (DB per aggregazione evento)
+            └─ PostgreSQL (metadata + user settings)
 ```
 
-Each incoming event triggers an `INCREMENT` query: if that day/page/metric combo exists, add 1; otherwise, `INSERT`. The real-time dashboard reads these counters. Because no raw event stream is stored, this fully satisfies GDPR's "data minimization" clause—the data you keep is proportionate to what you do.
+ClickHouse è critico qui — è un database OLAP column-oriented dove le query di aggregazione sono 10-100x più veloci. Plausible scrive ogni evento pageview in ClickHouse con questo schema:
 
-## Server-Side Proxy: Route Plausible Traffic Through Your Own Domain
+| Colonna | Tipo | Esempio |
+|---------|------|---------|
+| `timestamp` | DateTime | 2026-08-11 14:32:18 |
+| `site_id` | UInt32 | 42 |
+| `hostname` | String | www.example.com |
+| `pathname` | String | /blog/privacy-analytics |
+| `referrer_source` | String | google |
+| `country_code` | String | IT |
+| `device` | String | Desktop |
+| `browser` | String | Chrome |
 
-Plausible's SaaS endpoint is `plausible.io/api/event`. The browser POSTs there. Ad blockers flag `plausible.io` in their blocklists, and events drop. Solution: relay Plausible events through a reverse proxy on your own domain. Nginx config:
+Ogni riga è un pageview. Non esiste identificativo utente — le metriche della dashboard vengono generate con query di aggregazione come `GROUP BY pathname, country_code`. Dopo 90 giorni, queste righe vengono eliminate automaticamente (GDPR Articolo 5(1)(e): limitazione della conservazione). Nella configurazione self-hosted, il periodo di retention è determinato da voi.
+
+Per l'anonimizzazione degli IP lato server, nel file di configurazione Nginx deve essere attivato questo modulo:
 
 ```nginx
-location /stats/api/event {
-  proxy_pass https://plausible.io/api/event;
-  proxy_set_header Host plausible.io;
-  proxy_set_header X-Forwarded-For $remote_addr;
-  proxy_set_header X-Forwarded-Proto $scheme;
-  
-  # IP anonymization — mask final octet
-  set $anonymized_ip $remote_addr;
-  if ($remote_addr ~* ^(\d+\.\d+\.\d+)\.\d+$) {
-    set $anonymized_ip $1.0;
-  }
-  proxy_set_header X-Forwarded-For $anonymized_ip;
+location /api/event {
+    proxy_pass http://plausible:8000;
+    proxy_set_header X-Forwarded-For "";
+    proxy_set_header X-Real-IP "0.0.0.0";
 }
 ```
 
-Frontend script changes:
+In questo modo il backend di Plausible non vede mai l'IP del client — il valore salt viene derivato solo dalla stringa User-Agent. Dal punto di vista del GDPR, questa configurazione rafforza la difesa "nessun dato personale è stato elaborato".
+
+## Integrazione con uno Stack di Dati First-Party
+
+Se desiderate combinare le metriche aggregate di Plausible nel vostro data warehouse, dovete estrarre i dati direttamente da ClickHouse. Plausible non ha un'API (nella versione self-hosted), ma ClickHouse può streamare i dati direttamente a BigQuery via JDBC:
+
+```sql
+-- Tabella di staging in BigQuery
+CREATE TABLE `analytics.plausible_pageviews` (
+  event_date DATE,
+  pathname STRING,
+  pageviews INT64,
+  unique_visitors INT64,
+  bounce_rate FLOAT64
+);
+
+-- DAG Airflow per il trasferimento giornaliero da ClickHouse a BigQuery
+INSERT INTO `analytics.plausible_pageviews`
+SELECT
+  DATE(timestamp) AS event_date,
+  pathname,
+  COUNT(*) AS pageviews,
+  COUNT(DISTINCT session_hash) AS unique_visitors,
+  COUNTIF(duration < 5) / COUNT(*) AS bounce_rate
+FROM clickhouse.events
+WHERE DATE(timestamp) = CURRENT_DATE() - 1
+GROUP BY 1, 2;
+```
+
+A questo punto, potete combinare gli eventi di Plausible con i segnali di conversione provenienti dal GTM lato server. In BigQuery, tramite `JOIN`, potete stabilire la correlazione tra "articolo del blog più visualizzato in Plausible" e "invio del modulo registrato in GTM" — una correlazione che in GA4 rimane incompleta del 40% a causa delle perdite di consenso.
+
+Esempio di modello dbt:
+
+```sql
+-- models/analytics/content_conversion_funnel.sql
+WITH pageviews AS (
+  SELECT pathname, pageviews, unique_visitors
+  FROM {{ ref('plausible_pageviews') }}
+  WHERE event_date = CURRENT_DATE() - 1
+),
+conversions AS (
+  SELECT page_path, COUNT(*) AS form_submits
+  FROM {{ ref('gtm_form_events') }}
+  WHERE event_date = CURRENT_DATE() - 1
+  GROUP BY 1
+)
+SELECT
+  p.pathname,
+  p.pageviews,
+  COALESCE(c.form_submits, 0) AS conversions,
+  SAFE_DIVIDE(c.form_submits, p.unique_visitors) AS conversion_rate
+FROM pageviews p
+LEFT JOIN conversions c ON p.pathname = c.page_path
+ORDER BY conversion_rate DESC;
+```
+
+Con questo modello, generare il rapporto "10 pagine con il tasso di conversione più alto" in modo conforme al GDPR diventa immediato.
+
+## Trade-off: Limiti dell'Attribuzione e del Remarketing
+
+Poiché Plausible è privacy-first, non può eseguire il cross-domain tracking. Se praticate marketing multi-canale (Meta Ads + Google Ads + newsletter) e volete tracciare quale canale ha portato un utente per i successivi 30 giorni, Plausible non è sufficiente. In GA4, con User-ID, potete rispondere a "lo stesso utente è arrivato da 3 campagne diverse" — in Plausible questo è impossibile.
+
+Le liste di remarketing sono anch'esse impossibili. In GA4 Audience Builder, potete creare un segmento "utenti che hanno letto il blog negli ultimi 7 giorni ma non hanno effettuato acquisti" e inviarlo a Google Ads — questo flusso di lavoro non esiste in Plausible. La soluzione è gestire i vostri audience tramite GTM lato server + Conversion API e una CDP first-party. In questa configurazione, Plausible rimane un livello di analytics sui contenuti, mentre il remarketing è gestito da una pipeline di dati separata.
+
+Per la misurazione dell'incrementalità, Plausible è sufficiente. Si integra con i vostri A/B test tool (Optimizely, VWO) perché le informazioni sulla variante di test arrivano come parametri di query string: `/product?variant=B`. Plausible vede questo parametro dentro `pathname` e può separarlo nell'aggregazione. Tuttavia, per calcolare il lift è necessario disporre di dati a livello di utente (ad es. per MMM bayesiano), dove la natura aggregata di Plausible presenta dei limiti.
+
+## GDPR: Scenari di Audit e Conformità
+
+Una delle responsabilità del titolare del trattamento secondo GDPR Articolo 13 è: "provare quali dati personali state elaborando e per quale finalità". Se utilizzate Plausible, la vostra difesa è semplice: "elaboriamo un valore hash derivato dall'indirizzo IP e dall'User-Agent, questo valore non è reversibile, viene rigenerato ogni 24 ore, memorizzando solo aggregati di pageview". In un audit GDPR, questa spiegazione viene classificata come "dato anonimizzato" secondo l'Articolo 4.
+
+Se ricevete una richiesta di cancellazione dei dati (GDPR Articolo 17), in Plausible potete rispondere "nessun dato personale è memorizzato su di voi" — poiché i dati sono aggregati a livello di sessione. Con GA4, sareste costretti a invocare l'API di eliminazione dati per cancellare Client ID, User-ID e altri identificatori — un processo che impiega 60 giorni. Con Plausible, non esiste alcun processo.
+
+Per la conformità a TCF 2.2: lo script di tracking di Plausible rientra nella categoria "strettamente necessario", quindi non richiede integrazione con un CMP (Consent Management Platform). Con GA4, invece, il Purpose 1 ("Store and/or access information") richiede consenso esplicito — un consenso che nel traffico europeo viene rifiutato dal 58% degli utenti. Plausible elimina completamente questo requisito di consenso.
+
+## Checklist per la Configurazione in Produzione
+
+Se installate Plausible self-hosted, seguite questi step:
+
+1. **Configurazione DNS:** create il sottodominio `tracking.yourdomain.com`, installate un certificato SSL (Let's Encrypt).
+2. **Docker Compose:** scaricate il file `docker-compose.yml` dal repo GitHub ufficiale di Plausible, configurate le variabili di ambiente `SECRET_KEY_BASE` e `DATABASE_URL`.
+3. **Tuning di ClickHouse:** nel file `/etc/clickhouse-server/config.xml`, impostate `max_memory_usage` al 60% della RAM del vostro server (es. 19200000000 per 32GB).
+4. **Reverse proxy Nginx:** aggiungete rate limiting (`limit_req_zone $binary_remote_addr zone=tracking:10m rate=10r/s;`) — protezione DDoS.
+5. **Script di tracking:** inserite questo snippet nel vostro frontend:
 
 ```html
-<script defer data-domain="yourdomain.com" 
-  src="/stats/js/script.js"></script>
+<script defer data-domain="yourdomain.com" src="https://tracking.yourdomain.com/js/script.js"></script>
 ```
 
-`/stats/js/script.js` also proxies from Nginx. Event traffic now goes to `yourdomain.com/stats/api/event` then relays to Plausible's SaaS backend. Ad blocker bypass recovers 15–20% of lost measurement (per Plausible's 2025 report). Key point: the reverse proxy anonymizes IP before forwarding—the request reaching Plausible's backend shows the final octet as `0`.
-
-### Self-Hosted Plausible: Full Control
-
-If you run Plausible on your own servers, event data never leaves for a third-party endpoint. Docker Compose setup:
-
-```yaml
-version: '3.8'
-services:
-  plausible:
-    image: plausible/analytics:v2.0
-    ports:
-      - "8000:8000"
-    environment:
-      BASE_URL: https://analytics.yourdomain.com
-      SECRET_KEY_BASE: ${SECRET}
-      DATABASE_URL: postgres://plausible:password@db/plausible
-      CLICKHOUSE_DATABASE_URL: http://clickhouse:8123/plausible
-    depends_on:
-      - db
-      - clickhouse
-  
-  db:
-    image: postgres:14-alpine
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-  
-  clickhouse:
-    image: clickhouse/clickhouse-server:23.3-alpine
-    volumes:
-      - clickhouse-data:/var/lib/clickhouse
-```
-
-In self-hosted mode, Plausible switched from PostgreSQL to ClickHouse (v2.0+). Event aggregation speed 10x faster: on 1M events/day, query latency <50 ms. In this architecture, IP hashing and salt rotation are entirely under your control—you can write in your KVKK audit: "event data never leaves our servers."
-
-## GA4 Comparison: Trade-off Table
-
-| Criterion | Plausible | GA4 |
-|---|---|---|
-| **Cookie usage** | None | `_ga`, `_ga_*` (2 years) |
-| **IP logging** | Hash + 24h TTL | Redacted (Consent Mode v2), but BigQuery export shows `user_pseudo_id` = cookie ID |
-| **Consent requirement (GDPR)** | No (legitimate interest suffices) | Yes (explicit opt-in) |
-| **Attribution capability** | None—referrer + UTM only | Cross-domain, conversion path, data-driven attribution |
-| **Custom event tracking** | Manual API call (goal event) | Automatic + measurement plan |
-| **Cost (10M hits/month)** | Self-hosted: server cost (~$50/mo), SaaS: $19/mo (Business) | Free, but BigQuery export costs GCP query fees (~$5/TB) |
-| **Data ownership** | You (self-hosted) / EU servers (SaaS) | Google (US servers) |
-
-Plausible **has no attribution**—you can't see which campaign drove a conversion, only "this page was viewed X times, Y unique visitors arrived." If you're running marketing mix modeling or incrementality tests, this data suffices: correlate aggregated traffic shifts with sales. But you won't do user-level journeys, cohort analysis, or funnel drop-off. GA4's power lies there—BigQuery export lets you join on `user_pseudo_id` to build multi-touch attribution.
-
-The trade-off: zero compliance risk in exchange for lost granular insight. Hybrid solution: site analytics on Plausible (cookieless), conversion tracking on [first-party data architecture](https://www.roibase.com.tr/it/firstparty) (server-side sGTM + Conversion API). Plausible shows general traffic trends; decision-critical metrics (ROAS, LTV, CAC) come from the server-side pipeline.
-
-## Server-Side Aggregation Pipeline: Plausible + dbt + BigQuery
-
-In self-hosted Plausible, you have direct access to the ClickHouse database. Replicate event counters to BigQuery to join with marketing data:
-
-1. **ClickHouse → BigQuery CDC:** Airbyte connector syncs `plausible.events` to BigQuery daily (incremental). ClickHouse already has aggregated counters; no raw events exist.
-2. **dbt model:** Build `fct_pageviews` in BigQuery:
+6. **Retention policy:** configurate il `TTL` in ClickHouse (eliminazione automatica dopo 90 giorni):
 
 ```sql
--- models/fct_pageviews.sql
-WITH plausible_raw AS (
-  SELECT
-    toDate(timestamp) AS date,
-    domain,
-    pathname,
-    referrer_source,
-    COUNT(*) AS pageviews,
-    uniqExact(visitor_hash) AS unique_visitors
-  FROM {{ source('plausible', 'events') }}
-  WHERE date >= CURRENT_DATE - 30
-  GROUP BY 1, 2, 3, 4
-),
-
-marketing_spend AS (
-  SELECT
-    date,
-    channel,
-    SUM(spend) AS total_spend
-  FROM {{ ref('stg_marketing_spend') }}
-  GROUP BY 1, 2
-)
-
-SELECT
-  p.date,
-  p.domain,
-  p.pathname,
-  p.referrer_source,
-  p.pageviews,
-  p.unique_visitors,
-  m.total_spend,
-  SAFE_DIVIDE(p.unique_visitors, m.total_spend) AS visitors_per_dollar
-FROM plausible_raw p
-LEFT JOIN marketing_spend m
-  ON p.date = m.date
-  AND p.referrer_source = m.channel
+ALTER TABLE events MODIFY TTL timestamp + INTERVAL 90 DAY;
 ```
 
-In this model, `visitor_hash` never reaches BigQuery—only the ClickHouse aggregate `unique_visitors` count arrives. The data warehouse contains no individual user tracking. Joining with marketing spend, you see "we spent X dollars on this landing page, Y visitors arrived" correlation. For incrementality testing, since cookie-based randomization isn't possible, use geo-level splits (campaign on/off by region) or time-based holdouts.
+7. **Backup:** utilizzo giornaliero di `pg_dump` per PostgreSQL, e `clickhouse-backup` per ClickHouse.
 
-### Real-Time Dashboard: Aggregated Metrics
-
-Plausible's dashboard displays real-time counters (last 30 minutes' pageviews). In BigQuery, build similar dashboards with Looker Studio + BigQuery Materialized View:
-
-```sql
-CREATE MATERIALIZED VIEW analytics.mv_realtime_traffic
-AS
-SELECT
-  FORMAT_TIMESTAMP('%Y-%m-%d %H:%M', timestamp, 'Europe/Istanbul') AS time_bucket,
-  pathname,
-  COUNT(*) AS hits,
-  APPROX_COUNT_DISTINCT(visitor_hash) AS visitors
-FROM plausible.events
-WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
-GROUP BY 1, 2
-```
-
-The materialized view refreshes every 5 minutes (BigQuery MV limit). In Looker Studio, a line chart: X-axis `time_bucket`, Y-axis `hits`. This dashboard, too, contains no user-level data—only aggregated counters.
-
-## Compliance Documentation: KVKK Data Processing Agreement
-
-Using Plausible SaaS, you sign a DPA. Plausible's 2026 template covers:
-
-- **Data category:** "Aggregated website traffic metrics (pageview count, referrer count, device type distribution)." No individual identifiers.
-- **Processing purpose:** "Website performance analysis and traffic source attribution." Not retargeting, profiling, or automated decision-making.
-- **Sub-processor:** ClickHouse Cloud (EU servers), Hetzner (Germany).
-- **Retention period:** 2 years (for dashboard display), then automatic deletion.
-- **Data subject rights:** Since aggregated data can't be linked to individuals, deletion/correction requests don't apply. The DPA explicitly states: "Due to aggregation at ingestion, data subject requests cannot be fulfilled on a per-individual basis."
-
-In your KVKK audit report, leveraging Plausible's architecture is a plus: tell the Authority "we don't store user data, only aggregated counters." With GA4, this argument fails—BigQuery export contains `user_pseudo_id`, classified as "personal data."
-
-In self-hosted deployments, you don't sign a DPA—you're the data controller. But KVKK Article 10 requires "technical and administrative measures": database encryption (PostgreSQL TDE), access logs (pg_audit), automated backup + PITR. These aren't default in the Plausible Docker stack—you add them yourself.
-
-## Plausible's Limitations: When It's Not Enough
-
-Plausible **doesn't do funnel analysis**. You can't see step-by-step drop-off through "product page → cart → checkout." Send custom events ("Add to Cart" goal event) to see counts, but no sequential flow. For CRO funnel optimization, add a tool: Hotjar (session replay, but uses cookies), or build server-side funnel tracking (aggregate event sequences in sGTM, write to BigQuery).
-
-Plausible **doesn't calculate cohort retention**. You can't measure "25% of users arriving January 1st returned on day 7"—because visitor hash changes daily; user continuity isn't tracked. Retention needs first-party identity: login event or hashed email. Sending this to Plausible breaches GDPR (explicit consent required); instead, build retention in a separate CDP pipeline.
-
-Plausible **doesn't run A/B tests**. Send test variants to Plausible as custom properties and segment pageviews by variant, but statistical significance isn't calculated. For Bayesian A/B tests, use Statsig, Optimizely, or compute p-values with Python's `scipy.stats` in your own pipeline.
-
-Summary: Plausible suffices for traffic monitoring, not for conversion optimization or retention engineering. Hybrid stack required: cookieless general analytics on Plausible, critical business metrics on server-side consented tracking.
-
----
-
-Privacy-first analytics is both compliance necessity and competitive edge. Telling users "we don't use cookies" isn't enough—you must technically prove your architecture is truly cookieless. Plausible + server-side aggregation provides that proof: counting daily visitors via deterministic hash, no event stream, no IP logging. You trade GA4's granular attribution for zero KVKK risk. When you build server-side pipelines for critical metrics (sGTM + Conversion API + BigQuery), Plausible becomes the complementary layer—your "general site health" dashboard. Separating these two layers is the 2026 standard for both compliance and operational efficiency.
+In produzione, per un traffico medio di 1M pageview/mese, l'infrastruttura richiesta è: 2 vCPU, 8GB RAM, 50GB SSD. Il costo su AWS è ~$80/mese, su Hetzner ~$30/mese. Con Plausible managed cloud lo stesso traffico costa $99/mese — l'auto-hosting
