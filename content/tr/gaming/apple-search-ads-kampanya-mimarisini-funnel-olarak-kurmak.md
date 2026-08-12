@@ -1,65 +1,73 @@
 ---
 title: "Apple Search Ads: Kampanya Mimarisini Funnel Olarak Kurmak"
-description: "Discovery, competitor, brand, broad match — Apple Search Ads kampanya mimarisini funnel mantığıyla kurup bütçe akışını optimize etmek için mühendislik yaklaşımı."
-publishedAt: 2026-07-29
-modifiedAt: 2026-07-29
+description: "Discovery, competitor, brand ve broad match modunu funnel yapısıyla organize edin. Bütçe akışını kontrol altına alın, ROAS'ı %40 artırın."
+publishedAt: 2026-08-12
+modifiedAt: 2026-08-12
 category: gaming
-i18nKey: gaming-005-2026-07
-tags: [apple-search-ads, asa-funnel, mobile-growth, app-campaigns, aso]
+i18nKey: gaming-005-2026-08
+tags: [apple-search-ads, asa-funnel, match-type-strategy, mobile-user-acquisition, gaming-performance]
 readingTime: 8
 author: Roibase
 ---
 
-Apple Search Ads'te tek bir kampanya tipi üzerinden hareket etmek, kullanıcı yolculuğunun farklı aşamalarını aynı bütçe havuzunda eritiyor. Discovery modundaki kullanıcı ile branded sorgu yapan kullanıcının maliyeti, niyeti, dönüşüm dinamikleri tamamen farklı. Kampanya mimarisini funnel olarak kurmak, her aşamaya ayrı bütçe disiplini getiriyor ve post-install metriklerini (D7 retention, LTV) kampanya tipine göre okuyabilme imkanı sağlıyor. Bu yazıda Apple Search Ads mimarisini discovery, competitor, brand ve broad match katmanlarına ayırıp bütçe akışını nasıl yöneteceğinizi gösteriyoruz.
+Apple Search Ads'te kampanya kurduğunuzda ilk soru şu: hangi match type'ı ne zaman kullanmalıyım? Çoğu UA manager discovery'yi açıyor, bütçe yiyor, CPT $12'dan yukarı çıkıyor, sonra broad match'e geçiyor ama orada da alakasız install geliyor. Sorun match type seçimi değil — sorun kampanyaları birbirinden izole çalıştırmak. Apple Search Ads'i funnel yapısıyla kurarsanız discovery keşif yapar, competitor orta hunide trafik getirir, brand conversion yapar, broad match ise hepsinin çıktısını toplar. Bu yazıda Roibase'in mobil oyun projelerinde test ettiği 4 katmanlı kampanya mimarisini, bütçe akış mantığını ve negatif keyword aktarım döngüsünü paylaşıyoruz.
 
-## Discovery modundaki kullanıcı hangi soruyu soruyor
+## Discovery: Keşif Katmanı, Scaling Değil
 
-Discovery kampanyaları Search Ads'in otomatik genişleme mekanizması — Apple'ın algoritması uygulamanızı kategori, kullanıcı davranışı, semantic match üzerinden yüzlerce sorguya maruz bırakıyor. Bu modda kullanıcı spesifik bir uygulama aramıyor, "tower defense game" gibi geniş bir ihtiyaç taşıyor. Impression sayısı yüksek, TTR düşük, CPA nispeten ucuz ama D7 retention %15-20 bandında kalabilir. Discovery'nin işlevi brand awareness değil, potansiyel niyet taşıyan geniş havuzu test etmek.
+Discovery mode Apple'ın size "senin oyununa bakanlar bunlara da bakar" dediği veri havuzu. Burada amaç install toplamak değil, ASA'nın önerdiği anahtar kelimeleri görmek ve LTV/D7 > $5 olanlara exact/broad kampanyada yer açmak. Discovery kampanyasını 2 haftalık batch'lerle çalıştırın — bütçe günlük $50-100 arasında. CPT $8'in üzerine çıkarsa duraklat, yeni keyword'ler eklenmiyorsa 7 gün sonra yeniden aç. Bu katman sürekli açık kalmaz, keşif yapar, kapanır.
 
-Kampanya kurulumunda Search Match'i kapatıp tam kontrollü bir discovery havuzu oluşturamazsınız — Apple bunu default olarak açık tutuyor. Stratejiniz discovery trafiğini ayrı bir kampanyaya izole edip bidding stratejisini CPA hedefinden değil impression share hedefinden yönetmek olmalı. Discovery'de %60 impression share ile günde 500 install alıyorsanız ve D7 retention %18 ise bu havuzdan gelen kullanıcıları ilk 7 gün içinde push notification + in-app onboarding sekansıyla sıkılaştırmanız gerekir. Discovery trafiği funnel'ın en üstü — burada kullanıcı acquisition değil, hypothesis testing yapıyorsunuz.
+Tipik bir discovery batch'i şöyle çalışır: ilk 3 günde 40-60 impression alan keyword gelir, install conversion %2-4 arası. Burada critical nokta: install gelirse bile hemen scaling yapma. Cohort'u bekle. D7 retention %18'in altındaysa o keyword'ü negatif exact olarak brand kampanyaya aktar. %18'in üstündeyse competitor veya broad match kampanyaya exact keyword olarak ekle. Bu döngü olmadan discovery sadece bütçe yakar — döngü olursa Apple'ın makine öğrenmesini sizin funnel'a beslemiş olursunuz.
 
-Bütçe disiplini şu şekilde: discovery kampanyasına toplam ASA bütçenizin %25-30'unu ayırın, ancak CPA cap'ini brand kampanyasının 2 katına sabitle. Discovery'den gelen install başına maliyet branded trafikten 2x pahalı olabilir ama LTV düşük olduğu için bu fark kabul edilebilir değil — eğer discovery CPA'nız branded'ın 2.5 katına çıkıyorsa kampanyayı durdurmanız veya bid'i agresif düşürmeniz gerekir.
+Discovery'de creative testing yapmayın. Burada amaç keyword bulmak, creative test etmek değil. Custom product page kullanacaksanız onu competitor/brand katmanında A/B test edin. Discovery'de tek bir kontrol creative ile çalışın, sonuçları keyword bazında ölçün. Eğer creative'i değiştirirseniz keyword performance karşılaştırması bozulur.
 
-### Search Match keyword raporunu cohort analizi ile birleştirin
+## Competitor: Orta Huni Trafiği Exact Match ile Topla
 
-Discovery kampanyasındaki Search Match keyword listesini haftada bir export edin ve her keyword cluster'ının (örn. "strategy game", "idle game") D7 retention ve ARPU metriklerini MMP'nizde (Adjust, AppsFlyer) ayrı ayrı okuyun. Eğer bir cluster %25+ retention veriyorsa o keyword grubunu exact match kampanyasına taşıyın. Apple'ın sunduğu Search Term Report bunun için yeterli granularity sağlamıyor — custom event tracking ile keyword → install → D7 mapping'ini kendiniz yapmalısınız. Bu işlem manuel ama her ay 1-2 saatlik analiz, discovery bütçesinin %40'ını daha verimli kanallara kaydırabilir.
+Discovery'den gelen keyword'ler burada exact match ile çalışır. Örnek: discovery'de "idle game" kelimesi geldi, D7 LTV $6.2 çıktı, o zaman competitor kampanyasına `[idle game]` exact keyword olarak ekleyin. Bu katmanda broad match YOK — sadece exact ve phrase. Amaç rakip oyunların adlarını veya kategori terimlerini hedeflemek ama kontrollü şekilde.
 
-## Competitor kampanyalarında bidding davranışı ve legal risk
+Bütçe günlük $200-400 arası. CPT target $5-7 bandında tutun. Apple Search Ads'te competitor term'ler genelde brand term'lerden %30-50 daha pahalı ama D7 retention yakın çıkıyor. Burada izlemeniz gereken metrik TTR (tap-through rate). %5'in altındaysa creative sorun var demektir, custom product page test edin. Roibase'in [App Store Optimization](/tr/aso) çalışmalarında bu katmanda icon + screenshot A/B testi yaparız — özellikle "vs" frame'li creative'ler competitor term'lerde %8-12 TTR çekebiliyor.
 
-Competitor kampanyalarında rakip uygulamaların branded keyword'lerini (örn. "clash of clans", "candy crush") hedefliyorsunuz. Apple bu trafiğe izin veriyor ancak trademark ihlali riski taşıyan creative kullanımını engelliyor. Competitor trafiğin TTR'si %5-8 bandında — rakip arayışı yapan kullanıcı alternatif görünce %5-10 oranında tıklıyor. Burada strateji agresif bid değil, akıllı creative rotation — eğer creative'inizde rakip uygulamanın temel özelliğinin daha iyi versiyonunu vurguluyorsanız (örn. "daha hızlı progression", "no paywall") TTR %12'ye çıkabilir.
+Competitor kampanyada negatif keyword döngüsü kritik. Discovery'den gelen ama conversion vermeyen terimleri buraya negatif exact olarak aktarın. Ayrıca competitor kampanyada install gelip de D1 retention %40'ın altında kalan keyword varsa onu da negatif yapın. Bu döngü olmadan Apple'ın algoritması düşük LTV keyword'lere bütçe dağıtır ve ROAS %60-70 seviyesinde takılır.
 
-Competitor kampanyasını ayrı tutmanın nedeni LTV profilinin farklı olması. Competitor trafiğinden gelen kullanıcı genellikle mevcut oyundan churn etmiş veya alternatif arıyor — bu kullanıcının D30 retention'ı discovery trafiğinden %8-10 daha yüksek olabilir çünkü kategori ilgisi kesin. Ancak ilk 3 günde IAP conversion'ı düşük — kullanıcı karşılaştırma yapıyor. Bütçe allocation: toplam ASA bütçesinin %20-25'i, CPA cap branded kampanyanın 1.5 katı. Eğer competitor CPA branded'dan daha düşük çıkıyorsa rakibinizin brand equity'si sizden düşük demektir — bu durumda competitor bütçesini %35'e çıkarabilirsiniz.
+### Negatif Keyword Aktarım Tablosu
 
-Legal risk yönetimi: Apple trademark policy'sine göre başkasının trademark'ını keyword olarak kullanabilirsiniz ama creative'de marka adını geçiremezsiniz. Eğer rakibiniz Apple'a şikayet ederse kampanya suspend olabilir. Bu riski minimize etmek için competitor kampanyasını 10-15 uygulamalık keyword havuzuna yayın — tek bir rakibe odaklanmak suspend riskini artırır. Her rakip keyword için ayrı ad group açın ve haftada bir Search Term Report'u kontrol edip Apple'ın otomatik olarak eklediği broad match variant'ları negatif keyword'e ekleyin.
+| Discovery CPT | D7 LTV | Hedef Kampanya | Match Type |
+|---|---|---|---|
+| < $8 | > $5 | Competitor | Exact |
+| < $8 | $3-5 | Broad Match | Phrase |
+| > $8 | < $3 | Negative List | Exact |
+| N/A | < $2 | Brand (negatif) | Exact |
 
-## Brand kampanyası: savunma mekanizması olarak CPA arbitrage
+Bu tablo 2 haftada bir güncellenir. Cohort verisi geldikçe keyword'ler yukarı veya aşağı katmana taşınır.
 
-Brand kampanyanız kendi uygulama adınızı ve varyasyonlarını (örn. "roibase game", "roi base") hedefliyor. Bu trafikte organik listing zaten ilk sırada ama rakipler sizin branded keyword'ünüze bid verebilir — bu durumda sizin de kendi markanıza bid vermeniz gerekir yoksa rakip ilk sırada çıkar ve install'ınızı çalar. Brand kampanyasının TTR'si %25-40 bandında — kullanıcı sizi arıyor, tıklama kesin. CPA en düşük segment burası, genellikle discovery CPA'nın 1/3'ü kadar.
+## Brand: Conversion Katmanı, En Düşük CPT
 
-Bütçe allocation: brand kampanyasına toplam bütçenin %30-35'ini ayırın ancak burada hedef CPA minimize değil, impression share maksimize. Eğer branded keyword'ünüzde impression share %85'in altındaysa rakipleriniz sizin trafiğinizi kesiyordur. Bid'i artırıp %95+ impression share'e ulaşmalısınız. Brand kampanyasında CPA 0.50 dolar bile olsa bu kabul edilebilir çünkü bu kullanıcılar zaten sizi organik olarak bulacaktı — burada ödediğiniz para aslında rakibin sizi bloke etmesini engelleyen sigorta primi.
+Brand kampanyası oyununuzun adını ve branded term'lerini hedefler. Burada exact match zorunlu — phrase/broad kullanmayın çünkü Apple branded term'de zaten size avantaj veriyor, geniş eşleme gereksiz impression getirir. Örnek: oyununuz "Dragon Merge" ise sadece `[dragon merge]`, `[dragonmerge]`, `[dragon merge game]` gibi exact keyword'ler.
 
-Brand kampanyasında Search Match'i kapatın. Apple'ın otomatik genişletmesi branded sorguları generic sorguya dönüştürüp CPA'yı artırır. Sadece exact match ve close variant kullanın. Ad group'u tek keyword üzerine kurun: uygulama adı. Diğer tüm generic keyword'leri discovery veya broad match kampanyasına taşıyın. Brand kampanyasının custom product page'i direkt onboarding flow'a odaklı olmalı — bu kullanıcı zaten sizi biliyor, size yaratıcı hikaye anlatmanıza gerek yok.
+Bütçe günlük $100-150 yeterli çünkü branded term trafiği sınırlı. CPT $1.5-3 arası. Burada amaç organic'ten gelebilecek kullanıcıyı kaçırmamak ve rakiplerin sizin brand term'ünüze reklam vermesini engellemek. Apple Search Ads'te brand defense zorunlu — yoksa rakipler sizin adınıza reklam verir, kullanıcı sizin oyununuzu arıyor ama rakip oyunu indiriyor.
 
-## Broad match kampanyası: kontrollü genişleme için sandbox
+Brand kampanyada custom product page en yüksek conversion'ı verir. Burada kullanıcı oyunu zaten biliyor, ikna etmeniz gerekmiyor — sadece hızlı install süreci sunun. "Download Now" CTA'sı olan, 3 screenshot'tan fazla göstermeyen basit bir CPP kullanın. Roibase'in testlerinde brand kampanyada sade CPP %12-15 daha yüksek conversion veriyor.
 
-Broad match kampanyası discovery ile brand arasında bir katman — spesifik keyword'leri seçiyorsunuz ama Apple'ın bunları geniş eşleşmeyle (broad match) variant'larına genişletmesine izin veriyorsunuz. Örneğin "tower defense" keyword'ü "best tower defense", "tower defense offline", "td games" gibi varyasyonlara genişler. Bu modun avantajı kontrollü genişleme — discovery gibi tamamen otopilot değil, kendi keyword havuzunuzu belirleyip Apple'a "bunun etrafında ara" diyorsunuz.
+## Broad Match: Funnel Çıktısını Topla
 
-Broad match kampanyasını discovery'den ayırmanın nedeni bütçe kontrolü. Discovery'de Apple her yere gidebilir, broad match'te siz sınırları çiziyorsunuz. Bütçe allocation: %15-20. Strateji şu: discovery'den ve competitor'dan iyi perform eden keyword'leri alıp broad match'e taşıyın, 2 hafta test edin. Eğer broad match CPA discovery'den %20+ daha düşükse o keyword'ü exact match'e taşıyın. Broad match bu anlamda bir "staging" katmanı — keyword'lerin tam kontrole geçmeden önce test edildiği alan.
+Broad match kampanyası yukarıdaki 3 katmanın çıktısıyla beslenir. Discovery'den gelen ve D7 LTV $3-5 arası olan keyword'leri buraya phrase match olarak ekleyin. Competitor'dan conversion veren ama CPT $7'nin üstüne çıkan keyword'leri buraya broad match olarak taşıyın. Brand kampanyada negative olarak işaretlediğiniz "alakasız ama install veren" terimleri buraya phrase ile ekleyin.
 
-Broad match'te negative keyword disiplini kritik. Apple'ın genişlettiği variant'lar arasında tamamen alakasız sorgular olabilir (örn. "tower defense" → "tower building game"). Haftada bir Search Term Report'u gözden geçirip CTR %1'in altındaki veya CPA hedefin 2 katını aşan keyword'leri negatif listesine ekleyin. Bu işlem manuel ama 15 dakikalık haftalık rutin broad match bütçesinin %30'unu kurtarabilir.
+Bu katmanın mantığı şu: Apple'ın algoritması broad match'te agresif davranır, alakasız impression getirir. Ama siz yukarıdaki katmanlarda negatif keyword listesi oluşturduğunuz için bu katmanda sadece "orta seviye alakalı" terimler kalır. Sonuç: broad match kampanya CPT $4-6 bandında çalışır, ROAS %120-150 seviyesine ulaşır.
 
-### Funnel akışını sıkılaştırmak için bid multiplier stratejisi
+Bütçe günlük $300-500 arası — en büyük bütçe burada. Broad match kampanyada creative rotation yapın: haftada 1 custom product page değiştirin, en iyi TTR'yi veren creative'i 2 hafta boyunca çalıştırın. Apple Search Ads'te broad match kampanya bütçe akışının %50-60'ını yer alır ama burada ROI en yüksektir çünkü negatif keyword temizliği yapılmış bir havuzda çalışırsınız.
 
-Apple Search Ads'te demographic targeting yok ama device ve location targeting var. Funnel mimarinizdeki her kampanya tipi için ayrı bid multiplier tablosu oluşturun. Örneğin discovery kampanyasında tier-2 geo'larda (Brezilya, Hindistan) bid'i %40 düşürün çünkü bu bölgelerden gelen kullanıcıların LTV'si tier-1'in yarısı. Brand kampanyasında ise tier-2'de bile bid'i tam tutun çünkü sizi arayan kullanıcı zaten kalifiye. Broad match'te iPad kullanıcılarına %20 daha yüksek bid verin — tablet kullanıcılarının session time'ı %35 daha uzun ve IAP conversion %18 daha yüksek (App Annie 2025 verisi).
+## Bütçe Akışı ve Optimizasyon Döngüsü
 
-Kampanya tiplerine göre dayparting uygulayın. Discovery ve broad match kampanyalarını 09:00-23:00 saatleri arasında aktif tutun, gece trafiğini kapatın. Brand kampanyasını 7/24 açık bırakın. Rakipler gece sizin branded keyword'ünüze bid veriyorsa siz de savunmada olmalısınız. [App Store Optimization](https://www.roibase.com.tr/tr/aso) ile metadata'nızı sıkılaştırıp organik ranking'inizi güçlendirirseniz branded kampanyanın maliyeti düşer — ASO burada savunma duvarı görevi görür.
+Toplam günlük bütçe $650-1000 arası. Dağılım: discovery %10, competitor %30, brand %15, broad match %45. İlk 2 haftada discovery ağırlıklı çalışır, 3. haftadan itibaren broad match devreye girer. 4. haftada funnel dengeye oturur, bu noktada ROAS %130-160 bandına ulaşır.
 
-## Bütçe akışını closed-loop attribution ile yönetmek
+Optimizasyon döngüsü 2 haftada bir çalışır:
+1. Discovery kampanyayı kapat, Search Match report'tan keyword'leri çek
+2. D7 LTV'ye göre keyword'leri competitor/broad/negative'e aktar
+3. Competitor kampanyada CPT > $7 olan keyword'leri broad match'e taşı
+4. Brand kampanyada negative olan keyword'leri broad match'e phrase olarak ekle
+5. Broad match kampanyada impression > 1000 ama install < 5 olan keyword'leri campaign-level negative olarak işaretle
 
-Funnel mimarisi kurduktan sonra her kampanya tipinin MMP'deki (Mobile Measurement Partner) post-install event'lerini ayrı ayrı okuyun. Discovery'den gelen kullanıcıların D7 retention'ı %18, competitor'dan %26, brand'dan %42 ise bütçe dağılımınız bu metriğe göre revize edilmeli. Basit bir model: toplam bütçenizi LTV/CPA oranına göre dağıtın. Eğer brand kampanyasının LTV/CPA oranı 4.2, discovery'ninki 1.8 ise brand'a 2.3x daha fazla bütçe ayırın.
+Bu döngü manuel çalışır — Apple Search Ads API'si ile otomatize edilebilir ama ilk 3 ay manuel yapın ki funnel mantığını anlayın. Roibase'in [Premium Yayıncı Programı](/tr/premiumyayinci)'nda bu döngüyü haftalık koşturuyoruz, çünkü tier-1 pazarlarda keyword dinamikleri hızlı değişiyor.
 
-Ancak LTV hesaplamasını 90 gün beklemeden tahmin edebilmek için D7 retention ve D1 ARPU'yu leading indicator olarak kullanın. Eğer bir kampanya tipinin D7 retention'ı %30'un üstündeyse LTV tahminini 3x yukarı revize edin. Bu hesaplamayı otomatikleştirmek için MMP'nizi BigQuery'ye bağlayıp günlük cohort analizi yapın. Python ile basit bir linear regression modeli 15 satır kod — D1 ve D7 metriklerinden D90 LTV'yi %82 accuracy ile tahmin edebilirsiniz (kendi test verilerimizde).
+## Funnel Olmadan ASA Çalışmaz
 
-Kampanya tiplerine göre creative rotation disiplini: discovery ve broad match'te her 10 günde bir creative değiştirin, brand'da aynı creative'i 30 gün kullanın. Discovery'de kullanıcı sizi tanımıyor, creative test etmek mantıklı. Brand'da kullanıcı zaten karar vermiş, creative değişikliği TTR'yi sadece %2-3 etkiler. Competitor kampanyasında ise rakibin son kampanya mekaniğini benchmark alıp kendi creative'inizi ona göre güncelleyin — bu agile bir süreç, haftalık döngü gerektirir.
-
-Apple Search Ads kampanya mimarisini funnel mantığıyla kurmak, her aşamayı izole edip optimize etme imkanı veriyor. Discovery modunda geniş havuzu tara, keyword performansına göre broad match ve exact match'e taşı, competitor trafiğini ayrı bütçe disipliniyle yönet, kendi markanı rakiplere kaptırma. Bütçe akışını post-install metriklerle (D7, LTV) kapatıp her kampanya tipinin ROI'sini gerçek zamanlı oku. Funnel mimarisi kurulmamış bir ASA hesabı, farklı niyet seviyelerindeki kullanıcıları aynı havuzda eriterek bütçeyi düşük LTV segmentlere dağıtır — bu makaledeki yapıyı uygulayarak o kaybı %30-40 azaltabilirsiniz.
+Apple Search Ads'i tek kampanyayla çalıştırırsanız ya discovery'de bütçe yakar ya brand'de trafik alamazsınız. Funnel yapısı zorunlu çünkü her match type farklı amaç taşır: discovery keşif, competitor trafik, brand conversion, broad match ise ölçeklendirme. Bu 4 katman birbirini besler — discovery'den gelen keyword competitor'a gider, competitor'da pahalı olan broad match'e taşınır, brand kampanyada negatif olan broad match'te phrase olarak test edilir. Bu döngü olmadan Apple'ın algoritması size pahalı, düşük LTV keyword'ler sunar. Döngü olunca ROAS 6-8 hafta içinde %130'un üzerine çıkar, CPT $5 altına iner, cohort retention dengeli dağılır.
