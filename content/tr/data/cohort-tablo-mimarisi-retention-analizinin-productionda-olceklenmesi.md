@@ -1,252 +1,214 @@
 ---
 title: "Cohort Tablo Mimarisi: Retention Analizinin Production'da Ölçeklenmesi"
-description: "Materialized views, partitioning ve query cost optimization ile cohort analizi tablolarını production ortamında nasıl ölçeklendirebileceğinizi öğrenin."
-publishedAt: 2026-07-28
-modifiedAt: 2026-07-28
+description: "Materialized views, partition stratejisi ve query cost optimization ile retention cohort analizlerini production'da nasıl ölçeklendirir, maliyeti düşürür ve karar hızı kazandırırsınız."
+publishedAt: 2026-08-14
+modifiedAt: 2026-08-14
 category: data
-i18nKey: data-007-2026-07
+i18nKey: data-007-2026-08
 tags: [cohort-analysis, bigquery, materialized-views, data-engineering, retention]
 readingTime: 8
 author: Roibase
 ---
 
-Retention analizi yapan her organizasyon aynı yere takılıyor: cohort sorguları production'da ya 30 saniye sürüyor ya da BigQuery faturası ayda $8.000'e yaklaşıyor. Test ortamında 100K kullanıcıyla güzel çalışan `GROUP BY user_id, cohort_week` sorgusu, 50M kullanıcı ve 2 yıllık event log'uyla karşılaşınca çöküyor. Çözüm basit değil — sadece index eklemek veya cache açmak değil, tablo mimarisini baştan retention workload'una göre tasarlamak gerekiyor.
+Retention analizi e-ticaret ve SaaS modellerinde karar mekanizmasının merkezindedir. Ancak klasik cohort sorguları production ortamında çalıştırıldığında her analiz için terabaytlık event tablolarını full-scan eder, dakikalarca sürer ve query maliyetini günde yüzlerce dolara taşır. Cohort hesaplaması on-demand yapıldığında karar döngüsü yavaşlar, analyst ekip query optimizasyonuyla uğraşır, dashboard'lar güncellenmez. Çözüm: cohort tablolarını pre-compute edilmiş, partitioned ve incremental refresh'lenmiş bir data asset olarak saklamak. Bu yazıda materialized view, partitioning ve incremental build stratejilerini BigQuery üzerinde nasıl kuracağınızı, query maliyetini %90 düşürürken analiz hızını saniyeye indirip retention kararlarını real-time'a yakın hale getireceğinizi gösteriyoruz.
 
-## Cohort Analizi Neden Farklı Bir Mimari İster
+## Klasik Cohort Sorgusu Neden Ölçeklenmiyor
 
-Klasik event log tablosu `user_id`, `event_time`, `event_name` üzerine kurulu. Her cohort sorgusu bu tabloda milyarlarca satırı tarihsel olarak tarayıp, kullanıcıyı ilk olay tarihine göre grupluyor. BigQuery'de bu sorgu şöyle:
+Standart cohort analizi şu yapıda çalışır: kullanıcıyı ilk işlem tarihine göre grupla, sonraki günlerde hangi oranda geri döndüğünü hesapla. SQL sorgusu `events` tablosunu iki kez join eder — bir kez cohort tarihini bulmak için, bir kez retention davranışını saymak için. BigQuery'de 500 milyon satırlık bir event tablosunda bu sorgu 10-15 saniye sürer ve ~$0.50 maliyete gelir. Sorgu her dashboard refresh'te, her analyst iterasyonunda, her A/B test raporunda tekrarlanır.
 
-```sql
-WITH cohorts AS (
-  SELECT user_id, DATE_TRUNC(MIN(event_time), WEEK) AS cohort_week
-  FROM events
-  GROUP BY user_id
-),
-retention AS (
-  SELECT 
-    c.cohort_week,
-    DATE_DIFF(DATE_TRUNC(e.event_time, WEEK), c.cohort_week, WEEK) AS weeks_since_cohort,
-    COUNT(DISTINCT e.user_id) AS active_users
-  FROM cohorts c
-  JOIN events e ON c.user_id = e.user_id
-  GROUP BY 1, 2
-)
-SELECT * FROM retention ORDER BY 1, 2;
-```
+Sorun maliyetten çok hız ve esneklikten kaynaklanır. Analyst ekip cohort tanımını değiştirmek istediğinde (örneğin "ilk satın alma" yerine "ikinci sepete ekleme" cohort'u denemek) sorguyu yeniden yazmak, test etmek ve validate etmek saatler sürer. Dashboard'lar stale kalır. Pazarlama ekibi "geçen haftaki cohort'un retention'ı neydi" diye sorduğunda canlı veri yoktur, analyst sorguyu manuel çalıştırır. Bu döngü karar sürecini günlerce yavaşlatır.
 
-Bu sorgu her çalıştığında `events` tablosunun tamamını okur. 500M satır × 16 byte ortalama = 8 GB scan. BigQuery'de 1 TB scan $6.25 ise, 1.000 sorgu = $50. Dashboard her 5 dakikada refresh ise, ayda 8.640 sorgu = $432 sadece cohort widget'ı için. Ekibe 10 analist daha ekle, Slack botları query tetiklesin, maliyet katlanır.
+Cohort hesaplamaları ayrıca aggregation katmanı gerektiren bir data asset'tir. Retention metriği sadece "kullanıcı sayısı" değil, "aktif kullanıcı/cohort büyüklüğü" oranıdır. Bu oran her gün güncellenmeli, geçmiş cohort'ların yeni günlerdeki davranışı eklenmelidir. Klasik sorgu bu incremental logic'i desteklemez, her seferinde baştan hesaplar.
 
-Asıl sorun maliyet bile değil — latency. JOIN 500M satırla çalışınca 15-30 saniye sürer. Kullanıcı dashboard'da filter değiştirdi, yeni cohort datası için 20 saniye bekliyor. Retention analizi bu gecikmede iteratif olamaz.
+## Materialized View ile Cohort'u Tablo Haline Getirmek
 
-### Materialized View İlk Adım Ama Yetmez
+Çözümün ilk adımı cohort tanımını bir materialized view olarak sabitlemektir. BigQuery'de materialized view sorgu sonucunu fiziksel olarak saklar, base tabloda değişiklik olduğunda incremental refresh yapar. Ancak cohort analizi için standart MV yeterli değildir çünkü cohort tanımı ve retention penceresi dinamik parametrelerdir. Bu yüzden hybrid bir yapı kuruyoruz: cohort assignment tablosu + retention event aggregation tablosu.
 
-BigQuery materialized view cohort sorgusunu pre-compute eder:
+İlk tablo `cohort_assignments`, kullanıcının cohort'a ilk girdiği tarihi saklar:
 
 ```sql
-CREATE MATERIALIZED VIEW cohort_retention AS
-SELECT 
-  cohort_week,
-  weeks_since_cohort,
-  active_users
-FROM retention; -- yukarıdaki CTE sorgusunun sonucu
-```
-
-Artık dashboard `cohort_retention` tablosunu okur, `events` tablosunu değil. Scan 8 GB yerine 80 MB. Latency 20 saniye yerine 800 ms. Fakat iki sınır var:
-
-1. **Refresh maliyet:** Materialized view her refresh'te base sorguyu çalıştırır. Yani yine 8 GB scan. Eğer view'ı saatte 1 refresh edersen, 24 × 8 GB = 192 GB/gün = ayda 5,8 TB scan. Maliyet düşmedi, latency düştü.
-2. **Flexibility:** Materialized view statik. Kullanıcı "Android cohort retention" diye filtre ekler, view yeniden hesaplanmalı. Pre-filter ekleyemezsin, çünkü `WHERE platform = 'Android'` ekleyince farklı view gerekir.
-
-Bu yüzden cohort mimarisi üç katmanlı kurulmalı: raw events → cohort assignment table → aggregated retention table.
-
-## Cohort Assignment Tablosunu Ayırmak
-
-İlk adım: her kullanıcıyı cohort'una atayan ayrı bir tablo oluştur. Bu tablo sadece `user_id` ve `cohort_week` içerir, event log'dan türetilir ama günde 1 kere hesaplanır:
-
-```sql
-CREATE OR REPLACE TABLE cohort_assignments
-PARTITION BY cohort_week
+CREATE TABLE `project.dataset.cohort_assignments`
+PARTITION BY DATE(cohort_date)
 CLUSTER BY user_id
 AS
-SELECT 
+SELECT
   user_id,
-  DATE_TRUNC(MIN(event_time), WEEK) AS cohort_week,
-  MIN(event_time) AS first_seen_at
-FROM events
-WHERE event_time >= '2024-01-01'
+  MIN(DATE(event_timestamp)) AS cohort_date,
+  COUNTIF(event_name = 'purchase') AS total_purchases
+FROM `project.dataset.events`
+WHERE event_name IN ('first_visit', 'purchase', 'signup')
 GROUP BY user_id;
 ```
 
-Bu tablo:
-- **Partition by cohort_week:** BigQuery her hafta için ayrı dosya blok yaratır. Filtre `WHERE cohort_week = '2026-01-05'` olunca sadece 1 partition okunur.
-- **Cluster by user_id:** Partition içinde user_id bazlı sıralı depolama. JOIN hızlanır.
-- **Boyut:** 50M kullanıcı × 3 kolon × 16 byte = ~2.4 GB. Event log 500 GB ise, cohort tablosu 200× küçük.
+Bu tablo her kullanıcıyı bir kez içerir, `cohort_date` partition key'dir. Yeni kullanıcı geldiğinde sadece ilgili partition'a ekleme yapılır. Tablo büyüklüğü kullanıcı sayısıyla scale eder (event sayısıyla değil), 10 milyon kullanıcı için ~500 MB'dir.
 
-Şimdi retention sorgusu bu tabloyu kullanır:
+İkinci tablo `daily_user_activity`, her kullanıcının her gün aktif olup olmadığını boolean flag olarak saklar:
 
 ```sql
-SELECT 
-  c.cohort_week,
-  DATE_DIFF(DATE_TRUNC(e.event_time, WEEK), c.cohort_week, WEEK) AS weeks_since,
-  COUNT(DISTINCT e.user_id) AS active_users
-FROM cohort_assignments c
-JOIN events e ON c.user_id = e.user_id
-WHERE c.cohort_week >= '2026-01-01'
-GROUP BY 1, 2;
+CREATE TABLE `project.dataset.daily_user_activity`
+PARTITION BY activity_date
+CLUSTER BY user_id
+AS
+SELECT
+  user_id,
+  DATE(event_timestamp) AS activity_date,
+  TRUE AS is_active
+FROM `project.dataset.events`
+WHERE event_name IN ('pageview', 'purchase', 'session_start')
+GROUP BY user_id, activity_date;
 ```
 
-`cohort_assignments` partition pruning ile 4 haftalık veri okursa 200 MB scan. JOIN hâlâ `events` tablosunu full scan yapıyor ama artık cohort filter uygulanmış state'ten başlıyor, gereksiz kullanıcı yok.
+Retention sorgusunu bu iki tabloya join ederek yapıyoruz:
 
-### Incremental Güncelleme
+```sql
+SELECT
+  c.cohort_date,
+  DATE_DIFF(a.activity_date, c.cohort_date, DAY) AS days_since_cohort,
+  COUNT(DISTINCT c.user_id) AS cohort_size,
+  COUNT(DISTINCT a.user_id) AS active_users,
+  SAFE_DIVIDE(COUNT(DISTINCT a.user_id), COUNT(DISTINCT c.user_id)) AS retention_rate
+FROM `project.dataset.cohort_assignments` c
+LEFT JOIN `project.dataset.daily_user_activity` a
+  ON c.user_id = a.user_id
+  AND a.activity_date >= c.cohort_date
+WHERE c.cohort_date >= '2026-01-01'
+GROUP BY c.cohort_date, days_since_cohort
+ORDER BY c.cohort_date, days_since_cohort;
+```
 
-`cohort_assignments` tablosu günde 1 kere yenilenir ama her seferinde sıfırdan hesaplanmaz. dbt incremental model kullan:
+Bu sorgu artık terabaytlık event tablosunu taramaz, sadece iki küçük join yapar. BigQuery'de 10 milyon kullanıcı için ~2 saniye sürer, maliyet $0.02'dir — %96 maliyet düşüşü.
+
+## Partitioning Stratejisi: Hangi Tarih Hangi Partition'a
+
+Cohort tablolarında partitioning stratejisi kritiktir çünkü iki zaman boyutu vardır: cohort tarihi ve activity tarihi. `cohort_assignments` tablosu `cohort_date` ile partition'lanır çünkü bu tablo kullanıcının ilk işlemini saklar ve cohort tanımı sabittir. Yeni kullanıcı geldiğinde sadece bugünün partition'ına ekleme yapılır, geçmiş partition'lar immutable kalır.
+
+`daily_user_activity` tablosu `activity_date` ile partition'lanır çünkü her gün yeni activity verisi gelir ve geçmiş günler değişmez. Bu yapı incremental refresh'e uygundur: dbt veya Airflow job'u her gün sadece bugünün partition'ını yazar, geçmiş partition'lara dokunmaz.
+
+Ancak retention analizi iki tarih arasında join gerektirir: cohort_date ile activity_date. Join performansını optimize etmek için cluster key kullanıyoruz. BigQuery'de `CLUSTER BY user_id` ifadesi aynı user_id'ye sahip satırları fiziksel olarak yan yana saklar, join işlemi block-level pruning yapar ve disk I/O'yu azaltır. 10 milyon kullanıcı için cluster key olmadan join ~8 saniye sürerken, cluster key ile ~2 saniyeye düşer.
+
+Partition pruning de önemlidir. Retention sorgusu genelde son 90 günlük cohort'ları analiz eder. `WHERE c.cohort_date >= '2026-05-01'` filtresi partition pruning tetikler, BigQuery sadece ilgili partition'ları okur. 2 yıllık veri için partition pruning olmadan query cost ~$0.50'dir, partition pruning ile $0.02'dir — çünkü scan edilen veri 24 kat azalır.
+
+Partitioning strategy'de bir trade-off vardır: günlük partition'lar incremental refresh'i kolaylaştırır ama çok fazla partition BigQuery'de query planning overhead'ini artırır. 1000+ partition'lı bir tablo query planner'ın metadata load süresini artırır. Bu yüzden 2 yıldan eski cohort verisi archive edilmeli veya monthly partition'a consolidate edilmelidir.
+
+## Incremental Refresh: Sadece Yeni Veriyi Hesapla
+
+Cohort tablolarının günlük güncellenmesi gerekir çünkü yeni kullanıcılar cohort'a eklenir ve mevcut cohort'ların retention davranışı güncellenir. Ancak full refresh yapmak — tüm tabloyu baştan hesaplamak — gereksiz maliyettir. Çözüm: incremental build pattern.
+
+dbt'de incremental model şu şekilde tanımlanır:
 
 ```sql
 {{
   config(
     materialized='incremental',
-    partition_by={'field': 'cohort_week', 'data_type': 'date'},
-    cluster_by=['user_id']
+    partition_by={'field': 'cohort_date', 'data_type': 'date'},
+    cluster_by=['user_id'],
+    incremental_strategy='insert_overwrite'
   )
 }}
 
-SELECT 
+SELECT
   user_id,
-  DATE_TRUNC(MIN(event_time), WEEK) AS cohort_week,
-  MIN(event_time) AS first_seen_at
-FROM {{ ref('events') }}
+  MIN(DATE(event_timestamp)) AS cohort_date,
+  COUNTIF(event_name = 'purchase') AS total_purchases
+FROM {{ source('raw', 'events') }}
+WHERE DATE(event_timestamp) = CURRENT_DATE() - 1
 {% if is_incremental() %}
-  WHERE event_time > (SELECT MAX(first_seen_at) FROM {{ this }})
+  AND DATE(event_timestamp) > (SELECT MAX(cohort_date) FROM {{ this }})
 {% endif %}
 GROUP BY user_id
 ```
 
-Bu model ilk run'da tüm datayı işler, sonraki run'larda sadece yeni kullanıcıları ekler. Scan 500 GB yerine günde 2 GB.
+Bu model her gün sadece dünün partition'ını hesaplar. `insert_overwrite` stratejisi mevcut partition'ı siler ve yenisini yazar. BigQuery'de partition-level replace atomic bir işlemdir, downstream query'ler asla incomplete veri okumaz.
 
-## Aggregated Retention Tablosu: Pre-Compute Week-Level Metrics
-
-Cohort assignment tablosu retention sorgusunu hızlandırdı ama dashboard hâlâ her istekte `events` tablosunu JOIN ediyor. Bir adım daha: retention metriklerini haftalık bazda pre-compute et, ayrı bir tabloda sakla.
+`daily_user_activity` tablosu için incremental logic daha basittir çünkü her gün yeni bir partition eklenir, geçmiş partition'lar değişmez:
 
 ```sql
-CREATE TABLE cohort_retention_weekly
-PARTITION BY cohort_week
-CLUSTER BY weeks_since_cohort
+{{
+  config(
+    materialized='incremental',
+    partition_by={'field': 'activity_date', 'data_type': 'date'},
+    cluster_by=['user_id']
+  )
+}}
+
+SELECT
+  user_id,
+  DATE(event_timestamp) AS activity_date,
+  TRUE AS is_active
+FROM {{ source('raw', 'events') }}
+WHERE DATE(event_timestamp) = CURRENT_DATE() - 1
+{% if is_incremental() %}
+  AND DATE(event_timestamp) NOT IN (SELECT DISTINCT activity_date FROM {{ this }})
+{% endif %}
+GROUP BY user_id, activity_date
+```
+
+Incremental refresh ile günlük job süresi 5 dakikadan 30 saniyeye düşer. BigQuery slot kullanımı %80 azalır, query queue'da bekleme ortadan kalkar. Analyst ekip sabah 9'da dashboard'ı açtığında dünün retention verisi hazırdır.
+
+Ancak incremental build'de bir risk vardır: late-arriving data. Eğer event pipeline'ında 2-3 saatlik gecikme varsa, dünün partition'ı eksik veri içerir. Bu sorunu çözmek için iki yaklaşım kullanılır: (1) dbt'de `lookback_window` parametresi — son 3 günü her seferinde yeniden hesapla; (2) BigQuery'de `_PARTITIONTIME` metadata kullanarak partition insert time'ına göre filtreleme. İkinci yöntem daha efektif çünkü sadece geç gelen event'leri re-process eder.
+
+## Query Cost Optimization: Tablo Boyutu ve Scan Stratejisi
+
+Cohort tablolarının maliyeti iki faktöre bağlıdır: tablo büyüklüğü (GB) ve query scan pattern'i. `cohort_assignments` tablosu 10 milyon kullanıcı için ~500 MB'dir, `daily_user_activity` tablosu 90 günlük pencerede ~5 GB'dir. Bu iki tablo join edildiğinde BigQuery ~6 GB scan eder, maliyet ~$0.03'tür. Ancak aynı analiz raw event tablosunda yapılsaydı 500 GB scan edilir, maliyet ~$2.50 olurdu — 80x fark.
+
+Maliyeti daha da düşürmek için pre-aggregated cohort summary tablosu kullanılır:
+
+```sql
+CREATE TABLE `project.dataset.cohort_retention_summary`
+PARTITION BY cohort_date
+CLUSTER BY days_since_cohort
 AS
-SELECT 
-  c.cohort_week,
-  DATE_DIFF(DATE_TRUNC(e.event_time, WEEK), c.cohort_week, WEEK) AS weeks_since_cohort,
-  COUNT(DISTINCT e.user_id) AS active_users,
-  COUNT(*) AS total_events,
-  APPROX_QUANTILES(session_duration, 100)[OFFSET(50)] AS median_session_duration
-FROM cohort_assignments c
-JOIN events e ON c.user_id = e.user_id
-GROUP BY 1, 2;
+SELECT
+  c.cohort_date,
+  DATE_DIFF(a.activity_date, c.cohort_date, DAY) AS days_since_cohort,
+  COUNT(DISTINCT c.user_id) AS cohort_size,
+  COUNT(DISTINCT a.user_id) AS active_users,
+  SAFE_DIVIDE(COUNT(DISTINCT a.user_id), COUNT(DISTINCT c.user_id)) AS retention_rate
+FROM `project.dataset.cohort_assignments` c
+LEFT JOIN `project.dataset.daily_user_activity` a
+  ON c.user_id = a.user_id
+  AND a.activity_date >= c.cohort_date
+GROUP BY c.cohort_date, days_since_cohort;
 ```
 
-Bu tablo:
-- **Boyut:** 52 hafta × 52 weeks_since × 3 metrik = ~8.100 satır (1 yıllık veri için). KB seviyesinde.
-- **Scan:** Dashboard `cohort_retention_weekly` okur, `events` okuması yok. Scan < 1 MB.
-- **Latency:** BigQuery 1 MB veriyi 80 ms'de okur. Dashboard artık sub-second.
+Bu tablo her cohort-day kombinasyonu için pre-compute edilmiş retention oranını saklar. Tablo boyutu ~100 MB'dir (10 milyon kullanıcı × 90 gün = 900 milyon satır → aggregation sonrası ~50,000 satır). Dashboard bu tabloyu okur, join yapmaz, query süresi <1 saniye, maliyet ~$0.001'dir.
 
-Tradeoff: Bu tablo günde 1 kere yenilenmelidir. Güncel olmayan data kabul edilemezse, 1 saatte 1 refresh (dbt schedule `0 * * * *`). Refresh maliyeti: cohort_assignments JOIN events, ~10 GB scan. Günde 24× = 240 GB, ayda 7.2 TB. Karşılaştırma: dashboard 1.000 kere cohort sorgusu çalıştırsaydı, 8 TB scan olurdu. Yani aggregated tablo scan'i %10 düşürdü, latency'yi 20 saniyeden 80 ms'ye çekti.
+Query cost optimization'da dikkat edilmesi gereken bir diğer nokta `SELECT *` kullanmamaktır. Cohort analizinde sadece `user_id`, `cohort_date`, `activity_date` kolonları gerekir. Eğer `daily_user_activity` tablosu event_name, session_id gibi extra kolonlar içeriyorsa ve query `SELECT *` kullanıyorsa, gereksiz veri scan edilir. BigQuery columnar storage kullanır, sadece gerekli kolonları seçmek disk I/O'yu %40-50 azaltır.
 
-### Partitioning Stratejisi: Cohort Week vs Event Week
+Son optimizasyon BigQuery BI Engine kullanmaktır. BI Engine cohort summary tablosunu in-memory cache'ler, dashboard query'leri sub-second latency ile döner. 100 MB'lık bir tablo için BI Engine reservation ~$10/month'tur, ancak günde 1000 query çalıştırıldığında query cost tasarrufu ~$30/month olur — net kazanç.
 
-Cohort retention tablosunu `cohort_week` ile partition'lamak doğru mu yoksa `event_week` ile mi? İki yaklaşım var:
+## Retention Engineering Pipeline: dbt + Airflow + Alerting
 
-**Partition by cohort_week:**
-- Kullanım: "2026-W03 cohort'unun retention curve'ü nedir?"
-- Pruning: `WHERE cohort_week = '2026-01-13'` → 1 partition okunur
-- Zorluk: Dashboard "son 4 haftanın toplam retention'ı" diye sorduysa, 4 partition okunur. Fakat çoğu retention analizi cohort bazlı olduğu için optimal.
+Production ortamında cohort mimarisi sadece SQL değildir, orchestration ve monitoring gerektirir. Retention pipeline şu bileşenlerden oluşur:
 
-**Partition by event_week:**
-- Kullanım: "Bu hafta aktif olan cohort'lar hangileri?"
-- Pruning: `WHERE event_week = '2026-07-21'` → 1 partition
-- Zorluk: Cohort filter eklersen partition pruning çalışmaz, tüm partitions okunur.
+1. **Airflow DAG:** Her sabah 06:00'da tetiklenir, event tablosunu partition-level validate eder (late-arriving data kontrolü).
+2. **dbt incremental models:** `cohort_assignments`, `daily_user_activity`, `cohort_retention_summary` tablolarını sırayla yeniler.
+3. **Data quality tests:** dbt test'leri cohort_size > 0, retention_rate BETWEEN 0 AND 1 gibi constraint'leri check eder.
+4. **Alerting:** Eğer bugünkü retention Day 1 oranı geçen haftanın ortalamasının %20 altındaysa Slack alert gönderir.
 
-Roibase [veri analizi mimarisi](https://www.roibase.com.tr/tr/verianalizi) projelerde retention tablosunu cohort_week ile partition'lar, çünkü retention sorgularının %80'i "cohort X'in N. haftası" formatında.
+Bu pipeline'ı kurmak için [CDP & Retention Engineering](https://www.roibase.com.tr/tr/retention-engineering-cdp) altyapısı gerekir — event collection'dan cohort tanımına, BigQuery optimization'dan dashboard entegrasyonuna kadar end-to-end mimari.
 
-## Query Cost Optimization: Clustering ve BI Engine
-
-Partition yukarıdan aşağıya pruning yapar (hangi dosya bloklarını okuma), clustering soldan sağa sıralar (blok içinde hangi satırları okuma). İkisi birleşince scan minimize olur.
+dbt modellerinde macro kullanarak cohort tanımını parametrik hale getirebilirsiniz:
 
 ```sql
-CREATE TABLE cohort_retention_weekly
-PARTITION BY cohort_week
-CLUSTER BY weeks_since_cohort, platform, country;
+{% macro cohort_definition(event_name) %}
+  SELECT user_id, MIN(DATE(event_timestamp)) AS cohort_date
+  FROM {{ source('raw', 'events') }}
+  WHERE event_name = '{{ event_name }}'
+  GROUP BY user_id
+{% endmacro %}
 ```
 
-Sorgu `WHERE weeks_since_cohort = 4 AND platform = 'iOS'` ise:
-1. Partition pruning → sadece ilgili cohort_week partition'ları
-2. Clustering → partition içinde önce `weeks_since_cohort = 4` satırları, sonra `platform = 'iOS'` satırları
+Bu macro ile aynı pipeline'da "ilk satın alma cohort'u", "ilk login cohort'u", "ikinci sepete ekleme cohort'u" gibi farklı cohort tanımlarını parallel çalıştırabilirsiniz. Analyst ekip yeni cohort tipi denemek istediğinde kod yazmaz, config dosyasında parametre değiştirir.
 
-BigQuery clustering max 4 kolon alır. Sıralama önemli: en çok filter edilen kolonu en başa koy.
+Monitoring katmanında BigQuery Audit Log'ları kullanarak query maliyetini job-level track edin. Eğer cohort refresh job'u aniden 10x maliyet artışı gösteriyorsa (örneğin partition pruning bozulmuş olabilir), otomatik alert ile müdahale edin. Production ortamında cost anomaly detection retention pipeline'ının reliability'sinin parçasıdır.
 
-**BI Engine:** BigQuery'nin in-memory cache katmanı. 100 GB BI Engine reserve edersen, sık kullanılan tablolar RAM'de tutulur. `cohort_retention_weekly` tablosu 50 MB ise, tamamen BI Engine'de kalır, scan 0 olur (cache hit). Maliyet: 100 GB $100/ay. Karşılığı: ayda 10 TB scan tasarrufu = $62.50. ROI pozitif.
+## Cohort Mimarisinin Karar Sürecine Etkisi
 
-### Approximation Functions: Tam Accuracy Gerekmeyen Metrikler
+Cohort tablolarını pre-compute etmek sadece maliyet optimizasyonu değildir, karar hızını ve analiz esnekliğini değiştirir. Pazarlama ekibi "geçen haftaki iOS cohort'unun Day 7 retention'ı Android'den iyi mi" sorusuna 10 dakika değil 10 saniyede cevap alır. A/B test sonuçları her gün otomatik güncellenir, manuel export-import döngüsü ortadan kalkar.
 
-Cohort retention hesabında bazı metrikler exact olmalı (`COUNT(DISTINCT user_id)`), bazıları yaklaşık olabilir (median session duration, percentile).
+Retention metriği artık sadece aylık rapor değil, günlük operasyonel karardır. Eğer bugünkü cohort'un Day 1 retention'ı %5 düşükse, campaign optimization hemen tetiklenir. Eğer bir özellik release'i sonrası Day 3 retention artıyorsa, özelliği hızla scale edebilirsiniz. Bu hız ancak cohort verisi real-time'a yakın fresh olduğunda mümkündür.
 
-BigQuery approximate fonksiyonlar:
-- `APPROX_COUNT_DISTINCT(user_id)` → %2 hata payı, 10× hızlı
-- `APPROX_QUANTILES(value, 100)[OFFSET(50)]` → median, %1 hata
-- `APPROX_TOP_COUNT(event_name, 10)` → en çok yapılan 10 event
+Cohort mimarisi ayrıca cross-functional collaboration'ı kolaylaştırır. Product ekibi cohort tablolarını kullanarak feature adoption metriklerini hesaplar, finance ekibi LTV projeksiyonu için aynı retention curve'ü kullanır, customer success ekibi churn risk skorunu aynı cohort assignment'tan türetir. Tek bir data asset birden fazla use case'e hizmet eder, data duplication ortadan kalkar.
 
-Örnek: 50M kullanıcı için exact `COUNT(DISTINCT ...)` 8 saniye sürer, `APPROX_COUNT_DISTINCT` 800 ms. Dashboard real-time filter için approx kullan, final rapor için exact.
-
-## Incremental Update Strategy: Event-Time vs Processing-Time
-
-Cohort tablosu günde 1 kere güncellenirken hangi event'leri işlemeli? İki timestamp var:
-
-1. **event_time:** Kullanıcının eventi gerçekleştirdiği zaman (client-side)
-2. **_PARTITIONTIME:** BigQuery'nin event'i depoladığı zaman (server-side)
-
-Incremental update `event_time` kullanırsa:
-```sql
-WHERE event_time > (SELECT MAX(event_time) FROM cohort_assignments)
-```
-**Sorun:** Late-arriving events. Kullanıcı 3 gün offline, event batch upload ile gelir. `event_time` 3 gün önceyse, incremental sorgu onu kaçırır.
-
-Incremental update `_PARTITIONTIME` kullanırsa:
-```sql
-WHERE _PARTITIONTIME > CURRENT_DATE() - 7
-```
-**Avantaj:** Son 7 günü her seferinde yeniden işler, late events yakalanır.
-**Maliyet:** 7 gün event data = günde ~14 GB scan (2 GB yerine).
-
-Tradeoff: Late events %1'in altındaysa `event_time` kullan, scan düşük. Mobile app'te late events %5 civarıysa `_PARTITIONTIME` ile 3 gün lookback yap.
-
-## Cohort Segmentation: Dynamic Filters vs Static Dimensions
-
-Kullanıcı dashboard'da "iOS cohort retention" diye filtre ekler. İki yöntem:
-
-**Yöntem 1: Query-time filter**
-```sql
-SELECT cohort_week, weeks_since, active_users
-FROM cohort_retention_weekly
-WHERE user_id IN (SELECT user_id FROM users WHERE platform = 'iOS');
-```
-**Sorun:** Subquery her seferinde `users` tablosunu okur. 50M kullanıcı = 1 GB scan. Dashboard 100 kere refresh = 100 GB.
-
-**Yöntem 2: Pre-compute dimensions**
-```sql
-CREATE TABLE cohort_retention_weekly
-AS
-SELECT 
-  c.cohort_week,
-  weeks_since_cohort,
-  u.platform,
-  u.country,
-  COUNT(DISTINCT e.user_id) AS active_users
-FROM cohort_assignments c
-JOIN events e ON c.user_id = e.user_id
-JOIN users u ON e.user_id = u.user_id
-GROUP BY 1, 2, 3, 4;
-```
-Artık `WHERE platform = 'iOS'` filtresi retention tablosunda doğrudan çalışır. Scan artışı: 2 kolon × 10 segment = 20× büyük tablo. Fakat query-time JOIN yok, latency düşük.
-
-**Öneri:** En çok kullanılan 3-4 segmenti (platform, country, acquisition_channel) pre-compute et, geri kalanı query-time filter.
-
----
-
-Cohort retention mimarisi production'da ölçeklenmek için üç katmanlı kurulmalı: assignment, aggregation, caching. BigQuery partitioning ve clustering doğru planlanırsa, 50M kullanıcıda bile sub-second latency ve ayda $200 scan budget tutturulabilir. Asıl kazanç maliyet değil — retention analizi iteratif hale gelir, ekip günde 50 cohort denemesi yapabilir.
+Son olarak, cohort mimarisi incrementality measurement'ın temelidir. Retention analizi sadece "ne kadar kullanıcı geri döndü" değil, "hangi marketing channel'ın cohort'u daha iyi retention gösteriyor" sorusunu yanıtlar. Bu analiz [First-Party Veri & Ölçüm Mimarisi](https://www.roibase.com.tr/tr/firstparty) ile entegre edildiğinde, attribution modeli sadece ilk tıklama değil, lifetime value'ya katkıyı ölçer. Cohort tablolarında `utm_source`, `campaign_id` gibi acquisition dimension'ları saklayarak channel-level retention comparison yapabilirsiniz — bu karşılaştırma pazarlama bütçesi allocation'ının temel metriğidir.

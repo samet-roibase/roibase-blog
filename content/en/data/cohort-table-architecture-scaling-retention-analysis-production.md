@@ -1,252 +1,214 @@
 ---
 title: "Cohort Table Architecture: Scaling Retention Analysis in Production"
-description: "Learn how to scale cohort analysis tables in production using materialized views, partitioning, and query cost optimization techniques."
-publishedAt: 2026-07-28
-modifiedAt: 2026-07-28
+description: "Learn how to scale retention cohort analysis in production using materialized views, partition strategy, and query cost optimization to reduce costs by 90% while enabling real-time decisions."
+publishedAt: 2026-08-14
+modifiedAt: 2026-08-14
 category: data
-i18nKey: data-007-2026-07
+i18nKey: data-007-2026-08
 tags: [cohort-analysis, bigquery, materialized-views, data-engineering, retention]
 readingTime: 8
 author: Roibase
 ---
 
-Every organization running retention analysis hits the same wall: cohort queries either take 30 seconds in production or push BigQuery bills toward $8,000/month. A `GROUP BY user_id, cohort_week` query that runs beautifully in staging with 100K users collapses when it meets 50M users and two years of event logs. The solution isn't simple—adding an index or enabling caching won't cut it. You need to redesign your table architecture from scratch around retention workloads.
+Retention analysis sits at the center of decision-making in e-commerce and SaaS models. Yet when classic cohort queries run in production, they full-scan terabytes of event tables, take minutes to complete, and push query costs to hundreds of dollars per day. On-demand cohort computation slows the decision cycle, analyst teams get stuck optimizing queries, and dashboards go stale. The solution: store cohort tables as pre-computed, partitioned data assets with incremental refresh. This article shows you how to build materialized views, partitioning strategies, and incremental load patterns on BigQuery—cutting query costs by 90% while bringing analysis time down to seconds and pushing retention decisions toward real-time.
 
-## Why Cohort Analysis Demands a Different Architecture
+## Why Classic Cohort Queries Don't Scale
 
-A classical event log table is built on `user_id`, `event_time`, `event_name`. Every cohort query scans billions of rows historically, grouping users by their first event date. In BigQuery, this query looks like:
+Standard cohort analysis follows this pattern: group users by their first transaction date, then measure what percentage return on subsequent days. The SQL query joins the `events` table twice—once to find the cohort date, once to count retention behavior. On a 500-million-row event table in BigQuery, this query takes 10–15 seconds and costs ~$0.50. The same query runs on every dashboard refresh, every analyst iteration, and every A/B test report.
 
-```sql
-WITH cohorts AS (
-  SELECT user_id, DATE_TRUNC(MIN(event_time), WEEK) AS cohort_week
-  FROM events
-  GROUP BY user_id
-),
-retention AS (
-  SELECT 
-    c.cohort_week,
-    DATE_DIFF(DATE_TRUNC(e.event_time, WEEK), c.cohort_week, WEEK) AS weeks_since_cohort,
-    COUNT(DISTINCT e.user_id) AS active_users
-  FROM cohorts c
-  JOIN events e ON c.user_id = e.user_id
-  GROUP BY 1, 2
-)
-SELECT * FROM retention ORDER BY 1, 2;
-```
+The problem isn't just cost—it's speed and flexibility. When the analyst team wants to change cohort definition (say, switching from "first purchase" to "second add-to-cart" cohort), rewriting, testing, and validating the query takes hours. Dashboards stay stale. When marketing asks "what was last week's cohort retention," there's no live data; an analyst has to run the query manually. This loop delays decisions by days.
 
-Every time this runs, it reads the entire `events` table. 500M rows × 16 bytes average = 8 GB scan. At $6.25 per TB in BigQuery, 1,000 queries = $50. If your dashboard refreshes every 5 minutes, that's 8,640 queries per month = $432 just for the cohort widget. Add 10 more analysts to the team, throw in Slack bots triggering queries, and costs multiply.
+Cohort calculations are also an aggregation-layer data asset. Retention metric isn't just "user count"—it's the ratio of "active users / cohort size." That ratio updates daily, and past cohorts' behavior must be extended with new days. Classic queries don't support this incremental logic; they recalculate from scratch every time.
 
-But cost isn't even the real problem—it's latency. A JOIN across 500M rows takes 15–30 seconds. A user changes a dashboard filter, waits 20 seconds for new cohort data. Retention analysis can't be iterative under that delay.
+## From Query to Table: Using Materialized Views for Cohort Storage
 
-### Materialized Views: A Start, But Not Enough
+The first step: lock cohort definition into a materialized view. BigQuery materialized views physically store query results and refresh incrementally when base tables change. But for cohort analysis, a standard MV isn't enough because cohort definition and retention windows are dynamic parameters. The solution is a hybrid structure: cohort assignment table + retention event aggregation table.
 
-BigQuery materialized views pre-compute your cohort query:
+The first table, `cohort_assignments`, stores when a user first entered a cohort:
 
 ```sql
-CREATE MATERIALIZED VIEW cohort_retention AS
-SELECT 
-  cohort_week,
-  weeks_since_cohort,
-  active_users
-FROM retention; -- result of the CTE query above
-```
-
-Now your dashboard reads `cohort_retention`, not `events`. Scan drops from 8 GB to 80 MB. Latency drops from 20 seconds to 800 ms. But two limits appear:
-
-1. **Refresh cost:** Every materialized view refresh runs the base query. That's 8 GB scan again. If you refresh hourly, 24 × 8 GB = 192 GB/day = 5.8 TB/month. Cost didn't drop, latency did.
-2. **Flexibility:** Materialized views are static. A user filters for "Android cohort retention" and the view needs to recalculate. You can't pre-filter without creating a separate view for each segment.
-
-That's why cohort architecture must be three-layered: raw events → cohort assignment table → aggregated retention table.
-
-## Separating the Cohort Assignment Table
-
-First step: create a dedicated table that assigns every user to their cohort. It holds only `user_id` and `cohort_week`, derived from events but calculated once per day:
-
-```sql
-CREATE OR REPLACE TABLE cohort_assignments
-PARTITION BY cohort_week
+CREATE TABLE `project.dataset.cohort_assignments`
+PARTITION BY DATE(cohort_date)
 CLUSTER BY user_id
 AS
-SELECT 
+SELECT
   user_id,
-  DATE_TRUNC(MIN(event_time), WEEK) AS cohort_week,
-  MIN(event_time) AS first_seen_at
-FROM events
-WHERE event_time >= '2024-01-01'
+  MIN(DATE(event_timestamp)) AS cohort_date,
+  COUNTIF(event_name = 'purchase') AS total_purchases
+FROM `project.dataset.events`
+WHERE event_name IN ('first_visit', 'purchase', 'signup')
 GROUP BY user_id;
 ```
 
-This table:
-- **Partition by cohort_week:** BigQuery creates separate file blocks for each week. A filter like `WHERE cohort_week = '2026-01-05'` only reads one partition.
-- **Cluster by user_id:** Within each partition, rows are sorted by user_id. JOINs accelerate.
-- **Size:** 50M users × 3 columns × 16 bytes = ~2.4 GB. If the event log is 500 GB, this cohort table is 200× smaller.
+This table holds each user once; `cohort_date` is the partition key. New users only add to their date's partition. Table size scales with user count (not event count)—10 million users fit in ~500 MB.
 
-Now your retention query uses this table:
+The second table, `daily_user_activity`, stores whether each user was active each day as a boolean flag:
 
 ```sql
-SELECT 
-  c.cohort_week,
-  DATE_DIFF(DATE_TRUNC(e.event_time, WEEK), c.cohort_week, WEEK) AS weeks_since,
-  COUNT(DISTINCT e.user_id) AS active_users
-FROM cohort_assignments c
-JOIN events e ON c.user_id = e.user_id
-WHERE c.cohort_week >= '2026-01-01'
-GROUP BY 1, 2;
+CREATE TABLE `project.dataset.daily_user_activity`
+PARTITION BY activity_date
+CLUSTER BY user_id
+AS
+SELECT
+  user_id,
+  DATE(event_timestamp) AS activity_date,
+  TRUE AS is_active
+FROM `project.dataset.events`
+WHERE event_name IN ('pageview', 'purchase', 'session_start')
+GROUP BY user_id, activity_date;
 ```
 
-With partition pruning, `cohort_assignments` reads 4 weeks of data = 200 MB. The JOIN still scans `events`, but it starts from a filtered state—no unnecessary users.
+Now join these two tables to compute retention:
 
-### Incremental Updates
+```sql
+SELECT
+  c.cohort_date,
+  DATE_DIFF(a.activity_date, c.cohort_date, DAY) AS days_since_cohort,
+  COUNT(DISTINCT c.user_id) AS cohort_size,
+  COUNT(DISTINCT a.user_id) AS active_users,
+  SAFE_DIVIDE(COUNT(DISTINCT a.user_id), COUNT(DISTINCT c.user_id)) AS retention_rate
+FROM `project.dataset.cohort_assignments` c
+LEFT JOIN `project.dataset.daily_user_activity` a
+  ON c.user_id = a.user_id
+  AND a.activity_date >= c.cohort_date
+WHERE c.cohort_date >= '2026-01-01'
+GROUP BY c.cohort_date, days_since_cohort
+ORDER BY c.cohort_date, days_since_cohort;
+```
 
-The `cohort_assignments` table refreshes daily but doesn't recalculate from scratch each time. Use a dbt incremental model:
+This query no longer scans terabytes of events—it joins two small tables. On BigQuery with 10 million users, it runs in ~2 seconds and costs $0.02—a 96% cost reduction.
+
+## Partitioning Strategy: Which Date, Which Partition
+
+Partitioning strategy in cohort tables is critical because there are two time dimensions: cohort date and activity date. `cohort_assignments` partitions by `cohort_date` because user first-event is fixed; when new users arrive, only today's partition gets new rows, and past partitions remain immutable.
+
+`daily_user_activity` partitions by `activity_date` because fresh activity arrives daily and past days never change. This structure suits incremental refresh: a dbt or Airflow job writes only today's partition daily, leaving past partitions untouched.
+
+But retention analysis requires joining across two dates: cohort_date and activity_date. To optimize join performance, use a cluster key. In BigQuery, `CLUSTER BY user_id` physically stores rows with the same user_id side by side, letting the join leverage block-level pruning and reduce disk I/O. A join on 10 million users takes ~8 seconds without clustering, ~2 seconds with it.
+
+Partition pruning is equally important. Retention analysis usually covers the last 90 days of cohorts. A filter like `WHERE c.cohort_date >= '2026-05-01'` triggers partition pruning; BigQuery reads only relevant partitions. For two years of data, pruning reduces scan from ~$0.50 to ~$0.02—a 24x cost difference—because the volume scanned drops drastically.
+
+Partitioning involves a trade-off: daily partitions ease incremental refresh, but 1000+ partitions increase query planning overhead in BigQuery. Metadata loading slows. Older cohort data (beyond two years) should be archived or consolidated into monthly partitions.
+
+## Incremental Refresh: Compute Only New Data
+
+Cohort tables need daily updates as new users enter cohorts and existing cohorts extend their retention behavior. A full refresh—recalculating the entire table—wastes cost. The answer: incremental build pattern.
+
+In dbt, define an incremental model:
 
 ```sql
 {{
   config(
     materialized='incremental',
-    partition_by={'field': 'cohort_week', 'data_type': 'date'},
-    cluster_by=['user_id']
+    partition_by={'field': 'cohort_date', 'data_type': 'date'},
+    cluster_by=['user_id'],
+    incremental_strategy='insert_overwrite'
   )
 }}
 
-SELECT 
+SELECT
   user_id,
-  DATE_TRUNC(MIN(event_time), WEEK) AS cohort_week,
-  MIN(event_time) AS first_seen_at
-FROM {{ ref('events') }}
+  MIN(DATE(event_timestamp)) AS cohort_date,
+  COUNTIF(event_name = 'purchase') AS total_purchases
+FROM {{ source('raw', 'events') }}
+WHERE DATE(event_timestamp) = CURRENT_DATE() - 1
 {% if is_incremental() %}
-  WHERE event_time > (SELECT MAX(first_seen_at) FROM {{ this }})
+  AND DATE(event_timestamp) > (SELECT MAX(cohort_date) FROM {{ this }})
 {% endif %}
 GROUP BY user_id
 ```
 
-On the first run, the model processes all data. On subsequent runs, it only adds new users. Scan drops from 500 GB to ~2 GB per day.
+This model computes only yesterday's partition daily. The `insert_overwrite` strategy deletes the old partition and writes the new one. In BigQuery, partition-level replace is atomic; downstream queries never read incomplete data.
 
-## The Aggregated Retention Table: Pre-Compute Week-Level Metrics
-
-The cohort assignment table speeds up retention queries, but your dashboard still JOINs `events` on every request. One more step: pre-compute retention metrics at the weekly level and store them separately.
+For `daily_user_activity`, incremental logic is simpler because each day adds a new partition; past ones never change:
 
 ```sql
-CREATE TABLE cohort_retention_weekly
-PARTITION BY cohort_week
-CLUSTER BY weeks_since_cohort
+{{
+  config(
+    materialized='incremental',
+    partition_by={'field': 'activity_date', 'data_type': 'date'},
+    cluster_by=['user_id']
+  )
+}}
+
+SELECT
+  user_id,
+  DATE(event_timestamp) AS activity_date,
+  TRUE AS is_active
+FROM {{ source('raw', 'events') }}
+WHERE DATE(event_timestamp) = CURRENT_DATE() - 1
+{% if is_incremental() %}
+  AND DATE(event_timestamp) NOT IN (SELECT DISTINCT activity_date FROM {{ this }})
+{% endif %}
+GROUP BY user_id, activity_date
+```
+
+Incremental refresh cuts daily job runtime from 5 minutes to 30 seconds. BigQuery slot usage drops 80%; queue wait vanishes. When analysts open the dashboard at 9 AM, yesterday's retention data is ready.
+
+One risk exists: late-arriving data. If the event pipeline has a 2–3 hour lag, yesterday's partition holds incomplete data. Two solutions: (1) dbt's `lookback_window` parameter—recalculate the last three days each run; (2) BigQuery's `_PARTITIONTIME` metadata—filter by partition insert time. The second is more effective because it re-processes only late events.
+
+## Query Cost Optimization: Table Size and Scan Patterns
+
+Cohort table costs depend on two factors: table size (GB) and query scan pattern. `cohort_assignments` for 10 million users is ~500 MB; `daily_user_activity` over 90 days is ~5 GB. Joining them scans ~6 GB in BigQuery, costing ~$0.03. The same analysis on raw events would scan 500 GB and cost ~$2.50—an 80x difference.
+
+Cut costs further with a pre-aggregated cohort summary table:
+
+```sql
+CREATE TABLE `project.dataset.cohort_retention_summary`
+PARTITION BY cohort_date
+CLUSTER BY days_since_cohort
 AS
-SELECT 
-  c.cohort_week,
-  DATE_DIFF(DATE_TRUNC(e.event_time, WEEK), c.cohort_week, WEEK) AS weeks_since_cohort,
-  COUNT(DISTINCT e.user_id) AS active_users,
-  COUNT(*) AS total_events,
-  APPROX_QUANTILES(session_duration, 100)[OFFSET(50)] AS median_session_duration
-FROM cohort_assignments c
-JOIN events e ON c.user_id = e.user_id
-GROUP BY 1, 2;
+SELECT
+  c.cohort_date,
+  DATE_DIFF(a.activity_date, c.cohort_date, DAY) AS days_since_cohort,
+  COUNT(DISTINCT c.user_id) AS cohort_size,
+  COUNT(DISTINCT a.user_id) AS active_users,
+  SAFE_DIVIDE(COUNT(DISTINCT a.user_id), COUNT(DISTINCT c.user_id)) AS retention_rate
+FROM `project.dataset.cohort_assignments` c
+LEFT JOIN `project.dataset.daily_user_activity` a
+  ON c.user_id = a.user_id
+  AND a.activity_date >= c.cohort_date
+GROUP BY c.cohort_date, days_since_cohort;
 ```
 
-This table:
-- **Size:** 52 weeks × 52 weeks_since × 3 metrics = ~8,100 rows (for 1 year of data). Kilobytes.
-- **Scan:** Your dashboard reads `cohort_retention_weekly`, never touches `events`. Scan < 1 MB.
-- **Latency:** BigQuery reads 1 MB in ~80 ms. Your dashboard is now sub-second.
+This table pre-computes retention rates for every cohort-day combo. It's ~100 MB (10 million users × 90 days = 900 million rows → aggregation yields ~50,000 rows). Dashboards read this table without joining; queries run in <1 second at ~$0.001 cost.
 
-The tradeoff: this table must refresh daily. If you need real-time data, refresh hourly (dbt schedule `0 * * * *`). Refresh cost: cohort_assignments JOINs events, ~10 GB scan. 24 times/day = 240 GB, ~7.2 TB/month. Compare: if your dashboard ran 1,000 raw cohort queries, that's 8 TB scan. So the aggregated table cut scan by ~10% while slashing latency from 20 seconds to 80 ms.
+In query cost optimization, avoid `SELECT *`. Cohort analysis needs only `user_id`, `cohort_date`, and `activity_date`. If `daily_user_activity` holds extra columns like event_name or session_id and a query uses `SELECT *`, you scan unnecessary data. BigQuery uses columnar storage; selecting only required columns cuts disk I/O by 40–50%.
 
-### Partitioning Strategy: Cohort Week vs Event Week
+One more optimization: BigQuery BI Engine. BI Engine in-memory caches the cohort summary table, serving dashboard queries with sub-second latency. A 100 MB table costs ~$10/month in BI Engine reservation; query cost savings are ~$30/month when running 1000 queries daily—a net gain.
 
-Should you partition `cohort_retention_weekly` by `cohort_week` or `event_week`? Two approaches:
+## The Retention Engineering Pipeline: dbt + Airflow + Alerting
 
-**Partition by cohort_week:**
-- Use case: "What's the retention curve for the 2026-W03 cohort?"
-- Pruning: `WHERE cohort_week = '2026-01-13'` → reads 1 partition
-- Tradeoff: Dashboard asking "total retention for the last 4 weeks?" reads 4 partitions. But most retention analysis is cohort-centric, so this is optimal.
+In production, cohort architecture isn't just SQL—it needs orchestration and monitoring. The retention pipeline has these layers:
 
-**Partition by event_week:**
-- Use case: "Which cohorts were active this week?"
-- Pruning: `WHERE event_week = '2026-07-21'` → reads 1 partition
-- Tradeoff: Adding a cohort filter disables partition pruning; all partitions are scanned.
+1. **Airflow DAG:** Triggers daily at 06:00 AM, validates event table partitions (late-arrival checks).
+2. **dbt incremental models:** Updates `cohort_assignments`, `daily_user_activity`, and `cohort_retention_summary` in sequence.
+3. **Data quality tests:** dbt tests check constraints like cohort_size > 0 and retention_rate BETWEEN 0 AND 1.
+4. **Alerting:** If today's Day 1 retention drops 20% below last week's average, send a Slack alert.
 
-At Roibase, [data analytics architectures](https://www.roibase.com.tr/en/verianalizi) partition retention tables by cohort_week, because 80% of retention queries follow the "cohort X, week N" pattern.
+Building this pipeline requires [CDP & Retention Engineering](https://www.roibase.com.tr/en/retention-engineering-cdp) infrastructure—from event collection through cohort definition to BigQuery optimization and dashboard integration.
 
-## Query Cost Optimization: Clustering and BI Engine
-
-Partitioning prunes from top to bottom (which file blocks to skip), clustering sorts left to right (which rows to skip within a block). Together, they minimize scan.
+Use dbt macros to parameterize cohort definition:
 
 ```sql
-CREATE TABLE cohort_retention_weekly
-PARTITION BY cohort_week
-CLUSTER BY weeks_since_cohort, platform, country;
+{% macro cohort_definition(event_name) %}
+  SELECT user_id, MIN(DATE(event_timestamp)) AS cohort_date
+  FROM {{ source('raw', 'events') }}
+  WHERE event_name = '{{ event_name }}'
+  GROUP BY user_id
+{% endmacro %}
 ```
 
-For a query `WHERE weeks_since_cohort = 4 AND platform = 'iOS'`:
-1. Partition pruning → only the relevant cohort_week partitions
-2. Clustering → within each partition, first the `weeks_since_cohort = 4` rows, then `platform = 'iOS'` rows
+With this macro, run different cohort types in parallel—"first purchase," "first login," "second add-to-cart." When analysts want to test a new cohort, they change a config parameter instead of writing code.
 
-BigQuery allows max 4 cluster columns. Order matters: put the most-filtered column first.
+For monitoring, track BigQuery Audit Logs at the job level. If cohort refresh suddenly costs 10x more (partition pruning broke, perhaps), auto-alert. In production, cost anomaly detection is part of retention pipeline reliability.
 
-**BI Engine:** BigQuery's in-memory cache layer. Reserve 100 GB and frequently-accessed tables stay in RAM. If `cohort_retention_weekly` is 50 MB, it lives entirely in BI Engine. On cache hit, scan is zero. Cost: 100 GB = $100/month. Benefit: saves ~10 TB/month scan = $62.50. ROI is positive.
+## How Cohort Architecture Changes Decision Velocity
 
-### Approximation Functions: When Exact Accuracy Isn't Required
+Pre-computing cohorts isn't just cost optimization; it transforms decision speed and analytical flexibility. Marketing can ask "did iOS cohorts from last week show better Day 7 retention than Android" and get an answer in 10 seconds, not 10 minutes. A/B test results update daily automatically; manual export-import loops disappear.
 
-Some cohort metrics must be exact (`COUNT(DISTINCT user_id)`), others can approximate (median session, percentiles).
+Retention is no longer a monthly report—it's daily operational intelligence. If today's cohort shows 5% lower Day 1 retention, campaign optimization triggers immediately. If a feature release boosted Day 3 retention, you can scale fast. This speed requires cohort data to stay near real-time fresh.
 
-BigQuery approximation functions:
-- `APPROX_COUNT_DISTINCT(user_id)` → 2% error margin, 10× faster
-- `APPROX_QUANTILES(value, 100)[OFFSET(50)]` → median, ~1% error
-- `APPROX_TOP_COUNT(event_name, 10)` → top 10 events
+Cohort architecture also enables cross-functional collaboration. Product uses cohort tables to calculate feature adoption; Finance uses the same retention curve for LTV projections; Customer Success derives churn risk scores from the same cohort assignments. One data asset serves multiple use cases; data duplication ends.
 
-Example: exact `COUNT(DISTINCT ...)` for 50M users takes 8 seconds. `APPROX_COUNT_DISTINCT` takes 800 ms. For dashboard real-time filters, use approximate. For final reports, exact.
-
-## Incremental Update Strategy: Event-Time vs Processing-Time
-
-While your cohort table updates daily, which events should it process? Two timestamps exist:
-
-1. **event_time:** When the user actually performed the event (client-side)
-2. **_PARTITIONTIME:** When BigQuery ingested it (server-side)
-
-Incremental update using `event_time`:
-```sql
-WHERE event_time > (SELECT MAX(event_time) FROM cohort_assignments)
-```
-**Problem:** Late-arriving events. User goes offline for 3 days, event arrives via batch upload. If `event_time` is 3 days old, incremental query misses it.
-
-Incremental update using `_PARTITIONTIME`:
-```sql
-WHERE _PARTITIONTIME > CURRENT_DATE() - 7
-```
-**Benefit:** Reprocess the last 7 days on each run; late events are caught.
-**Cost:** 7 days of events = ~14 GB scan per run (vs. ~2 GB).
-
-Tradeoff: If late events are <1%, use `event_time` for lower scan. If late events hit 5% (common in mobile), use 3-day `_PARTITIONTIME` lookback.
-
-## Cohort Segmentation: Dynamic Filters vs Static Dimensions
-
-A user filters the dashboard for "iOS cohort retention." Two methods:
-
-**Method 1: Query-time filter**
-```sql
-SELECT cohort_week, weeks_since, active_users
-FROM cohort_retention_weekly
-WHERE user_id IN (SELECT user_id FROM users WHERE platform = 'iOS');
-```
-**Problem:** The subquery scans `users` each time. 50M users = 1 GB scan. 100 dashboard refreshes = 100 GB.
-
-**Method 2: Pre-compute dimensions**
-```sql
-CREATE TABLE cohort_retention_weekly
-AS
-SELECT 
-  c.cohort_week,
-  weeks_since_cohort,
-  u.platform,
-  u.country,
-  COUNT(DISTINCT e.user_id) AS active_users
-FROM cohort_assignments c
-JOIN events e ON c.user_id = e.user_id
-JOIN users u ON e.user_id = u.user_id
-GROUP BY 1, 2, 3, 4;
-```
-Now `WHERE platform = 'iOS'` filters directly on the retention table. No query-time JOIN, low latency. Table size grows: 2 columns × 10 segments = 20× larger. But no query-time penalty.
-
-**Recommendation:** Pre-compute your top 3–4 segments (platform, country, acquisition_channel). Handle the rest with query-time filters.
-
----
-
-Scaling cohort retention in production requires a three-layer architecture: assignment, aggregation, caching. With proper BigQuery partitioning and clustering, you can achieve sub-second latency on 50M users for under $200/month scan budget. The real win isn't cost—it's velocity. Retention analysis becomes iterative. Your team runs 50 cohort experiments per day.
+Finally, cohort architecture underpins incrementality measurement. Retention analysis isn't just "how many users returned"—it's "which marketing channel's cohort shows better retention." Paired with [First-Party Data & Measurement Architecture](https://www.roibase.com.tr/en/firstparty), attribution stops at first-click and measures lifetime value contribution. Store `utm_source` and `campaign_id` in cohort tables to run channel-level retention comparisons—the core metric for marketing budget allocation.
