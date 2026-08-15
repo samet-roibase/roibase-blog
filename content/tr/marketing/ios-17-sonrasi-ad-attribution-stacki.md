@@ -1,83 +1,75 @@
 ---
 title: "iOS 17 Sonrası Ad Attribution Stack'i"
-description: "ATT, SKAdNetwork 4 ve modeled conversions ile mobil performance marketing'in yeni mimarisi. Post-lookback maturity döneminde ölçüm nasıl kurulur?"
-publishedAt: 2026-07-28
-modifiedAt: 2026-07-28
+description: "ATT, SKAdNetwork 4 ve modeled conversions ile iOS'ta dönüşüm ölçümünü yeniden kurmak: post-lookback maturity döneminin pratik mimarisi."
+publishedAt: 2026-08-15
+modifiedAt: 2026-08-15
 category: marketing
-i18nKey: marketing-003-2026-07
-tags: [ios-attribution, skadnetwork, att, mobile-performance, modeled-conversions]
-readingTime: 7
+i18nKey: marketing-003-2026-08
+tags: [ios-attribution, skadnetwork, att, modeled-conversions, mobile-measurement]
+readingTime: 8
 author: Roibase
 ---
 
-iOS 14.5'ten bu yana üç yıl geçti. ATT (App Tracking Transparency) artık "yeni gelişme" değil — olgunlaşmış bir gerçeklik. 2026 ortasında performans ekiplerinin çoğu hâlâ eski attribution stack'ine özlem duyuyor ama geri dönüş yok. iOS 17 ile birlikte SKAdNetwork 4.0 fully adopted, Meta ve Google modeled conversions'ı production-grade stability'ye getirdi, TikTok kendi probabilistic pipeline'ını açtı. Sorun artık "veri yok mu" değil — "hangi sinyale güveniyoruz ve bu sinyaller nasıl birleşiyor" sorusu.
+iOS 14.5'te başlayan ATT (App Tracking Transparency) dönüşümü, 2026'ya geldiğimizde artık "yeni normal" değil — piyasanın operasyon gerçeği. İlk günlerdeki panik bitti, ama attribution stack'i hâlâ birçok ekipte eski varsayımlarla çalışıyor. iOS 17 ile birlikte gelen SKAdNetwork 4.0'ın tam olgunluk dönemi (post-lookback maturity) ve Meta, Google'ın modeled conversions'a göre optimize edilmiş bid algoritmaları artık kalibrasyon gerektiriyor. Bu yazı, iOS'ta dönüşüm ölçümünü 2026 standartlarına göre yeniden kurmanın teknik haritasını veriyor.
 
-Bu yazıda iOS 17 sonrası mobil ad attribution'ın teknik katmanlarını, SKAdNetwork 4.0'ın gerçek kullanım sınırlarını, modeled conversions'ın içini ve bu üç veri akışını birleştiren post-lookback mimarisini açıyoruz. Amaç: 2026'da iOS kullanıcısına reklam gösterirken hangi sinyale ne kadar ağırlık vereceğini bilmek.
+## ATT Sonrası Attribution'ın Mimarisi
 
-## ATT Sonrası Sinyal Katmanları
+iOS 14.5 öncesinde IDFA (Identifier for Advertisers) her kullanıcı için deterministik bir ID sağlıyordu. Reklam ağları bu ID'yi gösterim, tıklama, install ve in-app event'leri birbirine bağlamak için kullanıyordu. ATT ile birlikte kullanıcıların %70-80'i tracking'i reddetti (Meta'nın 2025 kamu verisine göre %23 opt-in). IDFA kaybolunca eski MMP (Mobile Measurement Partner) altyapısı çöktü.
 
-iOS 17 ortamında üç farklı sinyal tipi var: deterministic (SKAdNetwork), probabilistic (modeled conversions) ve first-party (server-side events). Her biri farklı latency, granularity ve güven seviyesinde.
+Yerine gelen sistem iki katmanlı: **deterministik** (SKAdNetwork ile sınırlı, aggregate, delayed) ve **probabilistic** (modeled conversions ile tahmine dayalı). SKAdNetwork 4.0 ile Apple üç temel değişiklik getirdi: üç aşamalı postback penceresi (0-2 gün, 3-7 gün, 8-35 gün), source identifier ile publisher-level visibility, crowd anonymity threshold'ın düşürülmesi. Bu değişiklikler sayede attribution signal'ı daha granüler hale geldi, ama yine de deterministic data yalnızca aggregate seviyede geliyor — kullanıcı-bazlı değil, cohort-bazlı.
 
-SKAdNetwork 4.0 coarse-grained conversion value (0-63 arası) veriyor ama 24-48 saat gecikmeyle. Timer'lar üç aşamalı: ilk 0-2 gün, sonra 3-7 gün, son olarak 8-35 gün. Kampanya optimizasyonu için ilk iki pencere kritik çünkü bid adjustment'lar gerçek zamanlıya yakın olmalı. Ancak SKAd verisi aggregated — user-level breakout yok, sadece campaign ID bazında volume gelir.
+Modeled conversions ise Meta ve Google'ın makine öğrenmesi modeliyle ATT-reddi kullanıcılardan gelen event'leri **tahmin edip** kampanya optimizasyonuna dahil etmesi. Meta'nın AEM (Aggregated Event Measurement) ve Google'ın Consent Mode v2 bu modellerle çalışıyor. Ancak modeled data CAPI (Conversions API) veya Enhanced Conversions gibi first-party signal'ların kalitesine doğrudan bağlı — signal kalitesi düşükse model bias yapar.
 
-Modeled conversions ise platform'un (Meta, Google, TikTok) kendi machine learning modeliyle tahmin ettiği dönüşümler. iOS kullanıcısı ATT'yi reddettiğinde deterministik sinyal yok ama platform user behavior pattern'ini (engagement rate, past install cohorts, device type) kullanarak olasılıksal bir estimate veriyor. Meta 2024'te %30 modeled, %70 observed karışımıyla başladı; 2026'da bazı kampanyalarda oran %50-50'ye kadar çıkabiliyor. Google UAC (Universal App Campaigns) benzer mekanizma ama conversion window daha kısa tutuyor (7 gün).
+## SKAdNetwork 4 ile Çalışmanın Gerçek Maliyeti
 
-First-party server-side event stream ise uygulama içi activity'yi doğrudan MMP (Mobile Measurement Partner) veya CDP'ye göndermek demek. Bu sinyal user-level ama attribution yok — hangi ad'den geldiğini bilmiyorsun, sadece cohort behavior tracking için kullanılır. Örneğin D7 retention'ı ölçmek mümkün ama bunu hangi kampanyaya atfetmek sıkıntılı.
+SKAdNetwork 4.0'ın getirdiği üç aşamalı postback yapısı teoride iyi — erken sinyali (0-2 gün) kullanarak kampanyayı hızlı optimize edebilirsin. Ama pratikte iki sorun var: **timer randomization** ve **conversion value bit sınırı**.
 
-## SKAdNetwork 4.0'ın Gerçek Sınırları
+Timer randomization Apple'ın privacy mekanizması: postback 0-24 saat arasında rastgele gecikmeyle geliyor. Bu da 0-2 günlük pencerede bile sinyali gerçek zamanlı kullanmayı engelliyor. Örneğin bir kullanıcı install sonrası 6 saatte in-app purchase yapsa bile, SKAdNetwork postback'i 48 saat sonra, 18 saatlik random delay ile gelirse, o install'ı trigger eden kampanyaya feedback döngüsü 66 saat sonra kapanıyor. Bu gecikme UA (User Acquisition) kampanyalarının günlük bütçe kararlarını zorlaştırıyor.
 
-SKAdNetwork 4.0 birçokiyileştirme getirdi: hierarchical source identifier (4-tier campaign structure), multiple conversion windows, web-to-app attribution desteği. Ancak production'da iki büyük engel var: postback delay ve conversion value encoding karmaşıklığı.
+Conversion value ise 6 bit (0-63 arası tam sayı). Bu 64 farklı event kombinasyonu demek. Oyun uygulaması için level 1, level 5, level 10, ilk satın alma, ikinci satın alma gibi event'leri encode etmelisin. Bit'leri doğru atamak stratejik karar — yanlış mapping yaparsak bidding sinyali bozuluyor. Örneğin "level 10" event'ini en yüksek value'ya atarsak, ama gerçek LTV kaynağı "7 günde 3+ satın alma" ise, algoritma yanlış cohort'a optimize eder.
 
-Postback delay ortalama 24-72 saat. İlk pencere (0-2 gün) için timer biraz daha hızlı ama yine de real-time optimization imkansız. Bid strategy'ler genellikle T-2 verisine bakarak çalışıyor, yani iki gün önceki cohort'un performansına göre bugünkü bid'i ayarlıyorsun. Bu da trend değişikliklerine geç tepki demek.
+### Conversion Value Mapping Örneği
 
-Conversion value schema tasarlamak ise ayrı bir mühendislik problemi. 0-63 arası integer'a revenue, event type, user quality gibi çok boyutlu veriyi sıkıştırmak gerekiyor. En yaygın pattern: ilk 32 değer event-based (install, registration, first purchase), son 32 değer revenue bucket'larına map edilir. Ancak bu encoding brand'e özel olmalı — generic schema çalışmaz. Örneğin gaming uygulaması için D1 retention critical ise 0-15 aralığı retention signal'ine, 16-31 IAP event'lerine, 32-63 LTV bucket'larına ayrılabilir.
+```json
+{
+  "install": 0,
+  "tutorial_complete": 1,
+  "level_3": 5,
+  "level_10": 15,
+  "first_purchase": 25,
+  "purchase_3d": 40,
+  "purchase_7d": 63
+}
+```
 
-SKAdNetwork crowd anonymity threshold da production'da sorun çıkarabiliyor. Apple, privacy korumak için çok düşük volume'lü campaign combination'ları suppress ediyor. Yani test kampanyasında günlük 50 install varsa SKAd postback gelmeyebilir. Bu da yeni campaign test etmeyi zorlaştırır — ya volume'ü hızlıca scale etmen ya da daha geniş targeting kullanman gerekir.
+Bu mapping'de "purchase_7d" en yüksek value (63) çünkü 7 günlük retention + monetizasyon LTV proxy'si. Ancak crowd anonymity threshold (Apple'ın minimum kullanıcı sayısı gerekliliği) nedeniyle bu value droplansa, 40'lık "purchase_3d" fallback oluyor.
 
-## Modeled Conversions Nasıl Çalışır
+## Modeled Conversions ve First-Party Signal Kalitesi
 
-Meta'nın modeled conversions sistemi statistical attribution model üzerinde çalışır. Kullanıcı ATT opt-out yaptığında Meta IDFA alamıyor ama şu sinyalleri kullanabiliyor: ad engagement (impression, click), device type, network quality, kampanya targeting overlap. Bu feature'lar bir Bayesian regression model'ine giriyor ve "bu kullanıcı dönüşüm yaptı mı" sorusuna olasılıksal cevap veriyor.
+Meta'nın modeled conversions sistemi, ATT-reddi kullanıcılardan gelen event'leri tahmin ederken şu veri kaynaklarını kullanıyor: aggregate SKAdNetwork postback'leri, web-to-app pixel bridge, CAPI ile gönderilen first-party event'ler. Model bu veriyi kullanıcı demografisi, davranış patterni, device fingerprint ile eşleştirip kayıp event'leri impute ediyor.
 
-Model'in confidence interval'ı genellikle %80-95 arasında — yani her tahmin %5-20 hata payıyla geliyor. Meta Ads Manager'da "Estimated conversions" etiketi altında gösterilir. Campaign budget optimization (CBO) bu modeled signal'i de kullanıyor ama ağırlığı observed conversions'dan daha düşük tutuyor.
+Ancak modelin doğruluğu [Performans Pazarlaması](https://www.roibase.com.tr/tr/ppc) altyapınızın signal kalitesine bağlı. CAPI entegrasyonunda event match quality (EMQ) skoru %50'nin altındaysa, model noise üretiyor. EMQ düşük olmasının en yaygın nedeni: hash edilmemiş email, eksik `external_id`, `event_source_url` alanının boş olması. Meta'nın 2025 kılavuzuna göre EMQ %75+ hedeflenmeli — bu da email, phone, external_id'nin doğru hash'lenmesi ve client-side + server-side event'lerin deduplicate edilmesi gerektiği anlamına geliyor.
 
-Google UAC ise conversion modeling'i daha agresif kullanıyor. Android tarafında Google Play Instant ile deterministic sinyal alınabiliyor ama iOS tarafında tamamen model-based. Google'ın avantajı: Firebase Analytics entegrasyonu varsa in-app event stream'i daha zengin, bu da model accuracy'sini artırıyor. Ancak yine de lookback window kısıtlı — Google 7 günlük pencerede modelleme yapıyor, Meta 28 güne kadar çıkabiliyor.
+Modeled conversions'ın diğer bir sorunu: **feedback loop delay**. Meta kampanya algoritması model tahminlerine göre optimize ederken, gerçek conversion verisi aggregate SKAdNetwork'ten 2-3 gün gecikmeyle geliyor. Bu lag'de algoritma yanlış cohort'a optimize etmiş olabilir. Örneğin modeled data "Android + kadın kullanıcı" segmentinde yüksek ROAS gösterirken, SKAdNetwork aggregate'te bu segment'in gerçek conversion rate'i düşükse, algoritmanın geri dönüp kendini düzeltmesi 5-7 gün sürer.
 
-TikTok 2025 sonunda kendi probabilistic attribution pipeline'ını beta'dan çıkardı. TikTok Pixel + SKAdNetwork hybrid yaklaşımı kullanıyor. Kullanıcı TikTok içinde uzun süre kalıyorsa (yüksek engagement) ve sonra app store link'ine tıklıyorsa bu pattern modele güçlü sinyal olarak giriyor. TikTok'un dezavantajı: ağı Meta/Google kadar geniş değil, bu yüzden cross-platform behavior pattern'i eksik kalabiliyor.
+## Incrementality ve Multi-Touch Attribution'ın Yeni Rolü
 
-## Post-Lookback Maturity Mimarisi
+SKAdNetwork ve modeled conversions'ın ikisi de **last-touch** mantığıyla çalışır — install öncesindeki son tıklama kampanyayı kredilendiriyor. Ama gerçek dünyada kullanıcı yolculuğu multi-touch: TikTok'ta video görüyor, Google'da marka araması yapıyor, Meta retargeting'e tıklayıp install ediyor. Last-touch bu yolculuğu görmüyor, hepsini Meta'ya atıyor.
 
-Post-lookback maturity döneminde (yani SKAdNetwork postback'leri tamamlandıktan sonra) gerçek performans değerlendirmesi yapılır. Burada üç veri akışını birleştirmek gerekiyor: SKAdNetwork observed, platform modeled ve MMP first-party.
+Incrementality testing bunu çözmek için geliyor. Geo-based holdout (belirli coğrafyalarda kampanyayı kapatıp organic baseline'ı ölçme), PSA (Public Service Announcement) placebo campaign, Bayesian MMM (Marketing Mix Modeling) gibi yöntemlerle her kanalın **gerçek katkısını** ölçebilirsin. Örneğin Meta kampanyasını 2 hafta Ankara'da durdurursun, install sayısı %30 düşerse, Meta'nın incremental katkısı %30 demektir. Bu test SKAdNetwork'ün atamadığı upper-funnel katkıyı gösterir.
 
-Mimari şöyle çalışır: SKAdNetwork postback'leri MMP'ye düşer (Adjust, AppsFlyer, Kochava), aynı anda platform modeled conversions API'den çekilir, first-party in-app events ise CDP veya data warehouse'a (BigQuery, Snowflake) akar. Bu üç stream'i birleştirmek için ortak key: campaign ID + install cohort date.
+MMM ise tarihsel spend ve outcome verisini regresyon modeliyle analiz eder. iOS 17 sonrası stack'te MMM'nin rolü arttı çünkü user-level attribution artık eksik. Ancak MMM'yi doğru kurmak teknik — kontrol değişkeni olarak seasonality, macroeconomic index, competitor spend gibi faktörleri modele dahil etmezsen, model sadece korelasyon bulur, causality bulamaz.
 
-Birleştirme logic'inde şu sorular çözülmeli: Modeled conversion ile SKAd postback overlap ediyor mu? Aynı install'ı iki kez mi sayıyorsun? Deduplication için MMP'ler genellikle SKAd'i ground truth kabul eder, modeled conversion'ı SKAd volume'ünün üstüne ek tahmin olarak ekler. Örneğin SKAd 100 install, Meta modeled 40 install diyorsa toplam 140 değil — 100 confirmed + 40 probabilistic olarak raporlanır.
+## Post-Lookback Maturity Döneminde Operasyon
 
-LTV (Lifetime Value) hesabı ise tamamen first-party stream'den gelir. SKAdNetwork LTV vermiyor, modeled conversions da revenue'yu tahmin etmiyor. Bu yüzden cohort-based LTV analysis için MMP veya CDP'deki raw event stream şart. Tipik akış: install cohort'unu SKAd'den al, o cohort'un D7/D30/D90 revenue'sini first-party'den hesapla, sonra campaign-level ROAS hesabında SKAd install count × cohort LTV kullan.
+2026'da iOS attribution stack'inin olgunlaştığını söylerken kastettiğimiz: MMP'ler (Adjust, AppsFlyer, Singular) SKAdNetwork 4'ü tam destekliyor, modeled conversions Meta/Google bidding'e entegre, CAPI + Enhanced Conversions kurulumu standart hale geldi. Ama operasyon seviyesinde hâlâ kritik noktalar var.
 
-Bu mimariyi kurmak için [Performans Pazarlaması (PPC)](https://www.roibase.com.tr/tr/ppc) stack'inde data pipeline engineering gerekiyor. Sadece dashboard değil — ETL (Extract, Transform, Load) süreci, deduplication logic ve model confidence threshold ayarları kritik.
+İlk olarak: **SKAN + modeled data'nın blend stratejisi**. Bazı ekipler sadece modeled data'ya güveniyor — hızlı, granular. Ama modeled data bias içerebilir. Diğer ekipler sadece SKAdNetwork'e bakıyor — deterministik ama gecikmiş ve aggregate. Doğru yaklaşım ikisini blend etmek: modeled data ile hızlı optimize et, SKAdNetwork aggregate ile haftalık kalibre et. Örneğin modeled ROAS %120 gösteriyorsa ama SKAdNetwork aggregate ROAS %90 ise, modeled data overestimate ediyor demektir — bid stratejisini %15-20 düşür.
 
-## Incrementality ve Holdout Test Yapısı
+İkincisi: **conversion value stratejisinin dinamik güncellemesi**. Oyun mekaniği değişirse (yeni level, yeni IAP fiyatı), conversion value mapping'i güncellemelisin. Bu güncelleme Apple Developer Console'dan yapılıyor ama her değişiklik yeni kampanya için geçerli — mevcut kampanyalar eski mapping ile devam ediyor. Bu da A/B test yaparken kampanya grubu segmentasyonunu zorlaştırıyor.
 
-Modeled conversions güven problemi yaratır: gerçekten bu kullanıcı dönüştü mü yoksa model mi uydurdu? Bu soruyu cevaplamak için incrementality measurement şart. En clean yöntem: geo-based holdout test.
+Üçüncüsü: **privacy threshold'ların takibi**. SKAdNetwork postback'i crowd anonymity threshold'ı aşamazsa, conversion value düşürülüyor veya hiç gelmiyor. Küçük kampanyalarda (günlük <500 install) bu sık yaşanır. Çözüm: küçük kampanyaları aggregate edip tek postback penceresi altında toplamak veya conversion value mapping'i basitleştirip threshold'ı düşürmek.
 
-Geo-holdout test şöyle çalışır: belirli coğrafyalarda (eyalet, şehir, DMA bazında) kampanyayı kapat, o bölgedeki organic install rate ile kampanya açık bölgelerdeki rate'i karşılaştır. Fark = incremental lift. Ancak iOS attribution'da geo test yapmak zor çünkü SKAdNetwork geo breakdown vermiyor. Bu yüzden test MMP tarafında kurulmalı — install IP'sinden geo inference yapılır ama %100 accurate değil.
+## Şimdi Ne Yapmalı
 
-Alternatif: time-based holdout. Haftanın belirli günlerinde kampanyayı durdur, o günlerdeki install volume düşüşünü ölç. Bu yöntem basit ama seasonality bias yaratabilir (örneğin Pazar günü zaten organic install yüksekse kampanya etkisi underestimate edilir).
-
-Meta kendi Conversion Lift test tool'unu sunuyor. Kullanıcıları test/control grubuna ayırıyor, test grubuna ad gösteriyor, control grubuna göstermiyor (PSA veya charity ad gösterir). Sonra her iki gruptaki dönüşüm oranını karşılaştırıyor. Bu test SKAdNetwork'ten bağımsız çalışıyor çünkü Meta kendi user graph'ını kullanıyor. Ancak minimum 200K impression gerekiyor, yani küçük kampanyalar için mümkün değil.
-
-Incrementality test sonuçları modeled conversions'ın confidence interval'ını kalibre etmek için kullanılabilir. Örneğin lift test %60 incremental gösteriyorsa ama modeled conversions %80 dönüşüm iddia ediyorsa model overestimate ediyor demektir — o zaman model weight'ini düşür.
-
-## Kampanya Optimizasyonunda Hangi Sinyale Güvenmeli
-
-2026 ortasında kampanya optimization için hybrid sinyal yaklaşımı şart. Sadece SKAdNetwork'e güvenmek gecikme yaratır, sadece modeled conversions'a güvenmek güven kaybı yaratır.
-
-Önerilen strateji: ilk 48 saat modeled conversions ağırlıklı optimizasyon yap (çünkü SKAd gecikiyor), sonra SKAd postback geldiğinde modeli recalibrate et. Örneğin Meta CBO kampanyasında ilk iki gün modeled signal'e göre ad set'ler arası budget shift edilir, 3. günden itibaren SKAd verisi gelince observed conversions oranı artar.
-
-Bid strategy için: ROAS-based bidding yerine tROAS (target ROAS) + volume cap hybrid kullan. iOS kullanıcısında deterministik ROAS hesaplamak zor olduğu için sabit bir tROAS target belirle (örneğin 3.0), ama aynı anda günlük install volume floor koy (minimum 500 install/gün gibi). Bu sayede hem karlılık hem de scale korunur.
-
-Creative testing de sinyal problem yaratır. A/B test için yeterli volume olmayabilir (SKAd crowd anonymity threshold yüzünden). Bu durumda sequential test yap: önce creative A'yı 3 gün çalıştır, sonra B'yi 3 gün çalıştır, SKAd postback'leri geldiğinde karşılaştır. Bu yöntem tam clean değil (external factor bias var) ama iOS kısıtları altında en pragmatik seçenek.
-
-## Kapanış
-
-iOS 17 sonrası attribution stack deterministik değil — probabilistic, delayed ve multi-layered. SKAdNetwork 4.0 temel sinyal verir ama latency var, modeled conversions hız kazandırır ama güven sorunu yaratır, first-party stream LTV hesabı sağlar ama attribution yapmaz. Üç akışı birleştirmek ve her birinin güven aralığını anlamak artık performance marketing'in core competency'si. Stack'i doğru kurmayan ekipler ya underinvest yapar (modeled signal'e güvenmez, opportunity kaçırır) ya da overinvest yapar (model overestimate'i fark etmez, CAC patlar). 2026'da kazanan: sinyal karmaşıklığını engineering disiplinine bağlayan ekip.
+iOS 17 sonrası attribution stack'i artık "geçici çözüm" değil — kalıcı mimari. Şu adımları önceliklendir: CAPI/Enhanced Conversions entegrasyonunu EMQ %75+ hedefine göre kalibre et, SKAdNetwork conversion value mapping'ini LTV proxy'lerine göre yeniden tasarla, modeled conversions + aggregate SKAN data'yı blend ederek haftalık bias kontrolü kur, incrementality test (geo-holdout veya PSA) ile multi-touch contribution'ı ölç. Attribution'ı eski deterministik günlere döndüremezsin ama mevcut stack'i doğru kurduğunda, bidding algoritması doğru sinyali alıyor ve kampanya performansı ölçülebilir kalıyor.
