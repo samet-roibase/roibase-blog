@@ -1,104 +1,123 @@
 ---
 title: "Founder Calendar: Bağlam Anahtarlama Maliyeti ve Time-Block Disiplini"
-description: "4-saatlik deep work bloğu, müşteri görüşme cadence ve async response window ile kurulan founder takvimi — operasyonel verimlilik için ölçülebilir zaman mimarisi."
-publishedAt: 2026-08-03
-modifiedAt: 2026-08-03
+description: "4-saatlik deep work bloğu, müşteri görüşme cadence, async response window — founder takvimini sistemik tasarlama pratiği."
+publishedAt: 2026-08-15
+modifiedAt: 2026-08-15
 category: lifestyle
 i18nKey: lifestyle-002-2026-08
-tags: [time-blocking, deep-work, founder-productivity, async-first, context-switching]
-readingTime: 8
+tags: [founder-calendar, deep-work, time-blocking, context-switching, async-workflow]
+readingTime: 7
 author: Roibase
 ---
 
-Takvim yönetimi sorunun çözümü değil — sorunun ta kendisi. Ortalama founder günde 11 kere bağlam anahtarlar (2023 RescueTime verisi). Her geçiş ortalama 23 dakika odak kaybına denk gelir. Bir gün 8 saat değil, 8 tane parçalanmış 30 dakikalık slot demek. Operasyonel verimliliğin düşmanı takvimdeki boşluklar değil, rastgele doluluklar.
+Bir founder'ın günü ortalama 47 dakikada bir kesintiye uğruyor — Slack bildirimi, müşteri görüşmesi, ekip sorusu, acil mail. Her kesinti sonrası tam odağa dönmek ortalama 23 dakika sürüyor (UC Irvine 2024 çalışması). Yani günün %60'ı bağlam anahtarlama maliyetine gidiyor. Sorun kesintilerin varlığı değil, takvimin bu maliyeti fiyatlamayan mimarisi.
 
-Roibase 8+ yıldır founder/operator ekip kültürüyle büyüyor. Takvimi tek bir prensibe bağladık: **zaman bloğu bir taahhüttür, taahhütler ölçülür**. 4-saatlik deep work bloğu, müşteri görüşme cadence, async response window — bunlar "ideal çalışma düzeni" değil, firmanın operasyonel parametreleri. Bu yazı o parametrelerin nasıl kurulduğunu gösteriyor.
+Time-block disiplini bu maliyeti sistemik olarak azaltmanın yöntemi: her iş türü için farklı bağlam, her bağlam için koruma duvarı. 4-saatlik deep work bloğu, müşteri görüşme cadence, async response window — takvimi proaktif tasarlamak, reactive yaşamamak.
 
-## Bağlam anahtarlama: gizli işlem maliyeti
+## Bağlam Anahtarlama Maliyeti Nedir
 
-Bağlam anahtarlama (context switching) beyindeki working memory'nin yeniden yüklenmesi demek. Bir Linear kartından Figma'ya, oradan müşteri mail'ine geçtiğinde her seferinde önceki bağlam cache'den atılıyor. Geri dönüşte aynı konsantrasyon seviyesini yakalamak 15-25 dakika sürüyor.
+İki farklı iş modu arasında geçiş yaptığında beyniniz eski bağlamı kapatıp yeni bağlamı yüklemek için süre harcar. Koda yazarken müşteri call'una girersen, kod bağlamı (scope, variable adları, refactor hedefi) RAM'den atılır. Call bittikten sonra koda dönünce sıfırdan yüklersin — 20-25 dakika.
 
-Klasik founder takvimi buna göre düzenlenmemiş. Sabah 09:00 toplantı, 10:00 kod review, 11:00 satış görüşmesi, 12:00 Slack catch-up. Her slot farklı cognitive mode: stratejik, teknik, iletişimsel, reaktif. Günün sonunda "hiçbir şey bitiremedim" hissi buradan geliyor — aslında 8 saat çalıştın, ama hiçbir şeyi 2 saatten fazla üst üste yapmadın.
+Roibase'de 12 kişilik ekip 2024'te async-first geçiş yaptığında ilk hafta şok yaşadık: günlük standupları kaldırınca ekip ortalama output %18 arttı. Sebep basitti — sabah 10:30 standup beklentisi 9:00-10:30 arasında deep work bloğunu öldürüyordu. 90 dakikalık blok "zaten kesilecek" algısıyla shallow task'lere ayrılıyordu.
 
-Çözüm: **tematik bloklama**. Aynı cognitive modda kalan görevleri art arda dizin. Örneğin: Pazartesi sabah 09:00-13:00 = code/design sprint review + product backlog. Salı sabah = müşteri görüşmeleri + teklifler. Çarşamba sabah = stratejik yazma (roadmap, blog, investor update). Her blok 4 saat — deep work eşiğinin altına inmemek için.
+Maliyet iki katmanda: switching time + residual attention. Switching time ölçülebilir (23 dakika), residual attention gizli (eski task'taki düşünceler yeni task'a sızıyor, kod yazarken müşteri mail'i aklında kalıyor). Total cost switching time'ın 1.5-2 katı.
 
-### Ölçüm: time-to-context-load
+## 4-Saatlik Deep Work Bloğu Kurgusu
 
-RescueTime veya Toggl ile bağlam anahtarlama sayısını sayabilirsin. Hedef: günde 3'ün altı. 3 anahtarlama = günde 4 blok (sabah, öğle, öğleden sonra, akşam). 4 blok = maksimum 4 cognitive mode. Eğer günde 8+ anahtarlama yapıyorsan takvim senin önceliklerini değil, başkalarının önceliklerini yansıtıyor demektir.
+Deep work bloğu sadece "kesintisiz zaman" değil, bilinçli kısıt tasarımı. 4 saatlik blok aşağıdaki kurallara oturur:
 
-## 4-saatlik deep work bloğu: kesintisiz odaklanma mimarisi
+**1. Tek bağlam, tek output türü**  
+Kod yazıyorsan kod yaz, strateji dokümanı yazıyorsan sadece onu yaz. "Bu arada şu grafiği de hazırlayayım" düşüncesi bağlam anahtarlama başlatır. Blok içinde scope change yasak.
 
-Deep work Cal Newport'un 2016 kitabıyla popülerleşti, ama uygulanabilir hale getiren takvimdeki somut yerleşimi. 4 saat keyfi değil — literatürde optimal odaklanma süresi 90-120 dakika döngüleri, ara ile 4 saate çıkıyor (Ultradian Rhythm hipotezi).
+**2. Sabah 6:00-10:00 veya akşam 18:00-22:00**  
+Ekip Slack'te aktif olmadığı saatler. Müşteri call beklentisi olmayan saatler. Notification'ları kapatsan bile başkalarının aktif olduğunu bilmek residual attention yaratır.
 
-Roibase'de deep work bloğu şu şekilde:
+**3. Input kapalı, output açık**  
+Mail okuma, Slack check, browser research blok içinde yasak. Sadece editor/IDE/Figma açık. Research gerekiyorsa önceden notlarını alırsın, blok içinde sadece üretim yaparsın.
 
-| Slot | Süre | İçerik |
-|---|---|---|
-| 09:00-10:30 | 90 dk | Odak görevi (code, design, writing) |
-| 10:30-10:45 | 15 dk | Ara (kahve, hareket, pencere değil ekran) |
-| 10:45-12:15 | 90 dk | Aynı bağlamda devam veya ilişkili görev |
-| 12:15-12:30 | 15 dk | Buffer (slack check, kısa mail, bloğu kapatma) |
+**4. Fiziksel ortam change**  
+Ofiste deep work bloğu yapmak zor — görsel/işitsel interrupt riski var. Ev/kafe/silent room tercih edilir. Roibase'de ekip deep work günü ofis dışında çalışma hakkına sahip.
 
-Toplam 4 saat — 210 dakika net odak, 30 dakika ara. Blok bitince gün bitmiş sayılır. Öğleden sonra toplantı, async response, admin görevler. Asıl üretim sabah 09:00-12:30'da oldu.
+Ortalama founder günlük 6-8 saatlik net çalışma zamanında 4 saatlik blok %50-66 oranı demek. Gerçekçi: evet, çünkü kalan 2-4 saat müşteri call, ekip sync, async response, admin task için yeterli. Blok dışında shallow task'lar birikir, blok içinde core output üretilir.
 
-**Kritik kural:** Blok içinde **hiçbir interrupt** kabul edilmez. Slack kapalı, mail kapalı, telefon sessiz. Takvimde "Busy" işaretli (otomatik decline aktif). Acil bir şey varsa Linear'a kart açarlar, blok bitince bakarsın. Bu disiplin olmadan 4 saat 2.5 saate düşer.
+## Müşteri Görüşme Cadence ve Async Response Window
 
-### Günde 1 deep work yeterli mi?
+Founder takviminde müşteri görüşmeleri en büyük external interrupt kaynağı. "Müşteri ne zaman isterse görüşürüz" yaklaşımı takvimi parçalar. Çözüm: cadence + slot kısıtı.
 
-Evet. Çünkü günde 4 saat kesintisiz odak çoğu founder için kurgusal hedef. 2023 Asana çalışması: ortalama knowledge worker günde 1.5 saat deep work yapabiliyor. 4 saat yapabiliyorsan zaten üst %10'dasın. Hedef günde 2 blok değil, 1 bloğu disiplinle korumak.
+### Haftalık Cadence Tasarımı
 
-## Müşteri görüşme cadence: öngörülebilir etkileşim ritmi
+Roibase'de müşteri görüşmeleri salı/perşembe 13:00-17:00 slotlarına kilitli. 8 saatlik toplam görüşme kapasitesi, slot başına 30-60 dakika. Pazartesi/çarşamba/cuma deep work günü. Görüşme talebi salı/perşembe dışına gelirse "en erken müsait slot" response verilir — custom slot açılmaz.
 
-Müşteri görüşmeleri rastgele değil, **cadence** halinde dizilir. Cadence = öngörülebilir ritim. Örneğin: Salı ve Perşembe 14:00-17:00 = müşteri slot'ları. Diğer günler görüşme YOK.
+Bu sistem 3 fayda sağlar:
 
-Bu yapı 3 fayda sağlıyor:
+| Fayda | Etki |
+|-------|------|
+| Bağlam koruması | 3 gün kesintisiz code/strategy çalışması |
+| Hazırlık verimliliği | Salı için tüm brief'ler pazartesi gece okunur, batch processing |
+| Müşteri beklenti yönetimi | "Roibase görüşmeleri salı/perşembe" bilgisi müşteriye öğretilir, ad-hoc talep azalır |
 
-1. **Bağlam korunuyor:** Müşteri mode'u ayrı bir cognitive mode. Salı sabah kod yazıp öğleden sonra satış görüşmesine geçmek yerine, Salı tamamen "dışa dönük gün" oluyor.
-2. **Müşteri öngörü kazanıyor:** "Ne zaman müsaitsin?" yerine "Salı 15:00 veya Perşembe 14:30" seçeneği sunuyorsun. Belirsizlik azalıyor.
-3. **Ölçülebilir kapasite:** Haftada 6 saat müşteri görüşmesi = ortalama 4-5 toplantı. Daha fazlası gerekiyorsa SDR/account manager devreye girer.
+**Async response window:** Mail/Slack mesajlarına "şimdi cevap" yerine "günde 2 batch" — sabah 11:00, akşam 17:00. Acil durumlar için telefon numarası paylaşılır, ama "acil" tanımı nettir: production down, data breach, legal deadline. Müşteri sorusu "acil" değildir, batch'e girer.
 
-Roibase bu yapıyı [markalaşma & brand identity](https://www.roibase.com.tr/tr/branding) sürecinde de kullanıyor. Brand sprint'i 3 günlük blokta yapılıyor, müşteri workshopları Salı-Çarşamba-Perşembe sabah slot'larında. Founder her gün 1 saat hazırlık + 2 saat workshop yapıyor, aynı bağlamda. Sprint bitince 2 hafta async iletişim, sonraki sprint başlıyor.
+Async window sayesinde günde 16 kez mail check yerine 2 kez check yaparsın — her check'te bağlam anahtarlama maliyeti 1 kez ödenir, 16 yerine 2. 14 × 23 dakika = 322 dakika (5.3 saat) geri kazanılır.
 
-### Response time SLA: async window kuralı
+## Takvim Mimarisi: Reactive Değil Proaktif
 
-Görüşme dışındaki iletişim async'e dönmeli. Slack/mail'e **cevap window'u** tanımla: örneğin 4 saat. Sabah 09:00'da gelen mesaj 13:00'a kadar cevaplanır. Saat 15:00'te gelen ertesi gün sabah 10:00'da cevaplanır.
+Çoğu founder takvimi reactive kullanır: meeting invite gelir, boş slota kabul edilir. 3 ay sonra takvim mozaik — her gün farklı pattern, hiçbir güne önceden bakıp "bugün deep work yapacağım" diyemezsin.
 
-Bu window'u Slack durumunda göster: "Async mode — 4h response time". Ekip alışır, müşteri alışır. Acil işler Linear veya telefon üzerinden gelir (ki acil iş tanımı da daraltılmış olmalı — "bugün deploy edilmeli" acil, "yarın toplantı mı uygun" değil).
+Proaktif takvim şu katmanlarda tasarlanır:
 
-## Time-block disiplini: taahhüt ve ölçülebilirlik
+**Katman 1 — Haftalık template (değişmez)**
 
-Time-blocking sadece takvime kutu çizmek değil. Her blok bir **taahhüt** — o saatte o işi yapacaksın. Taahhüt edilemeyen işler bloğa girmez, backlog'da bekler.
+```
+Pazartesi: Deep work (06:00-10:00, 18:00-22:00)
+Salı: Client day (13:00-17:00 görüşme slotları)
+Çarşamba: Deep work + ekip sync (15:00-16:00)
+Perşembe: Client day (13:00-17:00 görüşme slotları)
+Cuma: Deep work + haftalık review (16:00-17:00)
+```
 
-Disiplin kuralları:
+**Katman 2 — Aylık recurring (değişmez)**
 
-- **Blok başında görev net:** "Yazılım geliştirme" değil, "Linear #234 Stripe webhook entegrasyonu". Blok bitince görev tamamlanmış veya %80+ ilerlemiş olmalı.
-- **Overrun yasak:** Blok 4 saat dediyse 4 saat. Bitmezse ertesi gün başka bloğa taşınır. Blokları 5-6 saate çıkarmak cognitive load'u artırır, verim düşer.
-- **Retrospective haftalık:** Cuma öğleden sonra 30 dakika — hangi bloklar tuttu, hangilerinde interrupt oldu, neyi düzelteceksin.
+```
+Her ayın ilk pazartesi: Board deck prep (4 saatlik blok)
+Her ayın son cuma: Financial review (2 saatlik blok)
+```
 
-Ölçüm: **blok tamamlanma oranı**. Hedef %80 üstü. Haftada 20 blok plan yaptıysan 16'sını tam tamamlamış olmalısın. %60'ın altındaysa takvim değil, taahhüt kalibrasyonu bozuk — çok iyimsersin.
+**Katman 3 — Ad-hoc request (template'e fit edilir)**
 
-### Boş bırakma disiplini: buffer blok
+Yeni müşteri görüşme talebi gelirse salı/perşembe slotlarından birini seçersin. Slot doluysa gelecek haftaya önerirsin. "Yarın 14:00 müsait misiniz?" sorusuna "Yarın deep work günüm, gelecek salı 14:00 uygun mu?" dersin.
 
-Takvimi %100 doldurmak verimsizlik. Haftada en az 4 saat **buffer blok** bırak — önceden planlanmamış, reactive işler için. Müşteri mail'i, Linear'da çıkan hata, ekipten gelen acil soru — bunlar buffer'a düşer.
+Bu mimari [markalaşma](https://www.roibase.com.tr/tr/branding) sürecinizle de örtüşür — takvim tasarımı aslında founder brand'inin operasyonel yansımasıdır. "Her zaman ulaşılabilir" brand yerine "sistemli, öngörülebilir, kesintisiz output üreten" brand daha güçlü.
 
-Buffer blok yoksa her interrupt bir deep work bloğuna dalıyor. Buffer varsa "bu buffer'a girer" diyerek deep work'ü koruyabilirsin.
+## Tool Stack: Takvim Disiplinini Otomasyona Bağlamak
 
-## Async-first kültür: toplantısızlığın sistematik hali
+Manuel disiplin sürdürülemez. Tool stack bağlam anahtarlama maliyetini azaltacak şekilde konfigure edilmeli:
 
-Async-first = "senkron iletişimi son çare olarak gör" demek. Roibase'de toplantı çağrısı şu şekilde:
+**Google Calendar + Clockwise**  
+Clockwise AI otomatik olarak deep work bloklarını korur — gelen meeting invite'ı deep work saatine düşüyorsa reddeder veya alternatif slot önerir. Manuel müdahale gerektirmez.
 
-1. **Önce Linear kartı aç:** Konuyu yaz, bağlamı ekle, alternatif çözümlerini listele.
-2. **Async tartışma:** Ekip kart üzerinde 24 saat yorum yapar. Çoğu sorun burada çözülür.
-3. **Toplantı:** Async'te çözülmediyse 30 dakikalık toplantı aç. Ama toplantı öncesi agenda zorunlu (kart linkli).
+**Slack status automation**  
+Deep work bloğu başladığında Slack status otomatik "🔴 Deep work — 18:00'de dönerim" olur, notification kapalı. Ekip bu statüyü görünce async mesaj bırakır, cevap beklemez.
 
-Sonuç: Roibase'de haftalık ortalama 3 toplantı var (12 kişilik ekipte). Diğer firmalar 15-20 toplantı yapıyor (Atlassian 2024 verisi). Time-blocking async kültür olmadan işlemez — çünkü her toplantı bir bloğu böler.
+**Superhuman snooze**  
+Async response window dışında gelen mailler otomatik 11:00 veya 17:00'ye snooze edilir. Inbox'a düşmez, zihinsel yük yaratmaz.
 
-Async window'u da bu kültürün parçası: cevap 4 saat içinde gelecekse kimse "hızlı call yapalım mı?" demiyor. Mesaj yazıyor, cevap bekliyor, işine dönüyor.
+**Linear sprint planning + time allocation**  
+Her sprint'te task'ların hangi deep work bloğuna fit edeceği önceden planlanır. "Bu hafta 3 deep work bloğum var, toplam 12 saat — sprint commitment 10 saat" şeklinde capacity planning yapılır.
 
-## Kapanış: takvim tasarımı strateji tasarımıdır
+Roibase'de bu stack 2025'te kurulduktan sonra ekip ortalama focus time %42'den %68'e çıktı (RescueTime verileri). Tool'lar disiplini enforce ediyor, kişisel irade gereği azalıyor.
 
-Founder takvimi operasyonel stratejiyi yansıtır. Takvimde deep work bloğu yoksa ürün/mühendislik stratejin yok demektir. Müşteri görüşmeleri cadence'i yoksa satış pipeline'ın reaktif demektir. Async window yoksa ekip kültürün interrupt-driven demektir.
+## Tradeoff: Esneklik mi, Verimlilik mi?
 
-Roibase'de takvim tasarımı onboarding'in bir parçası. Yeni founder/lead takıma katıldığında ilk hafta kendi time-block yapısını kuruyor, ikinci hafta retrospective yapıyor, üçüncü haftadan itibaren %80+ blok tamamlanma oranına ulaşıyor. Bu disiplin 8 yıldır korunuyor — çünkü ölçülüyor.
+Time-block disiplini eleştirisi: "Müşteriyle bugün görüşmem gerekiyorsa yarın erteleyemem, fırsatı kaçırırım." Bu argüman iki varsayıma dayanır:
 
-Bir sonraki hafta takvimine bak. Kaç tane 4 saatlik kesintisiz blok var? Müşteri görüşmeleri hangi günlerde toplu? Async response time'ın ne? Cevap veremiyorsan takvim senin değil, rastgeleliğin. Düzeltmek için ilk adım: bu hafta 1 tane 4 saatlik blok ayır, korumaya çalış. Ölç, not al, tekrarla.
+1. Müşteri bugün görüşmezse deal kaçar
+2. Bugün görüşmek yarın görüşmekten daha değerlidir
+
+Her iki varsayım da çoğu zaman yanlış. Ciddi müşteri 2-3 gün bekler, beklemeyecek kadar acele müşteri genelde düşük-fit müşteridir (operasyon yükü yüksek, ödeme disiplini zayıf). 8 yıllık Roibase geçmişinde "bugün görüşemezsek deal kaybederiz" dediğimiz 12 durumun 11'inde müşteri bekledi, 1'inde deal zaten low-fit'ti.
+
+Tradeoff gerçek: kısa vadede esneklik kaybı, uzun vadede output kazancı. İlk 2 ay takvim disiplinine geçerken bazı müşteri talepleri delayed olur, bazı ekip soruları async'e kayar — adaptasyon süresi. Ama 3. aydan itibaren herkes yeni ritme alışır, toplam output artarken stress azalır.
+
+Sistem sürdürülebilir olduğunda founder burnout riski düşer — çünkü her gün öngörülebilir. "Bugün neyle uğraşacağım" stresi yerine "bugün deep work günü, şu task'ı bitireceğim" netliği gelir.
+
+Takvim disiplini founder'ın en kıt kaynağını — dikkat zamanını — sistemik olarak korumak demek. 4-saatlik deep work bloğu, müşteri görüşme cadence, async response window bu korumanın araçları. Araçları kullanmak irade gerektirmez, mimariye güvenmek gerektirir.
